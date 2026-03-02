@@ -116,14 +116,14 @@ impl App {
         };
 
         // Launcher update badge
-        let update_badge: Element<'_, Message> = if self.launcher_update_available.is_some() {
+        let update_badge: Element<'_, Message> = if let Some(ref update_info) = self.launcher_update_available {
             let (label, msg): (String, Message) = if let Some(ref path) = self.launcher_update_staged {
                 (
                     crate::i18n::t("launcher_restart_to_update"),
                     Message::ApplyLauncherUpdate(path.clone()),
                 )
             } else {
-                let tag = &self.launcher_update_available.as_ref().unwrap().0;
+                let tag = &update_info.0;
                 (
                     crate::i18n::t_fmt("launcher_update_available_short", &[("version", tag)]),
                     Message::DownloadLauncherUpdate,

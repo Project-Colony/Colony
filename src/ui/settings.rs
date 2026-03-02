@@ -8,6 +8,9 @@ use crate::ui::theme::Palette;
 use crate::state::App;
 use crate::message::Message;
 
+/// A theme variant: (variant_key, i18n_label_key, bg_hex, accent_hex).
+type ThemeVariant = (&'static str, &'static str, u32, u32);
+
 /// Settings category names (keys for i18n).
 const SETTINGS_CATEGORIES: &[&str] = &[
     "settings_cat_general",
@@ -759,7 +762,7 @@ impl App {
         // Theme families: (key, i18n_label_key, icon, variants)
         // Each variant: (variant_key, i18n_label_key, bg_hex, accent_hex)
         // Icons use Nerd Font codepoints for themed themes
-        let theme_families: Vec<(&str, &str, &str, Vec<(&str, &str, u32, u32)>)> = vec![
+        let theme_families: Vec<(&str, &str, &str, Vec<ThemeVariant>)> = vec![
             // ── Existing themes ──
             ("catppuccin", "settings_theme_catppuccin", "\u{f0f4}", vec![  // coffee
                 ("latte",     "settings_theme_catppuccin_latte",     0xeff1f5, 0x1e66f5),

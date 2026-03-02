@@ -861,7 +861,7 @@ impl App {
 
                 let progress_task = Task::run(
                     progress_rx,
-                    move |pct| Message::LauncherDownloadProgress(pct),
+                    Message::LauncherDownloadProgress,
                 );
 
                 Task::batch([download_task, progress_task])
