@@ -1,0 +1,14 @@
+[
+  { "name": "All", "icon": "\uf00a", "origin": "colony", "category": "all" },
+  { "name": "Windows", "icon": "\uf17a", "origin": "windows", "category": "all" },
+  { "name": "Linux", "icon": "\uf17c", "origin": "external", "category": "all" },
+  { "name": "Development", "icon": "\uf121", "origin": "colony", "category": "development" },
+  { "name": "Graphics", "icon": "\uf1fc", "origin": "colony", "category": "graphics" },
+  { "name": "Network", "icon": "\uf0ac", "origin": "colony", "category": "network" },
+  { "name": "Office", "icon": "\uf0f6", "origin": "colony", "category": "office" },
+  { "name": "Multimedia", "icon": "\uf008", "origin": "colony", "category": "multimedia" },
+  { "name": "System", "icon": "\uf085", "origin": "colony", "category": "system" },
+  { "name": "Utilities", "icon": "\uf0ad", "origin": "colony", "category": "utility" },
+  { "name": "Games", "icon": "\uf11b", "origin": "colony", "category": "game" },
+  { "name": "Other", "icon": "\uf128", "origin": "colony", "category": "other" }
+]
