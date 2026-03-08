@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/Project-Colony/Colony/compare/v0.1.3...v0.1.4) (2026-03-08)
+
+
+### Bug Fixes
+
+* hide console window on Windows ([5935427](https://github.com/Project-Colony/Colony/commit/5935427fdfe59df1950b23d3fbbd009c01cefa7c))
+
 ## [0.1.3](https://github.com/Project-Colony/Colony/compare/v0.1.2...v0.1.3) (2026-03-08)
 
 
