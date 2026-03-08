@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/Project-Colony/Colony/compare/v0.1.2...v0.1.3) (2026-03-08)
+
+
+### Bug Fixes
+
+* handle raw binaries in extract_binary_from_archive ([fb6c526](https://github.com/Project-Colony/Colony/commit/fb6c526e493fe1d430389423580146bc55faa88e))
+
 ## [0.1.2](https://github.com/Project-Colony/Colony/compare/v0.1.1...v0.1.2) (2026-03-08)
 
 
