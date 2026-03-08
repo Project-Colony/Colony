@@ -37,7 +37,7 @@ static URL_LOCKS: std::sync::LazyLock<Mutex<HashMap<String, std::sync::Arc<Tokio
 
 /// Acquire a per-URL lock to prevent race conditions on the same endpoint.
 fn url_lock(url: &str) -> std::sync::Arc<TokioMutex<()>> {
-    let mut locks = URL_LOCKS.lock().unwrap_or_else(|e| e.into_inner());
+    let mut locks = URL_LOCKS.lock().expect("URL_LOCKS mutex poisoned");
     locks
         .entry(url.to_string())
         .or_insert_with(|| std::sync::Arc::new(TokioMutex::new(())))
@@ -100,8 +100,8 @@ async fn cached_get(
             if rl.reset > now {
                 let wait = rl.reset - now;
                 anyhow::bail!(
-                    "Quota GitHub atteint. Réessayez dans {} secondes.",
-                    wait
+                    "{}",
+                    crate::i18n::t_fmt("github_rate_limit", &[("wait", &wait.to_string())])
                 );
             }
         }
@@ -792,6 +792,16 @@ fn extract_from_zip(
     binary_name: &str,
     dest_dir: &std::path::Path,
 ) -> Result<PathBuf> {
+    // Guard against path traversal: binary_name must be a single normal component.
+    let name_path = std::path::Path::new(binary_name);
+    anyhow::ensure!(
+        name_path.components().count() == 1
+            && matches!(
+                name_path.components().next(),
+                Some(std::path::Component::Normal(_))
+            ),
+        "Invalid binary name (path traversal attempt?): {binary_name}"
+    );
     let file = std::fs::File::open(archive_path)?;
     let mut archive = zip::ZipArchive::new(file)?;
 
@@ -820,6 +830,16 @@ fn extract_from_tar_gz(
     binary_name: &str,
     dest_dir: &std::path::Path,
 ) -> Result<PathBuf> {
+    // Guard against path traversal: binary_name must be a single normal component.
+    let name_path = std::path::Path::new(binary_name);
+    anyhow::ensure!(
+        name_path.components().count() == 1
+            && matches!(
+                name_path.components().next(),
+                Some(std::path::Component::Normal(_))
+            ),
+        "Invalid binary name (path traversal attempt?): {binary_name}"
+    );
     let file = std::fs::File::open(archive_path)?;
     let gz = flate2::read::GzDecoder::new(file);
     let mut archive = tar::Archive::new(gz);

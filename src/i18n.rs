@@ -22,6 +22,7 @@ impl Locale {
                 strings.insert("github_connect_desc".into(), "Connectez-vous à GitHub pour détecter les dépôts Colony (colony.json) du compte MotherSphere.".into());
                 strings.insert("github_login".into(), "Se connecter avec GitHub".into());
                 strings.insert("github_public_api".into(), "Mode non connecté : API publique GitHub (60 req/h)".into());
+                strings.insert("github_rate_limit".into(), "Quota GitHub atteint. Réessayez dans {wait} secondes.".into());
                 strings.insert("github_enter_code".into(), "Entrez ce code sur GitHub :".into());
                 strings.insert("github_copy_hint".into(), "Cliquez pour copier — En attente d'autorisation...".into());
                 strings.insert("github_connecting".into(), "Connexion en cours...".into());
@@ -326,6 +327,7 @@ impl Locale {
                 strings.insert("github_connect_desc".into(), "Connect to GitHub to detect Colony repos (colony.json) from the MotherSphere account.".into());
                 strings.insert("github_login".into(), "Sign in with GitHub".into());
                 strings.insert("github_public_api".into(), "Not connected: Public GitHub API (60 req/h)".into());
+                strings.insert("github_rate_limit".into(), "GitHub rate limit reached. Retry in {wait} seconds.".into());
                 strings.insert("github_enter_code".into(), "Enter this code on GitHub:".into());
                 strings.insert("github_copy_hint".into(), "Click to copy — Waiting for authorization...".into());
                 strings.insert("github_connecting".into(), "Connecting...".into());
