@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/Project-Colony/Colony/compare/v0.1.1...v0.1.2) (2026-03-08)
+
+
+### Bug Fixes
+
+* security hardening and i18n cleanup ([50b5e65](https://github.com/Project-Colony/Colony/commit/50b5e65a0b0c4d22eea74678e75697039cc88467))
+
 ## [0.1.1](https://github.com/Project-Colony/Colony/compare/v0.1.0...v0.1.1) (2026-03-02)
 
 
