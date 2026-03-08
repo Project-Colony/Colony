@@ -872,20 +872,20 @@ fn extract_binary_from_archive(
         .and_then(|n| n.to_str())
         .unwrap_or("");
 
-    let result = if filename.ends_with(".zip") {
-        extract_from_zip(archive_path, binary_name, dest_dir)
+    if filename.ends_with(".zip") {
+        let result = extract_from_zip(archive_path, binary_name, dest_dir);
+        let _ = std::fs::remove_file(archive_path);
+        result
     } else if filename.ends_with(".tar.gz") || filename.ends_with(".tgz") {
-        extract_from_tar_gz(archive_path, binary_name, dest_dir)
+        let result = extract_from_tar_gz(archive_path, binary_name, dest_dir);
+        let _ = std::fs::remove_file(archive_path);
+        result
     } else {
-        anyhow::bail!(
-            "Unsupported archive format: {filename}. Expected .zip, .tar.gz, or .tgz"
-        )
-    };
-
-    // Clean up the archive file after extraction
-    let _ = std::fs::remove_file(archive_path);
-
-    result
+        // Raw binary (e.g. .exe, no archive extension) — rename to binary_name in dest_dir
+        let dest = dest_dir.join(binary_name);
+        std::fs::rename(archive_path, &dest)?;
+        Ok(dest)
+    }
 }
 
 /// Download a release asset to `<colony_apps_dir>/<repo_name>/<filename>`.
