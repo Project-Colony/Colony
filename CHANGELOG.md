@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/Project-Colony/Colony/compare/v0.1.4...v0.2.0) (2026-04-18)
+
+
+### Features
+
+* **onboarding:** carousel 3 étapes pour le premier lancement ([08c6019](https://github.com/Project-Colony/Colony/commit/08c60191388255c06797168b1017ac4f85bc8bf9))
+
+
+### Bug Fixes
+
+* **ui:** dismiss GitHub/Settings overlays when a sidebar section is clicked ([6021bdf](https://github.com/Project-Colony/Colony/commit/6021bdfde3bb1a50da4aed2fb3256d47700cac5a))
+
 ## [0.1.4](https://github.com/Project-Colony/Colony/compare/v0.1.3...v0.1.4) (2026-03-08)
 
 
