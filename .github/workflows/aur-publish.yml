@@ -1,0 +1,93 @@
+# Auto-bump the colony-bin AUR package whenever a new GitHub Release is
+# published on this repo. Uses a dedicated SSH key (AUR_SSH_PRIVATE_KEY secret)
+# registered as a secondary key on the MotherSphere AUR account — scope is
+# limited to AUR push access, revocable by removing that key from the AUR
+# profile if ever compromised.
+
+name: Publish colony-bin to AUR
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  aur:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract pkgver from release tag
+        id: version
+        run: |
+          # Release tags follow vX.Y.Z → pkgver is the stripped form.
+          echo "pkgver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "Publishing AUR bump for ${GITHUB_REF_NAME#v}"
+
+      - name: Download colony-linux asset + compute sha256
+        id: sha
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          curl -sSL -o colony-linux \
+            "https://github.com/${{ github.repository }}/releases/download/${TAG}/colony-linux"
+          SHA256=$(sha256sum colony-linux | awk '{print $1}')
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+          echo "SHA256: ${SHA256}"
+
+      - name: Install SSH key + known_hosts
+        env:
+          SSH_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/aur_bot
+          chmod 600 ~/.ssh/aur_bot
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Clone AUR colony-bin repo
+        run: |
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur_bot -o IdentitiesOnly=yes" \
+            git clone ssh://aur@aur.archlinux.org/colony-bin.git aur-repo
+          cd aur-repo
+          git config user.name "Colony AUR Bot"
+          git config user.email "colony-aur-bot@project-colony"
+
+      - name: Update PKGBUILD + .SRCINFO
+        env:
+          PKGVER: ${{ steps.version.outputs.pkgver }}
+          SHA256: ${{ steps.sha.outputs.sha256 }}
+        run: |
+          cd aur-repo
+          # Reset pkgrel to 1 because pkgver changed — standard AUR convention.
+          sed -i "s/^pkgver=.*/pkgver=${PKGVER}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          sed -i "s/^sha256sums=('.*')/sha256sums=('${SHA256}')/" PKGBUILD
+
+          # .SRCINFO mirrors the PKGBUILD metadata. We sed the three fields
+          # that track pkgver (pkgver itself, noextract filename, source URL)
+          # plus the single sha256sums line. Everything else is static.
+          sed -i "s/^\tpkgver = .*/\tpkgver = ${PKGVER}/" .SRCINFO
+          sed -i "s/^\tpkgrel = .*/\tpkgrel = 1/" .SRCINFO
+          sed -i "s|noextract = colony-[^[:space:]]*|noextract = colony-${PKGVER}|" .SRCINFO
+          sed -i "s|colony-[0-9.]*::https|colony-${PKGVER}::https|" .SRCINFO
+          sed -i "s|download/v[0-9.]*/colony-linux|download/v${PKGVER}/colony-linux|" .SRCINFO
+          sed -i "s/^\tsha256sums = .*/\tsha256sums = ${SHA256}/" .SRCINFO
+
+          echo "--- PKGBUILD diff ---"
+          git --no-pager diff PKGBUILD || true
+          echo "--- .SRCINFO diff ---"
+          git --no-pager diff .SRCINFO || true
+
+      - name: Commit + push to AUR
+        env:
+          PKGVER: ${{ steps.version.outputs.pkgver }}
+        run: |
+          cd aur-repo
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "No changes — colony-bin already at ${PKGVER}. Skipping push."
+            exit 0
+          fi
+          git commit -m "colony-bin: auto-bump to ${PKGVER}"
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur_bot -o IdentitiesOnly=yes" \
+            git push
