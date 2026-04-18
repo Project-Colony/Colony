@@ -9,6 +9,12 @@ name: Publish colony-bin to AUR
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to republish to AUR (e.g. v0.1.4)'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,17 +23,22 @@ jobs:
   aur:
     runs-on: ubuntu-latest
     steps:
-      - name: Extract pkgver from release tag
-        id: version
+      - name: Resolve release tag
+        id: tag
         run: |
-          # Release tags follow vX.Y.Z → pkgver is the stripped form.
-          echo "pkgver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-          echo "Publishing AUR bump for ${GITHUB_REF_NAME#v}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "pkgver=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "Publishing AUR bump for ${TAG} (pkgver=${TAG#v})"
 
       - name: Download colony-linux asset + compute sha256
         id: sha
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           curl -sSL -o colony-linux \
             "https://github.com/${{ github.repository }}/releases/download/${TAG}/colony-linux"
@@ -54,7 +65,7 @@ jobs:
 
       - name: Update PKGBUILD + .SRCINFO
         env:
-          PKGVER: ${{ steps.version.outputs.pkgver }}
+          PKGVER: ${{ steps.tag.outputs.pkgver }}
           SHA256: ${{ steps.sha.outputs.sha256 }}
         run: |
           cd aur-repo
@@ -80,7 +91,7 @@ jobs:
 
       - name: Commit + push to AUR
         env:
-          PKGVER: ${{ steps.version.outputs.pkgver }}
+          PKGVER: ${{ steps.tag.outputs.pkgver }}
         run: |
           cd aur-repo
           git add PKGBUILD .SRCINFO
