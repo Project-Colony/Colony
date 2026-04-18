@@ -157,6 +157,7 @@ impl App {
             favorites,
             confirm_uninstall: None,
             show_first_launch,
+            welcome_step: 0,
             show_settings: false,
             settings_category: 0,
             selected_theme: prefs.selected_theme.clone().unwrap_or_else(|| "gruvbox".into()),
@@ -433,59 +434,189 @@ impl App {
             return stack![base, backdrop].width(Fill).height(Fill).into();
         }
 
-        // First-launch welcome overlay
+        // First-launch welcome carousel (3 steps: pitch → interface tour → GitHub + ready)
         if self.show_first_launch {
-            let welcome = container(
-                column![
+            let step = self.welcome_step.min(2);
+            const LAST_STEP: u8 = 2;
+
+            // ---- primary / secondary button styling helpers -----------------
+            let primary_btn = |label_key: &'static str, msg: Message| -> iced::widget::Button<Message> {
+                button(
+                    text(i18n::t(label_key)).size(self.sz(14)).font(self.app_font()),
+                )
+                .on_press(msg)
+                .padding([10, 22])
+                .style(|_theme, status| {
+                    let bg = match status {
+                        button::Status::Hovered => Palette::BTN_SUCCESS_HOVER(),
+                        _ => Palette::BTN_SUCCESS(),
+                    };
+                    button::Style {
+                        background: Some(bg.into()),
+                        text_color: Palette::TEXT_PRIMARY(),
+                        border: iced::Border::default().rounded(8),
+                        ..Default::default()
+                    }
+                })
+            };
+            let ghost_btn = |label_key: &'static str, msg: Message| -> iced::widget::Button<Message> {
+                button(
+                    text(i18n::t(label_key))
+                        .size(self.sz(13))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_SECONDARY()),
+                )
+                .on_press(msg)
+                .padding([10, 18])
+                .style(|_theme, status| {
+                    let bg = match status {
+                        button::Status::Hovered => Palette::BTN_HOVER(),
+                        _ => iced::Color::TRANSPARENT,
+                    };
+                    button::Style {
+                        background: Some(bg.into()),
+                        text_color: Palette::TEXT_SECONDARY(),
+                        border: iced::Border::default().rounded(8),
+                        ..Default::default()
+                    }
+                })
+            };
+
+            // ---- per-step body ---------------------------------------------
+            let body: iced::Element<'_, Message> = match step {
+                0 => column![
                     text(i18n::t("welcome_title"))
-                        .size(self.sz(24))
+                        .size(self.sz(26))
                         .font(self.app_font_with_weight(Weight::Bold))
                         .color(Palette::TEXT_PRIMARY()),
-                    container(text("")).height(12),
+                    container(text("")).height(10),
                     text(i18n::t("welcome_desc"))
                         .size(self.sz(14))
                         .font(self.app_font())
                         .color(Palette::TEXT_SECONDARY()),
-                    container(text("")).height(8),
-                    text(i18n::t("welcome_tip_1"))
-                        .size(self.sz(13))
-                        .font(self.app_font())
-                        .color(Palette::TEXT_MUTED()),
-                    text(i18n::t("welcome_tip_2"))
-                        .size(self.sz(13))
-                        .font(self.app_font())
-                        .color(Palette::TEXT_MUTED()),
-                    text(i18n::t("welcome_tip_3"))
-                        .size(self.sz(13))
-                        .font(self.app_font())
-                        .color(Palette::TEXT_MUTED()),
-                    container(text("")).height(16),
-                    button(
-                        text(i18n::t("welcome_start")).size(self.sz(14)).font(self.app_font())
-                    )
-                    .on_press(Message::DismissFirstLaunch)
-                    .padding([12, 24])
-                    .style(|_theme, status| {
-                        let bg = match status {
-                            button::Status::Hovered => Palette::BTN_SUCCESS_HOVER(),
-                            _ => Palette::BTN_SUCCESS(),
-                        };
-                        button::Style {
-                            background: Some(bg.into()),
-                            text_color: Palette::TEXT_PRIMARY(),
-                            border: iced::Border::default().rounded(8),
-                            ..Default::default()
-                        }
-                    }),
                 ]
-                .spacing(6)
-                .padding(32),
-            )
-            .style(|_theme| container::Style {
-                background: Some(Palette::BG_SIDEBAR().into()),
-                border: iced::Border::default().rounded(16),
-                ..Default::default()
-            });
+                .spacing(4)
+                .into(),
+
+                1 => {
+                    // Three tip rows: icon + title + description stacked in columns.
+                    let tip = |icon: &'static str, title_key: &'static str, desc_key: &'static str| -> iced::widget::Row<'_, Message> {
+                        row![
+                            container(
+                                text(icon)
+                                    .size(self.sz(22))
+                                    .font(iced::Font::with_name("Font Awesome 6 Free"))
+                                    .color(Palette::ACCENT()),
+                            )
+                            .width(36)
+                            .center_x(36),
+                            column![
+                                text(i18n::t(title_key))
+                                    .size(self.sz(14))
+                                    .font(self.app_font_with_weight(Weight::Bold))
+                                    .color(Palette::TEXT_PRIMARY()),
+                                text(i18n::t(desc_key))
+                                    .size(self.sz(13))
+                                    .font(self.app_font())
+                                    .color(Palette::TEXT_SECONDARY()),
+                            ]
+                            .spacing(2)
+                        ]
+                        .spacing(12)
+                        .align_y(iced::Alignment::Center)
+                    };
+                    column![
+                        text(i18n::t("welcome_step1_title"))
+                            .size(self.sz(22))
+                            .font(self.app_font_with_weight(Weight::Bold))
+                            .color(Palette::TEXT_PRIMARY()),
+                        container(text("")).height(12),
+                        tip("\u{f03a}", "welcome_step1_tip1_title", "welcome_step1_tip1_desc"),
+                        tip("\u{f002}", "welcome_step1_tip2_title", "welcome_step1_tip2_desc"),
+                        tip("\u{f15b}", "welcome_step1_tip3_title", "welcome_step1_tip3_desc"),
+                    ]
+                    .spacing(12)
+                    .into()
+                }
+
+                _ => column![
+                    text(i18n::t("welcome_step2_title"))
+                        .size(self.sz(22))
+                        .font(self.app_font_with_weight(Weight::Bold))
+                        .color(Palette::TEXT_PRIMARY()),
+                    container(text("")).height(8),
+                    text(i18n::t("welcome_step2_desc"))
+                        .size(self.sz(13))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_SECONDARY()),
+                    container(text("")).height(8),
+                    row![
+                        primary_btn("welcome_connect_now", Message::WelcomeConnectGithub),
+                        ghost_btn("welcome_later", Message::WelcomeNext),
+                    ]
+                    .spacing(10),
+                    container(text("")).height(14),
+                    text(i18n::t("welcome_step2_hint1"))
+                        .size(self.sz(12))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_MUTED()),
+                    text(i18n::t("welcome_step2_hint2"))
+                        .size(self.sz(12))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_MUTED()),
+                    text(i18n::t("welcome_step2_hint3"))
+                        .size(self.sz(12))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_MUTED()),
+                ]
+                .spacing(4)
+                .into(),
+            };
+
+            // ---- progress dots (3 of them) ----------------------------------
+            let dot = |active: bool| -> iced::widget::Container<'_, Message> {
+                let color = if active { Palette::ACCENT() } else { Palette::BTN_HOVER() };
+                container(text(""))
+                    .width(8)
+                    .height(8)
+                    .style(move |_theme| container::Style {
+                        background: Some(color.into()),
+                        border: iced::Border::default().rounded(4),
+                        ..Default::default()
+                    })
+            };
+            let dots = row![dot(step == 0), dot(step == 1), dot(step == 2)].spacing(8);
+
+            // ---- footer nav -------------------------------------------------
+            let nav_left: iced::Element<'_, Message> = if step == 0 {
+                ghost_btn("welcome_skip", Message::DismissFirstLaunch).into()
+            } else {
+                ghost_btn("welcome_back", Message::WelcomeBack).into()
+            };
+            let nav_right_label = if step == LAST_STEP { "welcome_start" } else { "welcome_next" };
+            let nav_right: iced::Element<'_, Message> =
+                primary_btn(nav_right_label, Message::WelcomeNext).into();
+
+            let footer = row![
+                nav_left,
+                container(text("")).width(Fill),
+                container(dots).center_x(Fill).width(Fill),
+                container(text("")).width(Fill),
+                nav_right,
+            ]
+            .align_y(iced::Alignment::Center);
+
+            let card_content = column![body, container(text("")).height(20), footer]
+                .spacing(4)
+                .padding(32);
+
+            let welcome = container(card_content)
+                .max_width(560)
+                .style(|_theme| container::Style {
+                    background: Some(Palette::BG_SIDEBAR().into()),
+                    border: iced::Border::default().rounded(16),
+                    ..Default::default()
+                });
 
             let backdrop = container(
                 container(welcome)

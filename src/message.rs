@@ -47,6 +47,9 @@ pub enum Message {
     ToggleFavorite(String),
     // First launch
     DismissFirstLaunch,
+    WelcomeNext,
+    WelcomeBack,
+    WelcomeConnectGithub,
     // Settings
     ToggleSettings,
     SettingsCategory(usize),

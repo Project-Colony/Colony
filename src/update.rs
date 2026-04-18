@@ -686,6 +686,32 @@ impl App {
             }
             Message::DismissFirstLaunch => {
                 self.show_first_launch = false;
+                self.welcome_step = 0;
+                self.save_preferences();
+                Task::none()
+            }
+            Message::WelcomeNext => {
+                const LAST_STEP: u8 = 2;
+                if self.welcome_step >= LAST_STEP {
+                    self.show_first_launch = false;
+                    self.welcome_step = 0;
+                    self.save_preferences();
+                } else {
+                    self.welcome_step += 1;
+                }
+                Task::none()
+            }
+            Message::WelcomeBack => {
+                self.welcome_step = self.welcome_step.saturating_sub(1);
+                Task::none()
+            }
+            Message::WelcomeConnectGithub => {
+                // Close the welcome overlay and jump straight to the GitHub
+                // panel so the user can start the device-flow login without
+                // an extra "dismiss then navigate" step.
+                self.show_first_launch = false;
+                self.welcome_step = 0;
+                self.show_github_menu = true;
                 self.save_preferences();
                 Task::none()
             }

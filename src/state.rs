@@ -150,6 +150,8 @@ pub struct App {
     pub confirm_uninstall: Option<String>, // repo_name pending confirmation
     // First launch
     pub show_first_launch: bool,
+    /// Index (0..=2) of the active step in the first-launch carousel.
+    pub welcome_step: u8,
     // Settings
     pub show_settings: bool,
     pub settings_category: usize,

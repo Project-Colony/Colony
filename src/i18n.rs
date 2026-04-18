@@ -82,13 +82,30 @@ impl Locale {
                 strings.insert("add_favorite".into(), "Ajouter aux favoris".into());
                 strings.insert("remove_favorite".into(), "Retirer des favoris".into());
 
-                // First launch
+                // First launch — carousel (3 steps)
                 strings.insert("welcome_title".into(), "Bienvenue dans Colony".into());
-                strings.insert("welcome_desc".into(), "Colony est votre lanceur d'applications centralisé. Découvrez, installez et lancez des applications depuis les dépôts MotherSphere.".into());
-                strings.insert("welcome_tip_1".into(), "\u{f0a1}  Connectez-vous à GitHub pour accéder aux dépôts Colony".into());
-                strings.insert("welcome_tip_2".into(), "\u{f002}  Utilisez la barre de recherche pour trouver des applications".into());
-                strings.insert("welcome_tip_3".into(), "\u{f005}  Ajoutez des applications en favoris pour un accès rapide".into());
-                strings.insert("welcome_start".into(), "Commencer".into());
+                strings.insert("welcome_desc".into(), "Le lanceur centralisé de l'écosystème MotherSphere. Découvrez, installez et lancez vos apps en un clic.".into());
+                // Step 1 — interface tour
+                strings.insert("welcome_step1_title".into(), "L'interface en 3 zones".into());
+                strings.insert("welcome_step1_tip1_title".into(), "Sidebar".into());
+                strings.insert("welcome_step1_tip1_desc".into(), "Filtrez par catégorie ou origine (Colony / système).".into());
+                strings.insert("welcome_step1_tip2_title".into(), "Recherche".into());
+                strings.insert("welcome_step1_tip2_desc".into(), "Tapez le nom d'une app dans la barre en haut pour filtrer instantanément.".into());
+                strings.insert("welcome_step1_tip3_title".into(), "Détail".into());
+                strings.insert("welcome_step1_tip3_desc".into(), "Cliquez une app pour lire le README, le changelog et l'installer.".into());
+                // Step 2 — GitHub + ready
+                strings.insert("welcome_step2_title".into(), "Connectez GitHub (optionnel)".into());
+                strings.insert("welcome_step2_desc".into(), "Sans compte : 60 requêtes GitHub par heure. Avec compte : 5000/h + accès aux repos privés. Recommandé si vous comptez explorer beaucoup.".into());
+                strings.insert("welcome_step2_hint1".into(), "\u{f005}  Favoris (⭐) pour un accès rapide".into());
+                strings.insert("welcome_step2_hint2".into(), "\u{f53f}  24 familles de thèmes dans les préférences".into());
+                strings.insert("welcome_step2_hint3".into(), "\u{f059}  Consultez la FAQ et le tutoriel complet sur GitHub".into());
+                // Navigation
+                strings.insert("welcome_start".into(), "C'est parti !".into());
+                strings.insert("welcome_next".into(), "Suivant".into());
+                strings.insert("welcome_back".into(), "Retour".into());
+                strings.insert("welcome_skip".into(), "Passer".into());
+                strings.insert("welcome_connect_now".into(), "Connecter maintenant".into());
+                strings.insert("welcome_later".into(), "Plus tard".into());
 
                 // Loading / async feedback
                 strings.insert("loading".into(), "Chargement...".into());
@@ -387,13 +404,30 @@ impl Locale {
                 strings.insert("add_favorite".into(), "Add to favorites".into());
                 strings.insert("remove_favorite".into(), "Remove from favorites".into());
 
-                // First launch
+                // First launch — carousel (3 steps)
                 strings.insert("welcome_title".into(), "Welcome to Colony".into());
-                strings.insert("welcome_desc".into(), "Colony is your centralized application launcher. Discover, install and launch applications from MotherSphere repositories.".into());
-                strings.insert("welcome_tip_1".into(), "\u{f0a1}  Connect to GitHub to access Colony repositories".into());
-                strings.insert("welcome_tip_2".into(), "\u{f002}  Use the search bar to find applications".into());
-                strings.insert("welcome_tip_3".into(), "\u{f005}  Add applications to favorites for quick access".into());
-                strings.insert("welcome_start".into(), "Get Started".into());
+                strings.insert("welcome_desc".into(), "The centralized launcher for the MotherSphere ecosystem. Discover, install and launch apps in one click.".into());
+                // Step 1 — interface tour
+                strings.insert("welcome_step1_title".into(), "The interface, in 3 zones".into());
+                strings.insert("welcome_step1_tip1_title".into(), "Sidebar".into());
+                strings.insert("welcome_step1_tip1_desc".into(), "Filter by category or origin (Colony / system apps).".into());
+                strings.insert("welcome_step1_tip2_title".into(), "Search".into());
+                strings.insert("welcome_step1_tip2_desc".into(), "Type an app name in the top bar to filter instantly.".into());
+                strings.insert("welcome_step1_tip3_title".into(), "Detail".into());
+                strings.insert("welcome_step1_tip3_desc".into(), "Click any app to read its README, changelog and install it.".into());
+                // Step 2 — GitHub + ready
+                strings.insert("welcome_step2_title".into(), "Connect GitHub (optional)".into());
+                strings.insert("welcome_step2_desc".into(), "Without an account: 60 GitHub requests per hour. With an account: 5000/h + access to your private repos. Recommended if you plan to browse a lot.".into());
+                strings.insert("welcome_step2_hint1".into(), "\u{f005}  Favorites (⭐) for quick access".into());
+                strings.insert("welcome_step2_hint2".into(), "\u{f53f}  24 theme families in the preferences".into());
+                strings.insert("welcome_step2_hint3".into(), "\u{f059}  Full tutorial + FAQ on GitHub".into());
+                // Navigation
+                strings.insert("welcome_start".into(), "Let's go!".into());
+                strings.insert("welcome_next".into(), "Next".into());
+                strings.insert("welcome_back".into(), "Back".into());
+                strings.insert("welcome_skip".into(), "Skip".into());
+                strings.insert("welcome_connect_now".into(), "Connect now".into());
+                strings.insert("welcome_later".into(), "Later".into());
 
                 // Loading / async feedback
                 strings.insert("loading".into(), "Loading...".into());
