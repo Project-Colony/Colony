@@ -1,0 +1,97 @@
+name: Bug report
+description: Something in Colony is broken or behaves unexpectedly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+        Please search existing issues first to avoid duplicates.
+
+  - type: input
+    id: version
+    attributes:
+      label: Colony version
+      description: Output of `colony --version` (or the release tag you downloaded).
+      placeholder: "v0.1.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux (x86_64)
+        - Windows (x86_64)
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution / OS version
+      description: e.g. "Arch Linux (kernel 6.12)", "Windows 11 24H2", "macOS 15.3".
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install Colony?
+      options:
+        - AUR (colony-bin)
+        - AUR (colony-git)
+        - Binary from GitHub Releases
+        - Built from source
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened?
+      description: Include exact error messages if any.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Colony.
+        2. Click on X.
+        3. Observe Y.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Relevant lines from `colony 2>&1` or `~/.cache/colony/`. Redact any
+        personal paths or tokens before pasting.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues and didn't find a duplicate.
+          required: true
+        - label: I'm on the latest Colony release (or describe why I'm not).
+          required: true
