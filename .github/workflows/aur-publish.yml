@@ -63,7 +63,23 @@ jobs:
           git config user.name "Colony AUR Bot"
           git config user.email "colony-aur-bot@project-colony"
 
+      - name: Early-exit if pkgver already matches
+        id: check
+        env:
+          PKGVER: ${{ steps.tag.outputs.pkgver }}
+        run: |
+          cd aur-repo
+          CURRENT=$(sed -n 's/^pkgver=//p' PKGBUILD | head -1)
+          echo "AUR currently at pkgver=${CURRENT}, target=${PKGVER}"
+          if [ "${CURRENT}" = "${PKGVER}" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "pkgver already at ${PKGVER} — nothing to do."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Update PKGBUILD + .SRCINFO
+        if: steps.check.outputs.changed == 'true'
         env:
           PKGVER: ${{ steps.tag.outputs.pkgver }}
           SHA256: ${{ steps.sha.outputs.sha256 }}
@@ -90,6 +106,7 @@ jobs:
           git --no-pager diff .SRCINFO || true
 
       - name: Commit + push to AUR
+        if: steps.check.outputs.changed == 'true'
         env:
           PKGVER: ${{ steps.tag.outputs.pkgver }}
         run: |
