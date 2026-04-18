@@ -79,6 +79,12 @@ impl App {
                     self.sidebar_indicator_start = Some(std::time::Instant::now());
                     self.selected_section = index;
                     self.active_colony_repo = None;
+                    // Dismiss any open overlay panel so the section change is
+                    // actually visible — otherwise users stay stuck on the
+                    // GitHub / Settings panel even though the underlying
+                    // filter just changed.
+                    self.show_github_menu = false;
+                    self.show_settings = false;
                     self.save_preferences();
                 }
                 Task::none()
