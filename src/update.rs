@@ -8,6 +8,43 @@ use crate::oauth;
 use crate::scan;
 use crate::state::{App, DetailTab, GitHubState, Notification, NotificationLevel};
 use iced::widget::markdown;
+
+/// Remove Markdown pipe-tables from a raw document. iced's table renderer
+/// wraps tables in an internal horizontal scrollable that captures
+/// mouse-wheel events (even purely-vertical ones), breaking the parent
+/// scroll. Until we ship a custom table renderer, drop tables so the rest
+/// of the document stays scrollable.
+fn strip_md_tables(md: &str) -> String {
+    let lines: Vec<&str> = md.lines().collect();
+    let mut out = Vec::with_capacity(lines.len());
+    let mut i = 0;
+    while i < lines.len() {
+        let current = lines[i].trim_start();
+        let next = lines.get(i + 1).map(|l| l.trim_start()).unwrap_or("");
+        // GFM pipe-table detection: a header row `| ... |` followed by a
+        // separator row containing only `|`, `-`, `:`, and whitespace.
+        let is_header = current.starts_with('|') && current.matches('|').count() >= 2;
+        let is_separator = !next.is_empty()
+            && next.starts_with('|')
+            && next.chars().all(|c| matches!(c, '|' | '-' | ':' | ' '));
+        if is_header && is_separator {
+            // Skip header + separator + all contiguous row lines.
+            i += 2;
+            while i < lines.len() {
+                let row = lines[i].trim_start();
+                if row.starts_with('|') && row.matches('|').count() >= 2 {
+                    i += 1;
+                } else {
+                    break;
+                }
+            }
+        } else {
+            out.push(lines[i]);
+            i += 1;
+        }
+    }
+    out.join("\n")
+}
 use crate::ui::theme::{accent_key_to_color, set_active_accent, set_active_theme, set_high_contrast};
 
 impl App {
@@ -55,7 +92,7 @@ impl App {
                 github::read_repo_doc(&repo.name, "CHANGELOG.md").unwrap_or_default()
             }
         };
-        self.detail_md = markdown::parse(&content).collect();
+        self.detail_md = markdown::parse(&strip_md_tables(&content)).collect();
         self.detail_md_source = Some(key);
     }
 

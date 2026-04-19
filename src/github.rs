@@ -413,31 +413,13 @@ async fn fetch_readme(client: &reqwest::Client, repo_name: &str) -> Result<Strin
     let raw = readme.content.unwrap_or_default();
     let cleaned: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
     let bytes = base64::engine::general_purpose::STANDARD.decode(&cleaned)?;
-    let text = String::from_utf8_lossy(&bytes);
+    let text = String::from_utf8_lossy(&bytes).trim().to_string();
 
-    // Strip markdown headings/images, keep line structure, limit to 1000 chars
-    let plain: String = text
-        .lines()
-        .filter(|line| {
-            let trimmed = line.trim();
-            !trimmed.starts_with('#') && !trimmed.starts_with("![") && !trimmed.starts_with("```")
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-        .trim()
-        .to_string();
-
-    let truncated = if plain.len() > 1000 {
-        format!("{}…", &plain[..plain.floor_char_boundary(1000)])
-    } else {
-        plain
-    };
-
-    if truncated.is_empty() {
+    if text.is_empty() {
         anyhow::bail!("README is empty");
     }
 
-    Ok(truncated)
+    Ok(text)
 }
 
 /// Fetch a file from a repo, trying multiple candidate paths.
