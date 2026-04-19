@@ -35,6 +35,12 @@ pub const DYSLEXIA_FONT_NAME: &str = "OpenDyslexic";
 pub const DYSLEXIA_FONT_BYTES: &[u8] =
     include_bytes!("ui/assets/fonts/OpenDyslexic/OpenDyslexic-Regular.otf");
 
+pub const FA_FONT_NAME: &str = "Font Awesome 6 Free";
+pub const FA_FONT_BYTES: [&[u8]; 2] = [
+    include_bytes!("ui/assets/fonts/FontAwesome/fa-solid-900.ttf"),
+    include_bytes!("ui/assets/fonts/FontAwesome/fa-regular-400.ttf"),
+];
+
 pub fn default_font() -> Font {
     Font::with_name(APP_FONT_NAME)
 }

@@ -84,14 +84,18 @@ impl App {
             .font(self.app_font())
             .color(Palette::TEXT_MUTED());
 
-        // Favorite button
+        // Favorite button — FontAwesome 6 Free, solid/regular variant for filled/empty.
+        // Same codepoint \u{f005} in both variants; the weight picks the glyph.
         let is_fav = self.is_favorite(&repo.name);
-        let fav_icon = if is_fav { "\u{f005}" } else { "\u{f006}" }; // filled/empty star
         let fav_color = if is_fav { Palette::WARNING() } else { Palette::TEXT_DIM() };
+        let fav_font = iced::Font {
+            weight: if is_fav { Weight::Black } else { Weight::Normal },
+            ..iced::Font::with_name(crate::state::FA_FONT_NAME)
+        };
         let fav_btn = button(
-            text(fav_icon)
+            text("\u{f005}")
                 .size(self.sz(18))
-                .font(self.app_font())
+                .font(fav_font)
                 .color(fav_color),
         )
         .on_press(Message::ToggleFavorite(repo.name.clone()))

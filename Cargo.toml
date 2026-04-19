@@ -24,3 +24,8 @@ tar = "0.4"
 flate2 = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.fast]
+inherits = "release"
+debug = "line-tables-only"
+incremental = true

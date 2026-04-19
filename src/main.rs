@@ -22,7 +22,7 @@ use std::collections::HashSet;
 use message::Message;
 use state::{
     App, DetailTab, GitHubState,
-    APP_FONT_BYTES, DYSLEXIA_FONT_BYTES,
+    APP_FONT_BYTES, DYSLEXIA_FONT_BYTES, FA_FONT_BYTES,
     default_font,
 };
 
@@ -56,7 +56,10 @@ fn load_fonts() -> Task<Message> {
     let dyslexia_font = std::iter::once(
         font::load(DYSLEXIA_FONT_BYTES.to_vec()).map(Message::FontLoaded),
     );
-    Task::batch(main_fonts.chain(dyslexia_font))
+    let fa_fonts = FA_FONT_BYTES
+        .iter()
+        .map(|data| font::load(data.to_vec()).map(Message::FontLoaded));
+    Task::batch(main_fonts.chain(dyslexia_font).chain(fa_fonts))
 }
 
 impl App {
