@@ -128,7 +128,11 @@ impl App {
                 .color(Palette::TEXT_MUTED())
                 .into()
         } else {
-            markdown::view_with(&self.detail_md, md_settings, &ColonyMdViewer)
+            crate::ui::markdown_blocks::view(
+                &self.detail_blocks,
+                md_settings,
+                &ColonyMdViewer,
+            )
         };
 
         let language = text(crate::i18n::t_fmt("language_label", &[("lang", &repo.language)]))

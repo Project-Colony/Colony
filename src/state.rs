@@ -192,10 +192,10 @@ pub struct App {
     pub settings_expanded_sections: HashSet<String>,
     // Detail tabs
     pub detail_tab: DetailTab,
-    /// Parsed Markdown for the currently viewed (repo, tab). Rebuilt in
-    /// update.rs whenever the tab changes, a repo is selected, or its docs
-    /// arrive over the wire. Avoids re-parsing on every frame.
-    pub detail_md: Vec<iced::widget::markdown::Item>,
+    /// Parsed Markdown blocks for the currently viewed (repo, tab). Rebuilt
+    /// in update.rs whenever the tab changes, a repo is selected, or its
+    /// docs arrive over the wire. Avoids re-parsing on every frame.
+    pub detail_blocks: Vec<crate::ui::markdown_blocks::DetailBlock>,
     pub detail_md_source: Option<(String, DetailTab)>,
     // Launcher self-update
     pub launcher_update_available: Option<(String, String)>,  // (tag, asset_filename)

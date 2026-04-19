@@ -193,7 +193,7 @@ impl App {
             settings_expanded_sections: HashSet::new(),
             // Detail tabs
             detail_tab: DetailTab::ReadMe,
-            detail_md: Vec::new(),
+            detail_blocks: Vec::new(),
             detail_md_source: None,
             // Animation state
             progress_display: 0.0,
