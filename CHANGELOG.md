@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/Project-Colony/Colony/compare/v0.2.1...v0.3.0) (2026-04-19)
+
+
+### Features
+
+* **ui:** shields.io badges as pills + native table rendering ([#12](https://github.com/Project-Colony/Colony/issues/12)) ([a90ac70](https://github.com/Project-Colony/Colony/commit/a90ac70eec7c60134c28fc9cd3f65c189947a92e))
+
 ## [0.2.1](https://github.com/Project-Colony/Colony/compare/v0.2.0...v0.2.1) (2026-04-19)
 
 
