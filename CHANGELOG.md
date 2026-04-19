@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/Project-Colony/Colony/compare/v0.2.0...v0.2.1) (2026-04-19)
+
+
+### Bug Fixes
+
+* **ui:** embed FontAwesome 6 Free for properly centered icons ([#9](https://github.com/Project-Colony/Colony/issues/9)) ([8583e2f](https://github.com/Project-Colony/Colony/commit/8583e2f7715369182cf474e88a3d563442facd43))
+
 ## [0.2.0](https://github.com/Project-Colony/Colony/compare/v0.1.4...v0.2.0) (2026-04-18)
 
 
