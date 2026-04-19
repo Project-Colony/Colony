@@ -1,11 +1,52 @@
 use iced::font::Weight;
-use iced::widget::{button, column, container, row, scrollable, text, Row};
-use iced::{Element, Fill};
+use iced::widget::{
+    button, column, container, markdown, rich_text, row, scrollable, text, Row,
+};
+use iced::{Element, Fill, Length};
 
 use crate::github::{self, ColonyRepo};
 use crate::ui::theme::Palette;
 use crate::state::{App, DetailTab, capitalize_platform};
 use crate::message::Message;
+
+/// Custom markdown viewer: same defaults as iced, minus the internal
+/// horizontal `scrollable` that iced wraps around code blocks. That inner
+/// scrollable captures mouse-wheel events even for vertical scroll, blocking
+/// the parent scrollable that wraps the whole detail view.
+///
+/// Tables keep iced's default rendering (the same scroll-capture quirk
+/// applies over tables, but those are a smaller hover target than code blocks
+/// in typical READMEs).
+struct ColonyMdViewer;
+
+impl<'a> markdown::Viewer<'a, Message> for ColonyMdViewer {
+    fn on_link_click(url: markdown::Uri) -> Message {
+        Message::OpenUrl(url.to_string())
+    }
+
+    fn code_block(
+        &self,
+        settings: markdown::Settings,
+        _language: Option<&'a str>,
+        _code: &'a str,
+        lines: &'a [markdown::Text],
+    ) -> Element<'a, Message> {
+        container(
+            container(column(lines.iter().map(|line| {
+                rich_text(line.spans(settings.style))
+                    .on_link_click(Self::on_link_click)
+                    .font(settings.style.code_block_font)
+                    .size(settings.code_size)
+                    .into()
+            })))
+            .padding(settings.code_size),
+        )
+        .width(Length::Fill)
+        .padding(settings.code_size / 4)
+        .class(<iced::Theme as markdown::Catalog>::code_block())
+        .into()
+    }
+}
 
 impl App {
     pub(crate) fn view_colony_detail<'a>(&'a self, repo: &'a ColonyRepo) -> Element<'a, Message> {
@@ -74,10 +115,21 @@ impl App {
             DetailTab::Changelog => github::read_repo_doc(&repo.name, "CHANGELOG.md").is_none(),
         };
 
-        let description = text(tab_content_text)
-            .size(self.sz(14))
-            .font(self.app_font())
-            .color(if is_placeholder { Palette::TEXT_MUTED() } else { Palette::TEXT_SECONDARY() });
+        // Parsed Markdown comes from self.detail_md, kept up-to-date by the
+        // update-side helper. Placeholder text falls back to plain muted text.
+        let md_settings = markdown::Settings::with_text_size(
+            self.sz(14),
+            markdown::Style::from_palette(iced::Theme::Dark.palette()),
+        );
+        let description: Element<'_, Message> = if is_placeholder {
+            text(tab_content_text.clone())
+                .size(self.sz(14))
+                .font(self.app_font())
+                .color(Palette::TEXT_MUTED())
+                .into()
+        } else {
+            markdown::view_with(&self.detail_md, md_settings, &ColonyMdViewer)
+        };
 
         let language = text(crate::i18n::t_fmt("language_label", &[("lang", &repo.language)]))
             .size(self.sz(12))
@@ -264,8 +316,12 @@ impl App {
             .width(Fill)
             .align_y(iced::Alignment::Center);
 
+        // Wrap markdown in a Shrink-sized container so the outer scrollable
+        // sees the true content height (iced #2630 — markdown rich_text can
+        // otherwise hide overflow from the parent).
         let desc_container = container(description)
-            .width(Fill)
+            .width(Length::Shrink)
+            .height(Length::Shrink)
             .padding([16, 24]);
 
         let body = scrollable(desc_container)

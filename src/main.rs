@@ -193,6 +193,8 @@ impl App {
             settings_expanded_sections: HashSet::new(),
             // Detail tabs
             detail_tab: DetailTab::ReadMe,
+            detail_md: Vec::new(),
+            detail_md_source: None,
             // Animation state
             progress_display: 0.0,
             sidebar_indicator_from: selected_section as f32 * 44.0,

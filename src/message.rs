@@ -74,6 +74,7 @@ pub enum Message {
     ToggleScanOnStartup,
     // Detail tabs
     DetailTabSelected(DetailTab),
+    OpenUrl(String),
     // Launcher self-update
     CheckLauncherUpdate,
     LauncherUpdateChecked(Option<(String, String)>),           // Option<(tag, asset_filename)>
