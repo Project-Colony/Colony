@@ -1,5 +1,5 @@
 use iced::font::Weight;
-use iced::widget::{button, column, container, row, scrollable, text, Row};
+use iced::widget::{button, column, container, markdown, row, scrollable, text, Row};
 use iced::{Element, Fill};
 
 use crate::github::{self, ColonyRepo};
@@ -74,10 +74,22 @@ impl App {
             DetailTab::Changelog => github::read_repo_doc(&repo.name, "CHANGELOG.md").is_none(),
         };
 
-        let description = text(tab_content_text)
-            .size(self.sz(14))
-            .font(self.app_font())
-            .color(if is_placeholder { Palette::TEXT_MUTED() } else { Palette::TEXT_SECONDARY() });
+        // Parsed Markdown comes from self.detail_md, kept up-to-date by the
+        // update-side helper. Placeholder text falls back to plain muted text.
+        let md_settings = markdown::Settings::with_text_size(
+            self.sz(14),
+            markdown::Style::from_palette(iced::Theme::Dark.palette()),
+        );
+        let description: Element<'_, Message> = if is_placeholder {
+            text(tab_content_text.clone())
+                .size(self.sz(14))
+                .font(self.app_font())
+                .color(Palette::TEXT_MUTED())
+                .into()
+        } else {
+            markdown::view(&self.detail_md, md_settings)
+                .map(|uri| Message::OpenUrl(uri.to_string()))
+        };
 
         let language = text(crate::i18n::t_fmt("language_label", &[("lang", &repo.language)]))
             .size(self.sz(12))
