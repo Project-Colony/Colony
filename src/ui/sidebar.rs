@@ -58,7 +58,9 @@ impl App {
             .collect();
 
         let category_list = Column::with_children(category_buttons).spacing(4);
-        let category_scroll = scrollable(category_list).height(Length::Fill);
+        let category_scroll = container(scrollable(category_list).height(Length::Fill))
+            .id(crate::ui::tutorial::ID_SIDEBAR_CATS)
+            .height(Length::Fill);
 
         // GitHub button — Nerd Font icon  (U+F09B)
         let github_connected = matches!(self.github_state, GitHubState::Connected { .. });
@@ -157,6 +159,17 @@ impl App {
             container(text("")).height(0).into()
         };
 
+        let github_group = container(
+            column![
+                github_btn,
+                container(text("")).height(4),
+                rescan_btn,
+            ]
+            .spacing(0),
+        )
+        .id(crate::ui::tutorial::ID_GITHUB)
+        .width(Fill);
+
         let sidebar_content = column![
             title,
             update_badge,
@@ -165,9 +178,7 @@ impl App {
             category_scroll,
             hint_text,
             container(text("")).height(4),
-            github_btn,
-            container(text("")).height(4),
-            rescan_btn,
+            github_group,
         ]
         .spacing(10)
         .padding(16)

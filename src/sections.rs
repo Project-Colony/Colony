@@ -158,123 +158,6 @@ fn parse_category(category: Option<&str>) -> Option<AppCategory> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_category_known() {
-        assert!(matches!(parse_category(Some("development")), Some(AppCategory::Development)));
-        assert!(matches!(parse_category(Some("graphics")), Some(AppCategory::Graphics)));
-        assert!(matches!(parse_category(Some("network")), Some(AppCategory::Network)));
-        assert!(matches!(parse_category(Some("office")), Some(AppCategory::Office)));
-        assert!(matches!(parse_category(Some("multimedia")), Some(AppCategory::Multimedia)));
-        assert!(matches!(parse_category(Some("system")), Some(AppCategory::System)));
-        assert!(matches!(parse_category(Some("utility")), Some(AppCategory::Utility)));
-        assert!(matches!(parse_category(Some("utilities")), Some(AppCategory::Utility)));
-        assert!(matches!(parse_category(Some("game")), Some(AppCategory::Game)));
-        assert!(matches!(parse_category(Some("games")), Some(AppCategory::Game)));
-        assert!(matches!(parse_category(Some("other")), Some(AppCategory::Other)));
-    }
-
-    #[test]
-    fn parse_category_all_returns_none() {
-        assert!(parse_category(Some("all")).is_none());
-        assert!(parse_category(Some("any")).is_none());
-        assert!(parse_category(None).is_none());
-    }
-
-    #[test]
-    fn parse_category_unknown_returns_none() {
-        assert!(parse_category(Some("foobar")).is_none());
-    }
-
-    #[test]
-    fn parse_origin_known() {
-        assert!(matches!(parse_origin(Some("windows")), OriginFilter::WindowsOnly));
-        assert!(matches!(parse_origin(Some("colony")), OriginFilter::ColonyOnly));
-        assert!(matches!(parse_origin(Some("any")), OriginFilter::Any));
-        assert!(matches!(parse_origin(Some("all")), OriginFilter::Any));
-        assert!(matches!(parse_origin(None), OriginFilter::Any));
-    }
-
-    #[test]
-    fn parse_origin_unknown_defaults_to_any() {
-        assert!(matches!(parse_origin(Some("martian")), OriginFilter::Any));
-    }
-
-    #[test]
-    fn section_filter_matches_any() {
-        let filter = SectionFilter {
-            origin: OriginFilter::Any,
-            category: None,
-        };
-        let app = Application {
-            name: "Test".into(),
-            exec: "test".into(),
-            icon: None,
-            category: AppCategory::Development,
-            origin: AppOrigin::Windows,
-        };
-        assert!(filter.matches(&app));
-    }
-
-    #[test]
-    fn section_filter_rejects_wrong_origin() {
-        let filter = SectionFilter {
-            origin: OriginFilter::WindowsOnly,
-            category: None,
-        };
-        let app = Application {
-            name: "Test".into(),
-            exec: "test".into(),
-            icon: None,
-            category: AppCategory::Development,
-            origin: AppOrigin::Colony,
-        };
-        assert!(!filter.matches(&app));
-    }
-
-    #[test]
-    fn section_filter_rejects_wrong_category() {
-        let filter = SectionFilter {
-            origin: OriginFilter::Any,
-            category: Some(AppCategory::Graphics),
-        };
-        let app = Application {
-            name: "Test".into(),
-            exec: "test".into(),
-            icon: None,
-            category: AppCategory::Development,
-            origin: AppOrigin::Colony,
-        };
-        assert!(!filter.matches(&app));
-    }
-
-    #[test]
-    fn default_sections_not_empty() {
-        let sections = default_sections();
-        assert!(!sections.is_empty());
-        assert_eq!(sections[0].name, "All");
-        assert_eq!(sections[1].name, "Favorites");
-        assert!(sections[1].is_favorites);
-    }
-
-    #[test]
-    fn section_config_into_section() {
-        let config = SectionConfig {
-            name: "Test".to_string(),
-            icon: "\u{f00a}".to_string(),
-            origin: Some("colony".to_string()),
-            category: Some("development".to_string()),
-        };
-        let section = config.into_section();
-        assert_eq!(section.name, "Test");
-        assert!(matches!(section.filter.origin, OriginFilter::ColonyOnly));
-        assert!(matches!(section.category(), Some(AppCategory::Development)));
-    }
-}
-
 fn default_sections() -> Vec<Section> {
     vec![
         Section {
@@ -395,4 +278,121 @@ fn default_sections() -> Vec<Section> {
             is_favorites: false,
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_category_known() {
+        assert!(matches!(parse_category(Some("development")), Some(AppCategory::Development)));
+        assert!(matches!(parse_category(Some("graphics")), Some(AppCategory::Graphics)));
+        assert!(matches!(parse_category(Some("network")), Some(AppCategory::Network)));
+        assert!(matches!(parse_category(Some("office")), Some(AppCategory::Office)));
+        assert!(matches!(parse_category(Some("multimedia")), Some(AppCategory::Multimedia)));
+        assert!(matches!(parse_category(Some("system")), Some(AppCategory::System)));
+        assert!(matches!(parse_category(Some("utility")), Some(AppCategory::Utility)));
+        assert!(matches!(parse_category(Some("utilities")), Some(AppCategory::Utility)));
+        assert!(matches!(parse_category(Some("game")), Some(AppCategory::Game)));
+        assert!(matches!(parse_category(Some("games")), Some(AppCategory::Game)));
+        assert!(matches!(parse_category(Some("other")), Some(AppCategory::Other)));
+    }
+
+    #[test]
+    fn parse_category_all_returns_none() {
+        assert!(parse_category(Some("all")).is_none());
+        assert!(parse_category(Some("any")).is_none());
+        assert!(parse_category(None).is_none());
+    }
+
+    #[test]
+    fn parse_category_unknown_returns_none() {
+        assert!(parse_category(Some("foobar")).is_none());
+    }
+
+    #[test]
+    fn parse_origin_known() {
+        assert!(matches!(parse_origin(Some("windows")), OriginFilter::WindowsOnly));
+        assert!(matches!(parse_origin(Some("colony")), OriginFilter::ColonyOnly));
+        assert!(matches!(parse_origin(Some("any")), OriginFilter::Any));
+        assert!(matches!(parse_origin(Some("all")), OriginFilter::Any));
+        assert!(matches!(parse_origin(None), OriginFilter::Any));
+    }
+
+    #[test]
+    fn parse_origin_unknown_defaults_to_any() {
+        assert!(matches!(parse_origin(Some("martian")), OriginFilter::Any));
+    }
+
+    #[test]
+    fn section_filter_matches_any() {
+        let filter = SectionFilter {
+            origin: OriginFilter::Any,
+            category: None,
+        };
+        let app = Application {
+            name: "Test".into(),
+            exec: "test".into(),
+            icon: None,
+            category: AppCategory::Development,
+            origin: AppOrigin::Windows,
+        };
+        assert!(filter.matches(&app));
+    }
+
+    #[test]
+    fn section_filter_rejects_wrong_origin() {
+        let filter = SectionFilter {
+            origin: OriginFilter::WindowsOnly,
+            category: None,
+        };
+        let app = Application {
+            name: "Test".into(),
+            exec: "test".into(),
+            icon: None,
+            category: AppCategory::Development,
+            origin: AppOrigin::Colony,
+        };
+        assert!(!filter.matches(&app));
+    }
+
+    #[test]
+    fn section_filter_rejects_wrong_category() {
+        let filter = SectionFilter {
+            origin: OriginFilter::Any,
+            category: Some(AppCategory::Graphics),
+        };
+        let app = Application {
+            name: "Test".into(),
+            exec: "test".into(),
+            icon: None,
+            category: AppCategory::Development,
+            origin: AppOrigin::Colony,
+        };
+        assert!(!filter.matches(&app));
+    }
+
+    #[test]
+    fn default_sections_not_empty() {
+        let sections = default_sections();
+        assert!(!sections.is_empty());
+        assert_eq!(sections[0].name, "All");
+        assert_eq!(sections[1].name, "Favorites");
+        assert!(sections[1].is_favorites);
+    }
+
+    #[test]
+    fn section_config_into_section() {
+        let config = SectionConfig {
+            name: "Test".to_string(),
+            icon: "\u{f00a}".to_string(),
+            origin: Some("colony".to_string()),
+            category: Some("development".to_string()),
+        };
+        let section = config.into_section();
+        assert_eq!(section.name, "Test");
+        assert!(matches!(section.filter.origin, OriginFilter::ColonyOnly));
+        assert!(matches!(section.category(), Some(AppCategory::Development)));
+    }
 }
