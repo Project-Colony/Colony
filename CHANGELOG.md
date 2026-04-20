@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/Project-Colony/Colony/compare/v0.3.0...v0.4.0) (2026-04-20)
+
+
+### Features
+
+* **tutorial:** spotlight real UI zones on first launch ([#14](https://github.com/Project-Colony/Colony/issues/14)) ([90bbc5f](https://github.com/Project-Colony/Colony/commit/90bbc5f1b488dc77270b53364508e25cc5b356f5))
+
 ## [0.3.0](https://github.com/Project-Colony/Colony/compare/v0.2.1...v0.3.0) (2026-04-19)
 
 
