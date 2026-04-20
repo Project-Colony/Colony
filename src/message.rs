@@ -2,6 +2,8 @@ use iced::font;
 use iced::keyboard;
 use std::path::PathBuf;
 
+use crate::ui::TutorialBounds;
+
 use crate::oauth::OAuthSession;
 use crate::scan::Application;
 use crate::state::DetailTab;
@@ -50,6 +52,7 @@ pub enum Message {
     WelcomeNext,
     WelcomeBack,
     WelcomeConnectGithub,
+    TutorialBoundsUpdated(TutorialBounds),
     // Settings
     ToggleSettings,
     SettingsCategory(usize),

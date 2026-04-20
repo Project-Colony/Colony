@@ -156,8 +156,11 @@ pub struct App {
     pub confirm_uninstall: Option<String>, // repo_name pending confirmation
     // First launch
     pub show_first_launch: bool,
-    /// Index (0..=2) of the active step in the first-launch carousel.
+    /// Index of the active step in the first-launch guided tutorial.
     pub welcome_step: u8,
+    /// Live bounds of key UI zones, collected via widget::operate for the
+    /// spotlight overlay. Falls back to hardcoded rects until populated.
+    pub tutorial_bounds: crate::ui::TutorialBounds,
     // Settings
     pub show_settings: bool,
     pub settings_category: usize,

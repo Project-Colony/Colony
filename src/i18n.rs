@@ -107,6 +107,18 @@ impl Locale {
                 strings.insert("welcome_connect_now".into(), "Connecter maintenant".into());
                 strings.insert("welcome_later".into(), "Plus tard".into());
 
+                // Tutoriel guidé (spotlight sur l'UI réelle)
+                strings.insert("tut_sidebar_title".into(), "Les catégories".into());
+                strings.insert("tut_sidebar_desc".into(), "Filtrez vos apps par type : jeux, outils, favoris, ou par origine (écosystème Colony vs. système). La barre latérale reste toujours visible.".into());
+                strings.insert("tut_search_title".into(), "La recherche".into());
+                strings.insert("tut_search_desc".into(), "Tapez le nom d'une app pour la retrouver instantanément, peu importe la catégorie sélectionnée.".into());
+                strings.insert("tut_grid_title".into(), "Vos applications".into());
+                strings.insert("tut_grid_desc".into(), "Voici toutes vos apps installées et les apps Colony disponibles. Cliquez une carte pour voir son README, son changelog et l'installer en un clic.".into());
+                strings.insert("tut_github_title".into(), "Connexion GitHub (optionnel)".into());
+                strings.insert("tut_github_desc".into(), "Sans compte : 60 requêtes/h. Avec compte : 5000/h + accès aux repos privés. Recommandé si vous explorez beaucoup. Le bouton Rescan juste en dessous relance l'analyse système.".into());
+                strings.insert("tut_finish_title".into(), "Vous êtes prêt !".into());
+                strings.insert("tut_finish_desc".into(), "L'icône d'engrenage à côté du titre ouvre les préférences : 24 familles de thèmes, raccourcis clavier, accessibilité. Bon voyage dans Colony !".into());
+
                 // Loading / async feedback
                 strings.insert("loading".into(), "Chargement...".into());
                 strings.insert("scanning".into(), "Analyse en cours...".into());
@@ -428,6 +440,18 @@ impl Locale {
                 strings.insert("welcome_skip".into(), "Skip".into());
                 strings.insert("welcome_connect_now".into(), "Connect now".into());
                 strings.insert("welcome_later".into(), "Later".into());
+
+                // Guided tutorial (spotlight over real UI)
+                strings.insert("tut_sidebar_title".into(), "Categories".into());
+                strings.insert("tut_sidebar_desc".into(), "Filter your apps by type — games, tools, favorites — or by origin (Colony ecosystem vs. system). The sidebar stays visible at all times.".into());
+                strings.insert("tut_search_title".into(), "Search".into());
+                strings.insert("tut_search_desc".into(), "Type an app name here to find it instantly, regardless of the selected category.".into());
+                strings.insert("tut_grid_title".into(), "Your applications".into());
+                strings.insert("tut_grid_desc".into(), "These are your installed apps plus the Colony apps available to install. Click a card to read its README, changelog and install in one click.".into());
+                strings.insert("tut_github_title".into(), "GitHub connection (optional)".into());
+                strings.insert("tut_github_desc".into(), "Without an account: 60 requests/h. With one: 5000/h + private repo access. Recommended if you plan to browse a lot. The Rescan button below refreshes the system scan.".into());
+                strings.insert("tut_finish_title".into(), "You're all set!".into());
+                strings.insert("tut_finish_desc".into(), "The gear icon next to the title opens Preferences: 24 theme families, keyboard shortcuts, accessibility. Enjoy Colony!".into());
 
                 // Loading / async feedback
                 strings.insert("loading".into(), "Loading...".into());

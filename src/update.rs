@@ -730,18 +730,23 @@ impl App {
                 Task::none()
             }
             Message::WelcomeNext => {
-                const LAST_STEP: u8 = 2;
+                const LAST_STEP: u8 = crate::ui::TUTORIAL_LAST_STEP;
                 if self.welcome_step >= LAST_STEP {
                     self.show_first_launch = false;
                     self.welcome_step = 0;
                     self.save_preferences();
+                    Task::none()
                 } else {
                     self.welcome_step += 1;
+                    crate::ui::fetch_bounds_task()
                 }
-                Task::none()
             }
             Message::WelcomeBack => {
                 self.welcome_step = self.welcome_step.saturating_sub(1);
+                crate::ui::fetch_bounds_task()
+            }
+            Message::TutorialBoundsUpdated(bounds) => {
+                self.tutorial_bounds = bounds;
                 Task::none()
             }
             Message::WelcomeConnectGithub => {

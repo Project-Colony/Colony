@@ -18,10 +18,13 @@ impl App {
             }
         }
 
-        let search = text_input(&crate::i18n::t("search_placeholder"), &self.search_query)
+        let search_input = text_input(&crate::i18n::t("search_placeholder"), &self.search_query)
             .on_input(Message::SearchChanged)
             .padding(12)
             .size(self.sz(16))
+            .width(Fill);
+        let search = container(search_input)
+            .id(crate::ui::tutorial::ID_SEARCH)
             .width(Fill);
 
         // Show search result count when query is active
@@ -51,7 +54,10 @@ impl App {
             .spacing(8)
             .align_y(iced::Alignment::Center);
 
-        let app_grid = self.view_app_grid();
+        let app_grid = container(self.view_app_grid())
+            .id(crate::ui::tutorial::ID_GRID)
+            .width(Fill)
+            .height(Fill);
 
         let content = column![
             header,
