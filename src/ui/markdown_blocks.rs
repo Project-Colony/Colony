@@ -312,7 +312,7 @@ where
 fn view_badges(badges: &[Badge]) -> Element<'_, Message> {
     let children: Vec<Element<'_, Message>> = badges
         .iter()
-        .map(|b| badge_pill(b).into())
+        .map(badge_pill)
         .collect();
     Row::with_children(children)
         .spacing(6)

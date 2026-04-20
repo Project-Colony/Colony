@@ -608,51 +608,53 @@ impl App {
                                 self.show_github_menu = false;
                             }
                         }
-                        iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab) => {
-                            if !self.show_settings && !self.show_github_menu && !self.show_first_launch {
-                                let len = self.sections.len();
-                                if len > 0 {
-                                    self.sidebar_indicator_from = self.sidebar_indicator_pos();
-                                    if modifiers.shift() {
-                                        self.selected_section = if self.selected_section == 0 { len - 1 } else { self.selected_section - 1 };
-                                    } else {
-                                        self.selected_section = (self.selected_section + 1) % len;
-                                    }
-                                    self.sidebar_indicator_target = self.selected_section as f32 * 44.0;
-                                    self.sidebar_indicator_start = Some(std::time::Instant::now());
-                                    self.active_colony_repo = None;
-                                    self.save_preferences();
+                        iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab)
+                            if !self.show_settings && !self.show_github_menu && !self.show_first_launch =>
+                        {
+                            let len = self.sections.len();
+                            if len > 0 {
+                                self.sidebar_indicator_from = self.sidebar_indicator_pos();
+                                if modifiers.shift() {
+                                    self.selected_section = if self.selected_section == 0 { len - 1 } else { self.selected_section - 1 };
+                                } else {
+                                    self.selected_section = (self.selected_section + 1) % len;
                                 }
+                                self.sidebar_indicator_target = self.selected_section as f32 * 44.0;
+                                self.sidebar_indicator_start = Some(std::time::Instant::now());
+                                self.active_colony_repo = None;
+                                self.save_preferences();
                             }
                         }
-                        iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown) => {
-                            if self.show_settings {
-                                self.settings_category = (self.settings_category + 1).min(5);
-                            }
+                        iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown)
+                            if self.show_settings =>
+                        {
+                            self.settings_category = (self.settings_category + 1).min(5);
                         }
-                        iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp) => {
-                            if self.show_settings {
-                                self.settings_category = self.settings_category.saturating_sub(1);
-                            }
+                        iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp)
+                            if self.show_settings =>
+                        {
+                            self.settings_category = self.settings_category.saturating_sub(1);
                         }
-                        iced::keyboard::Key::Named(iced::keyboard::key::Named::PageDown) => {
-                            if self.show_settings {
-                                self.settings_category = (self.settings_category + 3).min(5);
-                            }
+                        iced::keyboard::Key::Named(iced::keyboard::key::Named::PageDown)
+                            if self.show_settings =>
+                        {
+                            self.settings_category = (self.settings_category + 3).min(5);
                         }
-                        iced::keyboard::Key::Named(iced::keyboard::key::Named::PageUp) => {
-                            if self.show_settings {
-                                self.settings_category = self.settings_category.saturating_sub(3);
-                            }
+                        iced::keyboard::Key::Named(iced::keyboard::key::Named::PageUp)
+                            if self.show_settings =>
+                        {
+                            self.settings_category = self.settings_category.saturating_sub(3);
                         }
-                        iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter) => {
-                            if !self.show_settings && !self.show_github_menu && !self.show_first_launch
-                                && self.active_colony_repo.is_none() {
-                                    let filtered = self.filtered_colony_repos();
-                                    if let Some((idx, _)) = filtered.first() {
-                                        self.active_colony_repo = Some(*idx);
-                                    }
-                                }
+                        iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter)
+                            if !self.show_settings
+                                && !self.show_github_menu
+                                && !self.show_first_launch
+                                && self.active_colony_repo.is_none() =>
+                        {
+                            let filtered = self.filtered_colony_repos();
+                            if let Some((idx, _)) = filtered.first() {
+                                self.active_colony_repo = Some(*idx);
+                            }
                         }
                         _ => {}
                     }
