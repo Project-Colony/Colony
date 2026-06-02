@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/Project-Colony/Colony/compare/v0.4.1...v0.4.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* **config:** resolve config from user/exe dirs and embed shipped categories ([#18](https://github.com/Project-Colony/Colony/issues/18)) ([a203d5e](https://github.com/Project-Colony/Colony/commit/a203d5e4abbe47cc7ee25c53fd6006c3af52c1b5))
+
 ## [0.4.1](https://github.com/Project-Colony/Colony/compare/v0.4.0...v0.4.1) (2026-06-02)
 
 
