@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/Project-Colony/Colony/compare/v0.4.0...v0.4.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* **deps:** bump openssl, rustls-webpki, tar to clear 15 Dependabot alerts ([#16](https://github.com/Project-Colony/Colony/issues/16)) ([1d9c789](https://github.com/Project-Colony/Colony/commit/1d9c78933ece111bdcf203050c8c4285e1812556))
+
 ## [0.4.0](https://github.com/Project-Colony/Colony/compare/v0.3.0...v0.4.0) (2026-04-20)
 
 
