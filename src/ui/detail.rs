@@ -96,33 +96,19 @@ impl App {
             .spacing(4)
             .align_y(iced::Alignment::Center);
 
-        // Tab content — read from disk cache
-        let tab_content_text: String = match self.detail_tab {
-            DetailTab::ReadMe => repo.description.clone(),
-            DetailTab::License => {
-                github::read_repo_doc(&repo.name, "LICENSE.md")
-                    .unwrap_or_else(|| crate::i18n::t("tab_not_available"))
-            }
-            DetailTab::Changelog => {
-                github::read_repo_doc(&repo.name, "CHANGELOG.md")
-                    .unwrap_or_else(|| crate::i18n::t("tab_not_available"))
-            }
-        };
+        // Whether this tab has no document is precomputed alongside the parsed
+        // Markdown cache (refresh_detail_markdown), so the view performs no
+        // per-frame disk reads.
+        let is_placeholder = self.detail_is_placeholder;
 
-        let is_placeholder = match self.detail_tab {
-            DetailTab::ReadMe => false,
-            DetailTab::License => github::read_repo_doc(&repo.name, "LICENSE.md").is_none(),
-            DetailTab::Changelog => github::read_repo_doc(&repo.name, "CHANGELOG.md").is_none(),
-        };
-
-        // Parsed Markdown comes from self.detail_md, kept up-to-date by the
+        // Parsed Markdown comes from self.detail_blocks, kept up-to-date by the
         // update-side helper. Placeholder text falls back to plain muted text.
         let md_settings = markdown::Settings::with_text_size(
             self.sz(14),
             markdown::Style::from_palette(iced::Theme::Dark.palette()),
         );
         let description: Element<'_, Message> = if is_placeholder {
-            text(tab_content_text.clone())
+            text(crate::i18n::t("tab_not_available"))
                 .size(self.sz(14))
                 .font(self.app_font())
                 .color(Palette::TEXT_MUTED())

@@ -415,3 +415,102 @@ fn view_table(data: &TableData) -> Element<'_, Message> {
         .width(Length::Shrink)
         .into()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pipe_separator_detection() {
+        assert!(is_pipe_separator("|---|---|"));
+        assert!(is_pipe_separator("| :--- | ---: |"));
+        assert!(!is_pipe_separator("| a | b |"));
+        assert!(!is_pipe_separator("plain text"));
+    }
+
+    #[test]
+    fn split_pipe_row_trims_cells() {
+        assert_eq!(split_pipe_row("| a | b | c |"), vec!["a", "b", "c"]);
+        assert_eq!(split_pipe_row("|x|y|"), vec!["x", "y"]);
+    }
+
+    #[test]
+    fn parse_table_two_columns() {
+        let lines = ["| A | B |", "|---|---|", "| 1 | 2 |", "| 3 | 4 |"];
+        let (table, consumed) = try_parse_table(&lines).expect("expected a table");
+        assert_eq!(table.headers, vec!["A", "B"]);
+        assert_eq!(table.rows, vec![vec!["1", "2"], vec!["3", "4"]]);
+        assert_eq!(consumed, 4);
+    }
+
+    #[test]
+    fn parse_table_requires_separator() {
+        let lines = ["| A | B |", "| 1 | 2 |"];
+        assert!(try_parse_table(&lines).is_none());
+    }
+
+    #[test]
+    fn find_matching_paren_handles_nesting() {
+        assert_eq!(find_matching_paren("abc)"), Some(3));
+        assert_eq!(find_matching_paren("a(b)c)"), Some(5));
+        assert_eq!(find_matching_paren("no closing paren"), None);
+    }
+
+    #[test]
+    fn badge_color_named_and_hex() {
+        assert_eq!(badge_color_rgb("red"), [0xe0, 0x5d, 0x44]);
+        assert_eq!(badge_color_rgb("blue"), [0x00, 0x7e, 0xc6]);
+        assert_eq!(badge_color_rgb("#ff8800"), [0xff, 0x88, 0x00]);
+        assert_eq!(badge_color_rgb("00ff00"), [0x00, 0xff, 0x00]);
+        assert_eq!(badge_color_rgb("totally-unknown"), [0x80, 0x80, 0x80]);
+    }
+
+    #[test]
+    fn parse_shields_url_label_value_color() {
+        let (label, value, color) =
+            parse_shields_url("https://img.shields.io/badge/build-passing-brightgreen.svg").unwrap();
+        assert_eq!(label, "build");
+        assert_eq!(value, "passing");
+        assert_eq!(color, [0x4c, 0xc1, 0x40]);
+    }
+
+    #[test]
+    fn parse_shields_url_escaped_dash_and_percent() {
+        let (label, value, _) =
+            parse_shields_url("https://img.shields.io/badge/code--coverage-98%25-green").unwrap();
+        assert_eq!(label, "code-coverage");
+        assert_eq!(value, "98%");
+    }
+
+    #[test]
+    fn parse_shields_url_rejects_non_shields() {
+        assert!(parse_shields_url("https://example.com/badge/a-b-c").is_none());
+    }
+
+    #[test]
+    fn parse_badge_line_wrapped_form() {
+        let badge = parse_badge_line(
+            "[![license](https://img.shields.io/badge/license-MIT-blue)](https://example.com)",
+        )
+        .unwrap();
+        assert_eq!(badge.label, "license");
+        assert_eq!(badge.value, "MIT");
+        assert_eq!(badge.link.as_deref(), Some("https://example.com"));
+    }
+
+    #[test]
+    fn parse_badge_line_unwrapped_form() {
+        let badge =
+            parse_badge_line("![v](https://img.shields.io/badge/version-1.0-orange)").unwrap();
+        assert_eq!(badge.label, "version");
+        assert_eq!(badge.value, "1.0");
+        assert!(badge.link.is_none());
+    }
+
+    #[test]
+    fn parse_plain_paragraph_is_markdown_block() {
+        let blocks = parse("Just a normal paragraph.");
+        assert_eq!(blocks.len(), 1);
+        assert!(matches!(blocks[0], DetailBlock::Markdown(_)));
+    }
+}

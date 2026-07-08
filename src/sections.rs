@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::Path;
 
 use serde::Deserialize;
 
@@ -94,8 +93,13 @@ impl SectionConfig {
 }
 
 pub fn load_sections() -> Vec<Section> {
-    let path = Path::new("config/categories.json");
-    match fs::read_to_string(path) {
+    // Resolve from a stable location (user data dir / next to the executable /
+    // CWD for dev) rather than a CWD-relative path, which never resolved for a
+    // binary launched from a menu entry. Fall back to built-in defaults.
+    let Some(path) = crate::github::find_config_file("categories.json") else {
+        return default_sections();
+    };
+    match fs::read_to_string(&path) {
         Ok(contents) => match serde_json::from_str::<Vec<SectionConfig>>(&contents) {
             Ok(configs) => {
                 let sections: Vec<Section> = configs.into_iter().map(SectionConfig::into_section).collect();

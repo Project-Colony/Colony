@@ -100,7 +100,7 @@ pub async fn poll_for_token(device: DeviceCode) -> Result<OAuthSession> {
         tokio::time::sleep(poll_interval).await;
 
         if std::time::Instant::now() > deadline {
-            anyhow::bail!("Device flow expired — the user did not authorize in time");
+            anyhow::bail!("{}", crate::i18n::t("oauth_device_expired"));
         }
 
         let resp = client
@@ -124,7 +124,10 @@ pub async fn poll_for_token(device: DeviceCode) -> Result<OAuthSession> {
             }
             Some(err) => {
                 let desc = token_resp.error_description.unwrap_or_default();
-                anyhow::bail!("Device flow failed: {err} — {desc}");
+                anyhow::bail!(
+                    "{}",
+                    crate::i18n::t_fmt("oauth_device_failed", &[("error", err), ("desc", &desc)])
+                );
             }
             None => {}
         }
@@ -203,35 +206,70 @@ fn save_token(session: &OAuthSession) -> Result<()> {
     };
     let json = serde_json::to_string_pretty(&stored)?;
 
-    // Try keychain
-    match keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
-        Ok(entry) => {
-            if entry.set_password(&json).is_ok() {
+    // Try the OS keychain first.
+    let keychain_ok = match keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+        Ok(entry) => match entry.set_password(&json) {
+            Ok(()) => {
                 tracing::info!("Token saved to OS keychain");
-            } else {
-                tracing::warn!("Keychain unavailable");
+                true
             }
-        }
+            Err(e) => {
+                tracing::warn!("Keychain unavailable ({e}); using file fallback");
+                false
+            }
+        },
         Err(e) => {
-            tracing::warn!("Keychain error: {e}");
+            tracing::warn!("Keychain error ({e}); using file fallback");
+            false
         }
+    };
+
+    let path = token_path();
+    if keychain_ok {
+        // Keychain holds the secret — never leave a plaintext copy on disk.
+        if path.exists() {
+            let _ = std::fs::remove_file(&path);
+        }
+        return Ok(());
     }
 
-    // Always save file-based backup alongside keychain
-    let path = token_path();
+    // Fallback only: write the token to a file created with 0600 from the start
+    // (no world-readable window between create and chmod).
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&path, &json)?;
+    write_private(&path, json.as_bytes())?;
+    tracing::warn!("Token saved to plaintext file fallback: {}", path.display());
+    Ok(())
+}
 
+/// Write a file that is owner-only (0600) from creation on Unix, avoiding the
+/// world-readable window of write-then-chmod.
+fn write_private(path: &std::path::Path, contents: &[u8]) -> Result<()> {
     #[cfg(unix)]
     {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        // Remove any pre-existing file first so `.mode(0o600)` on create always
+        // applies (a truncated-open of a 0644 file would keep the loose bits).
+        let _ = std::fs::remove_file(path);
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        f.write_all(contents)?;
+        // Re-assert perms in case the file pre-existed with looser bits.
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        Ok(())
     }
-
-    tracing::info!("Token saved to {}", path.display());
-    Ok(())
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, contents)?;
+        Ok(())
+    }
 }
 
 /// Try to load a previously stored token.

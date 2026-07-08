@@ -38,6 +38,9 @@ impl Locale {
                 // App grid
                 strings.insert("no_apps_found".into(), "Aucune application trouvée".into());
                 strings.insert("search_placeholder".into(), "Rechercher des applications...".into());
+                strings.insert("status_installed".into(), "Installé".into());
+                strings.insert("status_get".into(), "À installer".into());
+                strings.insert("status_update".into(), "Mise à jour".into());
 
                 // Detail view
                 strings.insert("back".into(), "Retour".into());
@@ -62,10 +65,27 @@ impl Locale {
 
                 // OAuth errors
                 strings.insert("oauth_error".into(), "Erreur OAuth: {error}".into());
+                strings.insert("oauth_device_expired".into(), "Délai dépassé : l'autorisation GitHub n'a pas été confirmée à temps.".into());
+                strings.insert("oauth_device_failed".into(), "Échec de la connexion GitHub : {error} — {desc}".into());
                 strings.insert("github_api_error".into(), "Erreur GitHub: {error}".into());
                 strings.insert("scan_error".into(), "Erreur: {error}".into());
                 strings.insert("launch_error_msg".into(), "Erreur lancement : {error}".into());
                 strings.insert("updates_available".into(), "{count} mise(s) à jour disponible(s) : {names}".into());
+
+                // Sidebar section names (localized)
+                strings.insert("section_all".into(), "Tout".into());
+                strings.insert("section_favorites".into(), "Favoris".into());
+                strings.insert("section_windows".into(), "Windows".into());
+                strings.insert("section_linux".into(), "Linux".into());
+                strings.insert("section_development".into(), "Développement".into());
+                strings.insert("section_graphics".into(), "Graphisme".into());
+                strings.insert("section_network".into(), "Réseau".into());
+                strings.insert("section_office".into(), "Bureautique".into());
+                strings.insert("section_multimedia".into(), "Multimédia".into());
+                strings.insert("section_system".into(), "Système".into());
+                strings.insert("section_utilities".into(), "Utilitaires".into());
+                strings.insert("section_games".into(), "Jeux".into());
+                strings.insert("section_other".into(), "Autre".into());
 
                 // Thread errors
                 strings.insert("error_thread_panic".into(), "Erreur interne : le thread a paniqué".into());
@@ -158,8 +178,6 @@ impl Locale {
                 // Startup
                 strings.insert("settings_section_startup".into(), "Démarrage".into());
                 strings.insert("settings_startup_section_desc".into(), "Gérez l'ouverture de Colony et la restauration des sessions.".into());
-                strings.insert("settings_auto_scan".into(), "Scanner au démarrage".into());
-                strings.insert("settings_auto_scan_desc".into(), "Analyse les dossiers dès l'ouverture de Colony.".into());
                 strings.insert("settings_restore_session".into(), "Restaurer la dernière session".into());
                 strings.insert("settings_restore_session_desc".into(), "Catégorie et écran affichés au dernier usage.".into());
                 strings.insert("settings_default_view".into(), "Ouvrir sur".into());
@@ -372,6 +390,9 @@ impl Locale {
                 // App grid
                 strings.insert("no_apps_found".into(), "No applications found".into());
                 strings.insert("search_placeholder".into(), "Search applications...".into());
+                strings.insert("status_installed".into(), "Installed".into());
+                strings.insert("status_get".into(), "Get".into());
+                strings.insert("status_update".into(), "Update".into());
 
                 // Detail view
                 strings.insert("back".into(), "Back".into());
@@ -396,10 +417,27 @@ impl Locale {
 
                 // OAuth errors
                 strings.insert("oauth_error".into(), "OAuth error: {error}".into());
+                strings.insert("oauth_device_expired".into(), "Timed out: GitHub authorization was not confirmed in time.".into());
+                strings.insert("oauth_device_failed".into(), "GitHub sign-in failed: {error} — {desc}".into());
                 strings.insert("github_api_error".into(), "GitHub error: {error}".into());
                 strings.insert("scan_error".into(), "Error: {error}".into());
                 strings.insert("launch_error_msg".into(), "Launch error: {error}".into());
                 strings.insert("updates_available".into(), "{count} update(s) available: {names}".into());
+
+                // Sidebar section names (localized)
+                strings.insert("section_all".into(), "All".into());
+                strings.insert("section_favorites".into(), "Favorites".into());
+                strings.insert("section_windows".into(), "Windows".into());
+                strings.insert("section_linux".into(), "Linux".into());
+                strings.insert("section_development".into(), "Development".into());
+                strings.insert("section_graphics".into(), "Graphics".into());
+                strings.insert("section_network".into(), "Network".into());
+                strings.insert("section_office".into(), "Office".into());
+                strings.insert("section_multimedia".into(), "Multimedia".into());
+                strings.insert("section_system".into(), "System".into());
+                strings.insert("section_utilities".into(), "Utilities".into());
+                strings.insert("section_games".into(), "Games".into());
+                strings.insert("section_other".into(), "Other".into());
 
                 // Thread errors
                 strings.insert("error_thread_panic".into(), "Internal error: background thread panicked".into());
@@ -492,8 +530,6 @@ impl Locale {
                 // Startup
                 strings.insert("settings_section_startup".into(), "Startup".into());
                 strings.insert("settings_startup_section_desc".into(), "Manage Colony startup and session restoration.".into());
-                strings.insert("settings_auto_scan".into(), "Scan on startup".into());
-                strings.insert("settings_auto_scan_desc".into(), "Scan directories when Colony opens.".into());
                 strings.insert("settings_restore_session".into(), "Restore last session".into());
                 strings.insert("settings_restore_session_desc".into(), "Category and screen from last usage.".into());
                 strings.insert("settings_default_view".into(), "Open on".into());
@@ -690,10 +726,44 @@ impl Locale {
 }
 
 /// Initialize the locale system. Call once at startup.
-pub fn init() {
-    let lang = detect_language();
+///
+/// `preferred` is the user's saved language preference ("fr"/"en"); when it is
+/// a recognized language it wins over environment detection, so the in-app
+/// language picker actually takes effect on the next launch. Falls back to
+/// `detect_language()` (LC_ALL / LC_MESSAGES / LANG) when unset or unknown.
+pub fn init(preferred: Option<String>) {
+    let lang = preferred
+        .filter(|l| l == "fr" || l == "en")
+        .unwrap_or_else(detect_language);
     tracing::info!("Locale: {lang}");
     LOCALE.get_or_init(|| Locale::new(&lang));
+}
+
+/// Localized display name for a built-in sidebar section, keyed by its
+/// canonical English name. Custom/user sections (no matching key) fall back to
+/// their raw name so nothing is lost.
+pub fn section_display_name(name: &str) -> String {
+    let key = match name.to_lowercase().as_str() {
+        "all" => "section_all",
+        "favorites" | "favoris" => "section_favorites",
+        "windows" => "section_windows",
+        "linux" => "section_linux",
+        "development" => "section_development",
+        "graphics" => "section_graphics",
+        "network" => "section_network",
+        "office" => "section_office",
+        "multimedia" => "section_multimedia",
+        "system" => "section_system",
+        "utilities" | "utility" => "section_utilities",
+        "games" | "game" => "section_games",
+        "other" => "section_other",
+        _ => return name.to_string(),
+    };
+    LOCALE
+        .get()
+        .and_then(|locale| locale.strings.get(key))
+        .cloned()
+        .unwrap_or_else(|| name.to_string())
 }
 
 /// Get a translated string by key.
@@ -773,6 +843,20 @@ mod tests {
     fn unknown_lang_defaults_to_english() {
         let locale = Locale::new("xx");
         assert_eq!(locale.strings.get("categories").unwrap(), "Categories");
+    }
+
+    #[test]
+    fn fr_and_en_have_identical_key_sets() {
+        let fr = Locale::new("fr");
+        let en = Locale::new("en");
+        let fr_keys: std::collections::BTreeSet<&String> = fr.strings.keys().collect();
+        let en_keys: std::collections::BTreeSet<&String> = en.strings.keys().collect();
+        let only_fr: Vec<&&String> = fr_keys.difference(&en_keys).collect();
+        let only_en: Vec<&&String> = en_keys.difference(&fr_keys).collect();
+        assert!(
+            only_fr.is_empty() && only_en.is_empty(),
+            "Locale key mismatch — only in fr: {only_fr:?}; only in en: {only_en:?}"
+        );
     }
 
     #[test]

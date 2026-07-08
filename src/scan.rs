@@ -44,6 +44,22 @@ impl AppCategory {
             _ => Self::Other,
         }
     }
+
+    /// FontAwesome (solid) glyph representing this category — one shared icon
+    /// language for app tiles and, later, the sidebar.
+    pub fn glyph(&self) -> &'static str {
+        match self {
+            Self::Development => "\u{f121}", // code
+            Self::Graphics => "\u{f1fc}",    // paint-brush
+            Self::Network => "\u{f0ac}",     // globe
+            Self::Office => "\u{f15c}",      // file-lines
+            Self::Multimedia => "\u{f001}",  // music
+            Self::System => "\u{f085}",      // cogs
+            Self::Utility => "\u{f0ad}",     // wrench
+            Self::Game => "\u{f11b}",        // gamepad
+            Self::Other => "\u{f187}",       // archive-box
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -101,8 +117,8 @@ fn get_application_dirs() -> Vec<PathBuf> {
 
 #[cfg(windows)]
 fn load_scan_dirs_from_config() -> Option<Vec<PathBuf>> {
-    let path = Path::new("config/colony.toml");
-    let content = fs::read_to_string(path).ok()?;
+    let path = crate::github::find_config_file("colony.toml")?;
+    let content = fs::read_to_string(&path).ok()?;
     let config: ColonyConfig = match toml::from_str(&content) {
         Ok(config) => config,
         Err(error) => {
@@ -147,8 +163,11 @@ fn default_windows_dirs() -> Vec<PathBuf> {
 
 #[cfg(not(windows))]
 fn get_application_dirs() -> Vec<PathBuf> {
-    let mut dirs = load_scan_dirs_from_config().unwrap_or_else(default_unix_dirs);
-    for dir in colony_application_dirs() {
+    // Scan Colony-managed directories first: with first-seen-wins dedup this
+    // ensures a Colony-installed app is not shadowed (and mis-classified) by a
+    // same-named system app.
+    let mut dirs = colony_application_dirs();
+    for dir in load_scan_dirs_from_config().unwrap_or_else(default_unix_dirs) {
         if !dirs.contains(&dir) {
             dirs.push(dir);
         }
@@ -158,8 +177,8 @@ fn get_application_dirs() -> Vec<PathBuf> {
 
 #[cfg(not(windows))]
 fn load_scan_dirs_from_config() -> Option<Vec<PathBuf>> {
-    let path = Path::new("config/colony.toml");
-    let content = fs::read_to_string(path).ok()?;
+    let path = crate::github::find_config_file("colony.toml")?;
+    let content = fs::read_to_string(&path).ok()?;
     let config: ColonyConfig = match toml::from_str(&content) {
         Ok(config) => config,
         Err(error) => {
@@ -239,8 +258,8 @@ fn colony_application_dirs() -> Vec<PathBuf> {
 
 #[cfg(not(windows))]
 fn load_colony_dirs_from_config() -> Option<Vec<PathBuf>> {
-    let path = Path::new("config/colony.toml");
-    let content = fs::read_to_string(path).ok()?;
+    let path = crate::github::find_config_file("colony.toml")?;
+    let content = fs::read_to_string(&path).ok()?;
     let config: ColonyConfig = match toml::from_str(&content) {
         Ok(config) => config,
         Err(error) => {

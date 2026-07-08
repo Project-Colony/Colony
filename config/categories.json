@@ -1,5 +1,6 @@
 [
   { "name": "All", "icon": "\uf00a", "origin": "colony", "category": "all" },
+  { "name": "Favorites", "icon": "\uf005", "origin": "any", "category": "all" },
   { "name": "Windows", "icon": "\uf17a", "origin": "windows", "category": "all" },
   { "name": "Linux", "icon": "\uf17c", "origin": "external", "category": "all" },
   { "name": "Development", "icon": "\uf121", "origin": "colony", "category": "development" },

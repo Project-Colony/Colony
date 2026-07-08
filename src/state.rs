@@ -150,6 +150,9 @@ pub struct App {
     pub next_notification_id: u64,
     // Download progress
     pub download_progress: Option<(String, f32)>, // (filename, 0.0..1.0)
+    /// Abort handle for the in-flight download (app asset or launcher self-
+    /// update). Cancelling actually aborts the task instead of only clearing UI.
+    pub download_abort: Option<iced::task::Handle>,
     // Favorites
     pub favorites: Vec<String>,
     // Uninstall confirmation
@@ -170,7 +173,6 @@ pub struct App {
     pub selected_accent: String,       // e.g. "blue"
     pub auto_accent: bool,
     // General preferences
-    pub auto_scan: bool,
     pub restore_session: bool,
     pub default_view: String,          // "all", "favorites"
     pub language: String,              // "fr", "en"
@@ -200,6 +202,12 @@ pub struct App {
     /// docs arrive over the wire. Avoids re-parsing on every frame.
     pub detail_blocks: Vec<crate::ui::markdown_blocks::DetailBlock>,
     pub detail_md_source: Option<(String, DetailTab)>,
+    /// Whether the current detail tab has no document (show placeholder text).
+    /// Computed with the markdown cache so the view does no per-frame disk I/O.
+    pub detail_is_placeholder: bool,
+    /// Repos with a pending app update: repo_name -> available tag. Populated by
+    /// Message::UpdatesChecked; read by the grid cards to show an update badge.
+    pub available_updates: std::collections::HashMap<String, String>,
     // Launcher self-update
     pub launcher_update_available: Option<(String, String)>,  // (tag, asset_filename)
     pub is_checking_launcher_update: bool,

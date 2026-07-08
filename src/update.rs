@@ -40,22 +40,29 @@ impl App {
         else {
             self.detail_blocks.clear();
             self.detail_md_source = None;
+            self.detail_is_placeholder = false;
             return;
         };
         let key = (repo.name.clone(), self.detail_tab);
         if self.detail_md_source.as_ref() == Some(&key) {
             return;
         }
-        let content = match self.detail_tab {
-            DetailTab::ReadMe => repo.description.clone(),
-            DetailTab::License => {
-                github::read_repo_doc(&repo.name, "LICENSE.md").unwrap_or_default()
-            }
-            DetailTab::Changelog => {
-                github::read_repo_doc(&repo.name, "CHANGELOG.md").unwrap_or_default()
-            }
+        // Read the doc once here (cached) instead of twice per frame in the
+        // view. `is_placeholder` records tabs that have no document so the view
+        // does no disk I/O.
+        let (content, is_placeholder) = match self.detail_tab {
+            DetailTab::ReadMe => (repo.description.clone(), false),
+            DetailTab::License => match github::read_repo_doc(&repo.name, "LICENSE.md") {
+                Some(c) => (c, false),
+                None => (String::new(), true),
+            },
+            DetailTab::Changelog => match github::read_repo_doc(&repo.name, "CHANGELOG.md") {
+                Some(c) => (c, false),
+                None => (String::new(), true),
+            },
         };
         self.detail_blocks = markdown_blocks::parse(&content);
+        self.detail_is_placeholder = is_placeholder;
         self.detail_md_source = Some(key);
     }
 
@@ -69,7 +76,6 @@ impl App {
             selected_variant: Some(self.selected_variant.clone()),
             selected_accent: Some(self.selected_accent.clone()),
             // General
-            auto_scan: Some(self.auto_scan),
             restore_session: Some(self.restore_session),
             default_view: Some(self.default_view.clone()),
             close_behavior: None,
@@ -142,6 +148,21 @@ impl App {
                 match result {
                     Ok(apps) => {
                         self.status_message = i18n::t_fmt("apps_found", &[("count", &apps.len().to_string())]);
+                        // Refresh the offline scan cache (previously written on
+                        // the boot path, now that the scan runs off-thread).
+                        let cached: Vec<github::CachedApp> = apps
+                            .iter()
+                            .map(|app| github::CachedApp {
+                                name: app.name.clone(),
+                                exec: app.exec.clone(),
+                                icon: app.icon.clone(),
+                                category: format!("{:?}", app.category),
+                                origin: format!("{:?}", app.origin),
+                            })
+                            .collect();
+                        if let Err(e) = github::save_scan_cache(&cached) {
+                            tracing::warn!("Failed to save scan cache: {e}");
+                        }
                         self.applications = apps;
                     }
                     Err(e) => {
@@ -402,7 +423,13 @@ impl App {
                             move |pct| Message::DownloadProgress(progress_name.clone(), pct),
                         );
 
-                        return Task::batch([download_task, progress_task]);
+                        // Keep an abort handle so CancelDownload actually stops
+                        // the download and its progress stream (dropping the
+                        // progress sender), instead of only clearing the UI.
+                        let (task, handle) =
+                            Task::batch([download_task, progress_task]).abortable();
+                        self.download_abort = Some(handle);
+                        return task;
                     } else {
                         self.status_message = i18n::t_fmt("no_release_for", &[("platform", &platform_key)]);
                     }
@@ -410,12 +437,17 @@ impl App {
                 Task::none()
             }
             Message::DownloadProgress(filename, progress) => {
-                self.download_progress = Some((filename, progress));
+                // Ignore late progress events from a cancelled/finished download
+                // so the toast cannot resurrect after CancelDownload.
+                if self.is_downloading {
+                    self.download_progress = Some((filename, progress));
+                }
                 Task::none()
             }
             Message::DownloadCompleted(result) => {
                 self.download_progress = None;
                 self.is_downloading = false;
+                self.download_abort = None;
                 match result {
                     Ok((path, repo_name, tag)) => {
                         if let Err(e) = github::save_installed_version(&repo_name, &tag) {
@@ -424,7 +456,9 @@ impl App {
                         let display_name = path.file_name()
                             .map(|n| n.to_string_lossy().to_string())
                             .unwrap_or_else(|| path.display().to_string());
-                        self.status_message = i18n::t_fmt("installed", &[("path", &path.display().to_string())]);
+                        // Use the short binary name (not the full install path)
+                        // so the header status text can't squeeze the search box.
+                        self.status_message = i18n::t_fmt("installed", &[("path", &display_name)]);
                         self.push_notification(
                             i18n::t_fmt("installed", &[("path", &display_name)]),
                             NotificationLevel::Info,
@@ -437,6 +471,12 @@ impl App {
                 }
             }
             Message::CancelDownload => {
+                // Actually abort the running download + progress tasks so no
+                // phantom install completes and no second writer can race the
+                // same file on a retry.
+                if let Some(handle) = self.download_abort.take() {
+                    handle.abort();
+                }
                 self.download_progress = None;
                 self.is_downloading = false;
                 self.status_message = i18n::t("download_cancelled");
@@ -651,9 +691,13 @@ impl App {
                                 && !self.show_first_launch
                                 && self.active_colony_repo.is_none() =>
                         {
-                            let filtered = self.filtered_colony_repos();
-                            if let Some((idx, _)) = filtered.first() {
-                                self.active_colony_repo = Some(*idx);
+                            let first = self.filtered_colony_repos().first().map(|(idx, _)| *idx);
+                            if let Some(idx) = first {
+                                self.active_colony_repo = Some(idx);
+                                // Refresh the (repo, tab) markdown cache — the
+                                // detail view reads only cached blocks/placeholder
+                                // now, so opening a repo must recompute them.
+                                self.refresh_detail_markdown();
                             }
                         }
                         _ => {}
@@ -667,14 +711,28 @@ impl App {
                 }
                 self.is_checking_updates = true;
                 self.status_message = i18n::t("checking_updates");
-                let repos: Vec<String> = self.colony_repos()
+                // Collect (repo, pinned tag for this platform) for every
+                // installed Colony app so update detection compares against the
+                // tag that would actually be installed, not /releases/latest.
+                let platform = github::current_platform_key();
+                let repos: Vec<(String, String)> = self.colony_repos()
                     .iter()
                     .filter(|r| github::installed_app_path(r).is_some())
-                    .map(|r| r.name.clone())
+                    .filter_map(|r| {
+                        r.manifest
+                            .release_files
+                            .get(platform)
+                            .map(|entry| (r.name.clone(), entry.tag.clone()))
+                    })
                     .collect();
 
                 if repos.is_empty() {
-                    return Task::none();
+                    // Nothing to check — reset the guard (otherwise it stays true
+                    // forever, blocking all later checks) and still run the
+                    // chained launcher self-update check.
+                    self.is_checking_updates = false;
+                    self.status_message = i18n::t_fmt("apps_found", &[("count", &self.applications.len().to_string())]);
+                    return Task::done(Message::CheckLauncherUpdate);
                 }
 
                 let token = if let GitHubState::Connected { session, .. } = &self.github_state {
@@ -689,11 +747,12 @@ impl App {
                             Ok(c) => c,
                             Err(_) => return Vec::new(),
                         };
-                        let futs: Vec<_> = repos.iter().map(|name| {
+                        let futs: Vec<_> = repos.iter().map(|(name, tag)| {
                             let c = client.clone();
                             let n = name.clone();
+                            let t = tag.clone();
                             async move {
-                                github::check_update_available(&c, &n).await.map(|v| (n, v))
+                                github::check_update_available(&c, &n, &t).await.map(|v| (n, v))
                             }
                         }).collect();
                         futures::future::join_all(futs).await.into_iter().flatten().collect()
@@ -703,6 +762,9 @@ impl App {
             }
             Message::UpdatesChecked(updates) => {
                 self.is_checking_updates = false;
+                // Record which apps have a pending update so the grid cards can
+                // show an update badge (not just a transient toast).
+                self.available_updates = updates.iter().cloned().collect();
                 let notif_task = if updates.is_empty() {
                     self.status_message = i18n::t_fmt("apps_found", &[("count", &self.applications.len().to_string())]);
                     Task::none()
@@ -799,11 +861,6 @@ impl App {
                 } else {
                     set_active_accent(accent_key_to_color(&self.selected_accent));
                 }
-                self.save_preferences();
-                Task::none()
-            }
-            Message::ToggleAutoScan => {
-                self.auto_scan = !self.auto_scan;
                 self.save_preferences();
                 Task::none()
             }
@@ -905,7 +962,12 @@ impl App {
                             NotificationLevel::Info,
                         )
                     }
-                    None => Task::none(),
+                    // Give explicit feedback that the check ran and Colony is
+                    // current, instead of silently doing nothing.
+                    None => self.push_notification(
+                        i18n::t("launcher_up_to_date"),
+                        NotificationLevel::Info,
+                    ),
                 }
             }
             Message::DownloadLauncherUpdate => {
@@ -943,7 +1005,9 @@ impl App {
                     Message::LauncherDownloadProgress,
                 );
 
-                Task::batch([download_task, progress_task])
+                let (task, handle) = Task::batch([download_task, progress_task]).abortable();
+                self.download_abort = Some(handle);
+                task
             }
             Message::LauncherDownloadProgress(progress) => {
                 if let Some((ref name, _)) = self.download_progress {
@@ -954,6 +1018,7 @@ impl App {
             Message::LauncherDownloadCompleted(result) => {
                 self.download_progress = None;
                 self.is_downloading = false;
+                self.download_abort = None;
                 match result {
                     Ok(path) => {
                         self.launcher_update_staged = Some(path);
