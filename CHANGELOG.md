@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/Project-Colony/Colony/compare/v0.4.2...v0.5.0) (2026-07-08)
+
+
+### Features
+
+* signed self-update, Hive app grid, and audit hardening ([#20](https://github.com/Project-Colony/Colony/issues/20)) ([849828e](https://github.com/Project-Colony/Colony/commit/849828ed2ff643114e98d45c418f36159866e373))
+
 ## [0.4.2](https://github.com/Project-Colony/Colony/compare/v0.4.1...v0.4.2) (2026-06-02)
 
 
