@@ -28,8 +28,12 @@ src/
 ├── state.rs         — App struct (global state), GitHubState, UI fields
 ├── message.rs       — Message enum (all events)
 ├── update.rs        — Handlers for each Message variant
-├── github.rs        — GitHub API, ETag cache, manifests, downloads,
-│                      platform auto-detection, launcher self-update
+├── github.rs        — GitHub API, ETag cache, manifests, release
+│                      asset resolution, platform auto-detection
+├── download.rs      — Asset/archive downloads, extraction, self-update
+├── signing.rs       — ed25519 verification of signed launcher updates
+├── persistence.rs   — Data dirs, install state, on-disk caches, favorites
+├── config.rs        — Locating external config (categories.json, colony.toml)
 ├── oauth.rs         — Device Flow OAuth (login, token, keychain)
 ├── scan.rs          — System application scanning (Linux/Windows/macOS)
 ├── sections.rs      — Categories, origin/category filters, JSON config
@@ -61,6 +65,7 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
 - **Downloads**: HTTPS only, optional SHA256 verification
 - **Timeouts**: 30s API requests, 10s connect, 300s downloads
 - **Self-update**: Binary backup before replacement, automatic rollback on failure
+- **Signed updates**: Launcher updates verified against an embedded ed25519 public key (fail-closed) both at download and at apply time; see [release-signing.md](release-signing.md)
 
 ## Cache and persistence
 

@@ -87,7 +87,7 @@ git clone https://github.com/Project-Colony/Colony.git
 cd Colony
 cargo build              # debug build
 cargo run                # launch the launcher in debug mode
-cargo test --lib         # run unit tests (62 tests across manifest parsing, scanning, i18n, etc.)
+cargo test               # run unit tests (88 tests across manifest parsing, scanning, i18n, signing, etc.)
 cargo build --release    # optimized build
 ```
 
@@ -103,7 +103,11 @@ See [docs/architecture.md](docs/architecture.md) for the full layout. Short vers
 
 - `src/main.rs` — entry, Elm-architecture `update()` / `view()`.
 - `src/update.rs` — `Message` handlers.
-- `src/github.rs` — GitHub API, manifest fetching, release asset resolution.
+- `src/github.rs` — GitHub API layer: manifest fetching, release asset resolution, update checks.
+- `src/download.rs` — release/asset downloads, archive extraction, launcher self-update.
+- `src/signing.rs` — ed25519 verification of signed launcher updates (see [docs/release-signing.md](docs/release-signing.md)).
+- `src/persistence.rs` — data directories, install state, on-disk caches, favorites.
+- `src/config.rs` — locating external config files (`categories.json`, `colony.toml`).
 - `src/scan.rs` — system app detection (Linux `.desktop`, Windows Start Menu, macOS `.app`).
 - `src/sections.rs` — categories + filter logic.
 - `src/ui/` — widgets and panels (sidebar, app grid, detail view, settings).
@@ -122,7 +126,7 @@ See [docs/architecture.md](docs/architecture.md) for the full layout. Short vers
 2. `cargo clippy -- -D warnings` (treat warnings as errors — CI does)
 3. `cargo test`
 4. `cargo build --release` (catches linker issues absent in debug)
-5. Rebase on top of `main` to keep history clean.
+5. Sync with `main` (merge or rebase) if it has advanced — every PR is squash-merged, so your branch collapses into a single commit on merge.
 
 ### What kind of change
 
