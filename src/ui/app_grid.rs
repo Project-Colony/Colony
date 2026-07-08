@@ -134,6 +134,25 @@ impl App {
         .into()
     }
 
+    /// The 54x54 card tile: the app's real decoded icon when we have one,
+    /// otherwise the tinted category hexagon. Clones a cheap (Arc-backed) handle
+    /// out of state — never decodes in `view()`.
+    fn icon_tile<'a>(&self, repo_name: &str, tint: Color, glyph: &'static str) -> Element<'a, Message> {
+        if let Some(handle) = self.app_icons.get(repo_name) {
+            return container(
+                iced::widget::image(handle.clone())
+                    .width(Length::Fixed(54.0))
+                    .height(Length::Fixed(54.0))
+                    .content_fit(iced::ContentFit::Contain)
+                    .filter_method(iced::widget::image::FilterMethod::Nearest),
+            )
+            .width(54)
+            .height(54)
+            .into();
+        }
+        self.hex_tile(tint, glyph)
+    }
+
     /// A quiet metadata pill (category / language / platform).
     fn chip<'a>(&self, label: String) -> Element<'a, Message> {
         container(
@@ -420,7 +439,7 @@ impl App {
     pub(crate) fn view_colony_card<'a>(&'a self, index: usize, repo: &'a ColonyRepo) -> Element<'a, Message> {
         let category = AppCategory::from_name(&repo.manifest.category);
         let tint = theme::app_tint(&repo.name);
-        let tile = self.hex_tile(tint, category.glyph());
+        let tile = self.icon_tile(&repo.name, tint, category.glyph());
 
         let name = text(&repo.name)
             .size(self.sz(15))

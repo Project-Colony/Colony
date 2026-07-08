@@ -38,6 +38,26 @@ pub fn read_repo_doc(repo_name: &str, filename: &str) -> Option<String> {
     std::fs::read_to_string(dir.join(filename)).ok()
 }
 
+/// Directory for the cached per-repo app icon: `~/.config/Colony/Colony/repo-icons/{repo_name}/`
+fn repo_icon_dir(repo_name: &str) -> Result<PathBuf> {
+    let base = colony_data_dir()?.join("repo-icons").join(repo_name);
+    std::fs::create_dir_all(&base)?;
+    Ok(base)
+}
+
+/// Save the raw (PNG) app icon bytes to disk cache.
+pub(crate) fn save_repo_icon(repo_name: &str, bytes: &[u8]) {
+    if let Ok(dir) = repo_icon_dir(repo_name) {
+        let _ = std::fs::write(dir.join("icon.png"), bytes);
+    }
+}
+
+/// Read the cached app icon bytes from disk. Returns None if none cached.
+pub fn load_repo_icon(repo_name: &str) -> Option<Vec<u8>> {
+    let dir = repo_icon_dir(repo_name).ok()?;
+    std::fs::read(dir.join("icon.png")).ok()
+}
+
 /// Return the Colony apps directory: `<data_local>/Colony/apps/`
 pub fn colony_apps_dir() -> Result<PathBuf> {
     let base = dirs::data_local_dir()

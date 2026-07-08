@@ -148,6 +148,10 @@ pub struct App {
     // Notifications
     pub notifications: Vec<Notification>,
     pub next_notification_id: u64,
+    /// Decoded per-app icons (repo_name -> iced image handle), built from the
+    /// on-disk icon cache when repos load. Runtime-only, never serialized. Cards
+    /// fall back to the tinted category hexagon when a repo has no icon.
+    pub app_icons: std::collections::HashMap<String, iced::widget::image::Handle>,
     // Download progress
     pub download_progress: Option<(String, f32)>, // (filename, 0.0..1.0)
     /// Abort handle for the in-flight download (app asset or launcher self-

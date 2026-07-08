@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.100"
-iced = { version = "0.14.0", features = ["tokio", "markdown", "advanced"] }
+iced = { version = "0.14.0", features = ["tokio", "markdown", "advanced", "image-without-codecs"] }
 shell-words = "1.1.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
@@ -24,6 +24,9 @@ ed25519-dalek = { version = "3", default-features = false }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 tar = "0.4"
 flate2 = "1"
+# PNG-only decoder for per-app icons (no other codecs); pairs with iced's
+# image-without-codecs to render decoded RGBA. Keeps the image stack minimal.
+image = { version = "0.25", default-features = false, features = ["png"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
