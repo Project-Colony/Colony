@@ -4,6 +4,11 @@ use serde::Deserialize;
 
 use crate::scan::{AppCategory, AppOrigin, Application};
 
+/// The shipped categories config, compiled into the binary so that a released,
+/// single-file executable honors the same sidebar as `cargo run` from the repo.
+/// An external file (see [`crate::config::resolve_config_path`]) overrides it.
+const EMBEDDED_CATEGORIES: &str = include_str!("../config/categories.json");
+
 #[derive(Debug, Clone)]
 pub struct Section {
     pub name: String,
@@ -93,33 +98,91 @@ impl SectionConfig {
 }
 
 pub fn load_sections() -> Vec<Section> {
-    // Resolve from a stable location (user data dir / next to the executable /
-    // CWD for dev) rather than a CWD-relative path, which never resolved for a
-    // binary launched from a menu entry. Fall back to built-in defaults.
-    let Some(path) = crate::github::find_config_file("categories.json") else {
-        return default_sections();
-    };
-    match fs::read_to_string(&path) {
-        Ok(contents) => match serde_json::from_str::<Vec<SectionConfig>>(&contents) {
-            Ok(configs) => {
-                let sections: Vec<Section> = configs.into_iter().map(SectionConfig::into_section).collect();
-                if sections.is_empty() {
-                    tracing::warn!("Config loaded but no sections found, using defaults.");
-                    default_sections()
-                } else {
-                    sections
+    let sections = load_sections_from_source().unwrap_or_else(|| {
+        tracing::warn!("Using built-in default sections.");
+        default_sections()
+    });
+    ensure_favorites(sections)
+}
+
+/// Load sections from the first available source: an external override file, then
+/// the embedded shipped config. Returns `None` only if neither yields a non-empty
+/// list (the caller then falls back to [`default_sections`]).
+fn load_sections_from_source() -> Option<Vec<Section>> {
+    // 1. External override (per-user config dir, next to the binary, or ./config).
+    if let Some(path) = crate::config::resolve_config_path("categories.json") {
+        match fs::read_to_string(&path) {
+            Ok(contents) => {
+                if let Some(sections) = parse_sections(&contents) {
+                    tracing::info!("Loaded {} sections from {}", sections.len(), path.display());
+                    return Some(sections);
                 }
+                tracing::warn!("No usable sections in {}; using embedded config.", path.display());
             }
             Err(error) => {
-                tracing::warn!("Failed to parse {:?}: {error}", path);
-                default_sections()
+                tracing::warn!("Failed to read {}: {error}; using embedded config.", path.display());
             }
-        },
-        Err(error) => {
-            tracing::warn!("Failed to read {:?}: {error}", path);
-            default_sections()
         }
     }
+
+    // 2. Embedded shipped config (always compiled into the binary).
+    match parse_sections(EMBEDDED_CATEGORIES) {
+        Some(sections) => Some(sections),
+        None => {
+            tracing::error!("Embedded categories.json produced no sections.");
+            None
+        }
+    }
+}
+
+/// Parse a categories JSON document into sections. Returns `None` on parse error or
+/// when the document contains no sections.
+fn parse_sections(contents: &str) -> Option<Vec<Section>> {
+    match serde_json::from_str::<Vec<SectionConfig>>(contents) {
+        Ok(configs) => {
+            let sections: Vec<Section> =
+                configs.into_iter().map(SectionConfig::into_section).collect();
+            if sections.is_empty() {
+                None
+            } else {
+                Some(sections)
+            }
+        }
+        Err(error) => {
+            tracing::warn!("Failed to parse categories config: {error}");
+            None
+        }
+    }
+}
+
+/// The canonical Favorites section. It is special (matches any origin, flagged
+/// `is_favorites`) and must always be available, so it is injected programmatically
+/// rather than relying on it being listed in `categories.json`.
+fn favorites_section() -> Section {
+    Section {
+        name: "Favorites".to_string(),
+        icon: "\u{f005}".to_string(),
+        filter: SectionFilter {
+            origin: OriginFilter::Any,
+            category: None,
+        },
+        is_favorites: true,
+    }
+}
+
+/// Guarantee exactly one Favorites section, regardless of the config source. Any
+/// favorites entries from the loaded config are dropped and replaced by the canonical
+/// [`favorites_section`], inserted just after an "All" section when present (matching
+/// the built-in ordering), otherwise at the front.
+fn ensure_favorites(mut sections: Vec<Section>) -> Vec<Section> {
+    sections.retain(|section| !section.is_favorites);
+    let position = sections
+        .iter()
+        .position(|section| section.name.eq_ignore_ascii_case("all"))
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    sections.insert(position, favorites_section());
+    sections
 }
 
 fn parse_origin(origin: Option<&str>) -> OriginFilter {
@@ -173,15 +236,7 @@ fn default_sections() -> Vec<Section> {
             },
             is_favorites: false,
         },
-        Section {
-            name: "Favorites".to_string(),
-            icon: "\u{f005}".to_string(),
-            filter: SectionFilter {
-                origin: OriginFilter::Any,
-                category: None,
-            },
-            is_favorites: true,
-        },
+        favorites_section(),
         Section {
             name: "Windows".to_string(),
             icon: "\u{f17a}".to_string(),
@@ -398,5 +453,55 @@ mod tests {
         assert_eq!(section.name, "Test");
         assert!(matches!(section.filter.origin, OriginFilter::ColonyOnly));
         assert!(matches!(section.category(), Some(AppCategory::Development)));
+    }
+
+    #[test]
+    fn embedded_categories_parses() {
+        let sections = parse_sections(EMBEDDED_CATEGORIES);
+        assert!(sections.is_some(), "embedded categories.json must parse");
+        assert!(!sections.unwrap().is_empty());
+    }
+
+    #[test]
+    fn embedded_categories_has_expected_names() {
+        let sections = parse_sections(EMBEDDED_CATEGORIES).expect("embedded parses");
+        let names: Vec<&str> = sections.iter().map(|s| s.name.as_str()).collect();
+        for expected in ["All", "Windows", "Linux", "Development", "Other"] {
+            assert!(names.contains(&expected), "missing section {expected}");
+        }
+    }
+
+    #[test]
+    fn ensure_favorites_injects_when_missing() {
+        // The embedded shipped config intentionally has no Favorites entry.
+        let base = parse_sections(EMBEDDED_CATEGORIES).expect("embedded parses");
+        assert!(
+            !base.iter().any(|s| s.is_favorites),
+            "fixture should lack favorites"
+        );
+        let with_fav = ensure_favorites(base);
+        assert_eq!(with_fav.iter().filter(|s| s.is_favorites).count(), 1);
+        // Inserted right after "All".
+        let all_idx = with_fav.iter().position(|s| s.name == "All").unwrap();
+        assert!(with_fav[all_idx + 1].is_favorites);
+    }
+
+    #[test]
+    fn ensure_favorites_dedupes_multiple() {
+        let sections = vec![
+            favorites_section(),
+            Section {
+                name: "All".to_string(),
+                icon: "x".to_string(),
+                filter: SectionFilter {
+                    origin: OriginFilter::ColonyOnly,
+                    category: None,
+                },
+                is_favorites: false,
+            },
+            favorites_section(),
+        ];
+        let result = ensure_favorites(sections);
+        assert_eq!(result.iter().filter(|s| s.is_favorites).count(), 1);
     }
 }

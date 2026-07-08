@@ -26,7 +26,7 @@ const MAX_CONCURRENT_REPO_FETCHES: usize = 8;
 // their public API so existing `github::` call sites keep working unchanged.
 pub use crate::download::{apply_launcher_update, download_launcher_asset, download_release_asset};
 pub use crate::persistence::{
-    colony_apps_dir, colony_data_dir, find_config_file, installed_app_path, load_favorites,
+    colony_apps_dir, colony_data_dir, installed_app_path, load_favorites,
     load_installed_version, load_preferences, load_repos_cache, read_repo_doc, save_favorites,
     save_installed_asset, save_installed_version, save_preferences, save_repos_cache, save_scan_cache,
     CachedApp, UserPreferences,

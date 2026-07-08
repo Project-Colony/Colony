@@ -18,28 +18,6 @@ pub fn colony_data_dir() -> Result<PathBuf> {
     Ok(base)
 }
 
-/// Resolve a bundled/overridable config file (e.g. `colony.toml`,
-/// `categories.json`) from a stable location instead of the process CWD —
-/// which is `/` or the user's home when Colony is launched from a menu entry,
-/// so CWD-relative config never loaded for installed binaries.
-///
-/// Checks, in order: the user data dir (`<config>/Colony/Colony/config/`), the
-/// `config/` directory next to the executable, then `config/<name>` relative to
-/// the CWD (dev convenience). Returns the first path that exists.
-pub fn find_config_file(name: &str) -> Option<PathBuf> {
-    let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Ok(dir) = colony_data_dir() {
-        candidates.push(dir.join("config").join(name));
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(exe_dir) = exe.parent() {
-            candidates.push(exe_dir.join("config").join(name));
-        }
-    }
-    candidates.push(PathBuf::from("config").join(name));
-    candidates.into_iter().find(|p| p.exists())
-}
-
 /// Directory for cached repo documentation files: `~/.config/Colony/Colony/repo-docs/{repo_name}/`
 fn repo_docs_dir(repo_name: &str) -> Result<PathBuf> {
     let base = colony_data_dir()?.join("repo-docs").join(repo_name);
