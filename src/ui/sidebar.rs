@@ -228,7 +228,7 @@ impl App {
             .font(self.app_font())
             .color(text_color);
 
-        let label = text(section.name.clone())
+        let label = text(crate::i18n::section_display_name(&section.name))
             .size(self.sz(14))
             .font(self.app_font())
             .color(text_color);

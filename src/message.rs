@@ -62,7 +62,6 @@ pub enum Message {
     SelectAccentColor(String),
     ToggleAutoAccent,
     // Preference toggles
-    ToggleAutoScan,
     ToggleRestoreSession,
     PickDefaultView(String),
     PickLanguage(String),

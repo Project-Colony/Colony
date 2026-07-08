@@ -1,25 +1,37 @@
 use anyhow::Result;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
 use tokio::sync::Mutex as TokioMutex;
 
 const GITHUB_API: &str = "https://api.github.com";
-const GITHUB_ACCOUNT: &str = "Project-Colony";
-const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub(crate) const GITHUB_ACCOUNT: &str = "Project-Colony";
+pub(crate) const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Owner/repo for the Colony launcher itself.
-const LAUNCHER_OWNER: &str = "Project-Colony";
-const LAUNCHER_REPO: &str = "Colony";
+pub(crate) const LAUNCHER_OWNER: &str = "Project-Colony";
+pub(crate) const LAUNCHER_REPO: &str = "Colony";
 
 /// Default HTTP timeout for all GitHub API requests.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 /// Default connect timeout.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Cap on concurrent per-repo fetches during a store refresh so a large org
+/// cannot fire an unbounded burst of requests at the GitHub API at once.
+const MAX_CONCURRENT_REPO_FETCHES: usize = 8;
+
+// Storage and download/self-update now live in dedicated modules; re-export
+// their public API so existing `github::` call sites keep working unchanged.
+pub use crate::download::{apply_launcher_update, download_launcher_asset, download_release_asset};
+pub use crate::persistence::{
+    colony_apps_dir, colony_data_dir, installed_app_path, load_favorites,
+    load_installed_version, load_preferences, load_repos_cache, read_repo_doc, save_favorites,
+    save_installed_asset, save_installed_version, save_preferences, save_repos_cache, save_scan_cache,
+    CachedApp, UserPreferences,
+};
+use crate::persistence::save_repo_doc;
 
 // --- HTTP ETag Cache ---
 
@@ -92,19 +104,6 @@ async fn cached_get(
                 rl.reset
             );
         }
-        if rl.remaining == 0 {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            if rl.reset > now {
-                let wait = rl.reset - now;
-                anyhow::bail!(
-                    "{}",
-                    crate::i18n::t_fmt("github_rate_limit", &[("wait", &wait.to_string())])
-                );
-            }
-        }
     }
 
     match resp.status().as_u16() {
@@ -141,6 +140,27 @@ async fn cached_get(
             Ok((body, rate_limit))
         }
         status => {
+            // Only treat an exhausted quota as a rate-limit error on the
+            // statuses GitHub actually uses for it (403 / 429). A 200 or 304
+            // that merely happened to consume the last quota unit is handled
+            // above and its body is preserved.
+            if matches!(status, 403 | 429) {
+                if let Some(ref rl) = rate_limit {
+                    if rl.remaining == 0 {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        if rl.reset > now {
+                            let wait = rl.reset - now;
+                            anyhow::bail!(
+                                "{}",
+                                crate::i18n::t_fmt("github_rate_limit", &[("wait", &wait.to_string())])
+                            );
+                        }
+                    }
+                }
+            }
             let body = resp.text().await.unwrap_or_default();
             anyhow::bail!("GitHub API error {status}: {body}");
         }
@@ -239,6 +259,12 @@ pub async fn fetch_colony_repos(token: Option<&str>) -> Result<Vec<ColonyRepo>> 
     // 1. List all repos for Project-Colony (with pagination)
     let repos = list_repos_paginated(&client).await?;
 
+    // Track whether any repo failed for a transient reason (timeout, 5xx,
+    // rate-limit) as opposed to genuinely lacking a colony.json (404). A
+    // transient failure must not silently drop an installed app from the store
+    // nor clobber the offline cache with a shortened list.
+    let had_transient = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
     // 2. Fetch manifest + README concurrently for all repos
     let futures: Vec<_> = repos
         .iter()
@@ -248,13 +274,17 @@ pub async fn fetch_colony_repos(token: Option<&str>) -> Result<Vec<ColonyRepo>> 
             let fallback_desc = repo.description.clone().unwrap_or_default();
             let html_url = repo.html_url.clone();
             let language = repo.language.clone().unwrap_or_else(|| "Unknown".into());
+            let had_transient = had_transient.clone();
 
             async move {
                 let mut manifest = match fetch_colony_manifest(&client, &name).await {
                     Ok(Some(m)) => m,
                     Ok(None) => return None,
                     Err(e) => {
+                        // fetch_colony_manifest already maps 404 to Ok(None),
+                        // so an Err here is transient, not "no manifest".
                         tracing::warn!("Error checking colony.json for {}: {e}", name);
+                        had_transient.store(true, std::sync::atomic::Ordering::Relaxed);
                         return None;
                     }
                 };
@@ -268,9 +298,7 @@ pub async fn fetch_colony_repos(token: Option<&str>) -> Result<Vec<ColonyRepo>> 
 
                 // Fetch README, LICENSE, CHANGELOG concurrently
                 let readme_fut = fetch_readme(&client, &name);
-                let license_fut = fetch_repo_file_candidates(
-                    &client, &name, &["LICENSE", "LICENSE.md", "LICENSE.txt"],
-                );
+                let license_fut = fetch_license_with_fallback(&client, &name);
                 let changelog_fut = fetch_repo_file_candidates(
                     &client, &name, &["CHANGELOG.md", "CHANGES.md", "CHANGELOG"],
                 );
@@ -300,8 +328,28 @@ pub async fn fetch_colony_repos(token: Option<&str>) -> Result<Vec<ColonyRepo>> 
         })
         .collect();
 
-    let results = futures::future::join_all(futures).await;
-    Ok(results.into_iter().flatten().collect())
+    // Cap concurrency (order-preserving) instead of firing every repo's fetch
+    // chain at once.
+    use futures::StreamExt;
+    let results: Vec<Option<ColonyRepo>> = futures::stream::iter(futures)
+        .buffered(MAX_CONCURRENT_REPO_FETCHES)
+        .collect()
+        .await;
+    let mut repos_out: Vec<ColonyRepo> = results.into_iter().flatten().collect();
+
+    // On a partially failed refresh, merge back any cached repos that are now
+    // missing rather than returning (and later caching) a truncated list.
+    if had_transient.load(std::sync::atomic::Ordering::Relaxed) {
+        if let Some(cached) = load_repos_cache() {
+            for repo in cached {
+                if !repos_out.iter().any(|r| r.name == repo.name) {
+                    repos_out.push(repo);
+                }
+            }
+        }
+    }
+
+    Ok(repos_out)
 }
 
 /// Build an HTTP client for API calls (public wrapper).
@@ -422,6 +470,51 @@ async fn fetch_readme(client: &reqwest::Client, repo_name: &str) -> Result<Strin
     Ok(text)
 }
 
+/// Fetch the repo's LICENSE via GitHub's dedicated license endpoint — one
+/// request that returns the detected license file, instead of probing several
+/// candidate filenames (which cost one request each, mostly 404s).
+async fn fetch_license(client: &reqwest::Client, repo_name: &str) -> Result<Option<String>> {
+    let url = format!("{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/license");
+    match cached_get(client, &url).await {
+        Ok((body, _)) => {
+            let content: GithubContent = serde_json::from_str(&body)?;
+            let raw = content.content.unwrap_or_default();
+            let cleaned: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
+            let bytes = base64::engine::general_purpose::STANDARD.decode(&cleaned)?;
+            Ok(Some(String::from_utf8_lossy(&bytes).to_string()))
+        }
+        Err(e) => {
+            if e.to_string().contains("404") {
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+/// LICENSE for display: try the fast dedicated endpoint first, then fall back
+/// to probing common filenames only if GitHub could not auto-classify one — so
+/// a repo carrying a nonstandard/undetectable license file is still surfaced
+/// while the common case stays a single request.
+async fn fetch_license_with_fallback(
+    client: &reqwest::Client,
+    repo_name: &str,
+) -> Result<Option<String>> {
+    match fetch_license(client, repo_name).await {
+        Ok(Some(content)) => Ok(Some(content)),
+        Ok(None) => {
+            fetch_repo_file_candidates(
+                client,
+                repo_name,
+                &["LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"],
+            )
+            .await
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// Fetch a file from a repo, trying multiple candidate paths.
 /// Returns the decoded UTF-8 content of the first file found, or None if all return 404.
 async fn fetch_repo_file_candidates(
@@ -453,36 +546,6 @@ async fn fetch_repo_file_candidates(
     Ok(None)
 }
 
-/// Central data directory for all Colony files: `~/.config/Colony/Colony/`
-pub fn colony_data_dir() -> Result<PathBuf> {
-    let base = dirs::config_dir()
-        .ok_or_else(|| anyhow::anyhow!("No config directory"))?
-        .join("Colony")
-        .join("Colony");
-    std::fs::create_dir_all(&base)?;
-    Ok(base)
-}
-
-/// Directory for cached repo documentation files: `~/.config/Colony/Colony/repo-docs/{repo_name}/`
-fn repo_docs_dir(repo_name: &str) -> Result<PathBuf> {
-    let base = colony_data_dir()?.join("repo-docs").join(repo_name);
-    std::fs::create_dir_all(&base)?;
-    Ok(base)
-}
-
-/// Save a document to disk cache.
-fn save_repo_doc(repo_name: &str, filename: &str, content: &str) {
-    if let Ok(dir) = repo_docs_dir(repo_name) {
-        let _ = std::fs::write(dir.join(filename), content);
-    }
-}
-
-/// Read a cached document from disk. Returns None if file doesn't exist.
-pub fn read_repo_doc(repo_name: &str, filename: &str) -> Option<String> {
-    let dir = repo_docs_dir(repo_name).ok()?;
-    std::fs::read_to_string(dir.join(filename)).ok()
-}
-
 /// Return the current platform key ("windows", "linux", "macos", or "macos-x86").
 /// On macOS, distinguishes Apple Silicon (aarch64 → "macos") from Intel (x86_64 → "macos-x86").
 pub fn current_platform_key() -> &'static str {
@@ -497,66 +560,6 @@ pub fn current_platform_key() -> &'static str {
     } else {
         "linux"
     }
-}
-
-/// Return the Colony apps directory: `<data_local>/Colony/apps/`
-pub fn colony_apps_dir() -> Result<PathBuf> {
-    let base = dirs::data_local_dir()
-        .ok_or_else(|| anyhow::anyhow!("Cannot determine local data directory"))?;
-    Ok(base.join("Colony").join("apps"))
-}
-
-/// Check if a Colony app is installed for the current platform.
-/// Returns Some(path) if the binary exists, None otherwise.
-pub fn installed_app_path(repo: &ColonyRepo) -> Option<PathBuf> {
-    let platform = current_platform_key();
-    let entry = repo.manifest.release_files.get(platform)?;
-    // Priority: binary > file > saved asset name (from filePattern resolution)
-    let filename = if let Some(ref bin) = entry.binary {
-        bin.clone()
-    } else if let Some(ref file) = entry.file {
-        file.clone()
-    } else {
-        // filePattern was used — check saved resolved asset name
-        load_installed_asset(&repo.name)?
-    };
-    let path = colony_apps_dir().ok()?.join(&repo.name).join(&filename);
-    if path.exists() {
-        Some(path)
-    } else {
-        None
-    }
-}
-
-/// Installed version info stored alongside the binary.
-const VERSION_FILE: &str = ".colony_version";
-/// Saved resolved asset name (when using filePattern).
-const ASSET_FILE: &str = ".colony_asset";
-
-/// Save the installed version tag for a repo.
-pub fn save_installed_version(repo_name: &str, tag: &str) -> Result<()> {
-    let path = colony_apps_dir()?.join(repo_name).join(VERSION_FILE);
-    std::fs::write(&path, tag)?;
-    Ok(())
-}
-
-/// Load the installed version tag for a repo.
-pub fn load_installed_version(repo_name: &str) -> Option<String> {
-    let path = colony_apps_dir().ok()?.join(repo_name).join(VERSION_FILE);
-    std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
-/// Save the resolved asset name for a repo (when using filePattern).
-pub fn save_installed_asset(repo_name: &str, filename: &str) -> Result<()> {
-    let path = colony_apps_dir()?.join(repo_name).join(ASSET_FILE);
-    std::fs::write(&path, filename)?;
-    Ok(())
-}
-
-/// Load the saved resolved asset name for a repo.
-pub fn load_installed_asset(repo_name: &str) -> Option<String> {
-    let path = colony_apps_dir().ok()?.join(repo_name).join(ASSET_FILE);
-    std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
 }
 
 /// Fetch the latest release tag for an arbitrary owner/repo combination.
@@ -725,268 +728,47 @@ pub fn parse_version_tag(tag: &str) -> Option<semver::Version> {
     semver::Version::parse(cleaned).ok()
 }
 
-/// Check if an update is available.
-/// Returns Some(latest_tag) if a newer version exists, None otherwise.
+/// Check if an update is available for a repo whose manifest pins `pinned_tag`
+/// for the current platform. Returns Some(target_tag) if the installed version
+/// differs from what the manifest would install, None otherwise.
+///
+/// `pinned_tag` is compared directly unless it is "latest", in which case the
+/// repo's latest release is resolved. This avoids a perpetual "update
+/// available" loop for apps pinned to a specific (older) release, and falls
+/// back to string comparison when tags are not semver so detection is not
+/// silently disabled.
 pub async fn check_update_available(
     client: &reqwest::Client,
     repo_name: &str,
+    pinned_tag: &str,
 ) -> Option<String> {
     let installed = load_installed_version(repo_name)?;
-    let latest = fetch_latest_release_tag(client, repo_name).await.ok()?;
 
-    let installed_ver = parse_version_tag(&installed)?;
-    let latest_ver = parse_version_tag(&latest)?;
-
-    if latest_ver > installed_ver {
-        Some(latest)
+    let target = if pinned_tag.eq_ignore_ascii_case("latest") {
+        fetch_latest_release_tag(client, repo_name).await.ok()?
     } else {
-        None
-    }
-}
-
-/// Download progress info.
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct DownloadProgress {
-    pub downloaded: u64,
-    pub total: Option<u64>,
-}
-
-/// Verify SHA256 checksum of a file against an expected hex digest.
-fn verify_sha256(path: &std::path::Path, expected_hex: &str) -> Result<()> {
-    let mut file = std::fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    std::io::copy(&mut file, &mut hasher)?;
-    let computed = format!("{:x}", hasher.finalize());
-    if computed != expected_hex.to_lowercase() {
-        anyhow::bail!(
-            "SHA256 mismatch: expected {}, got {}",
-            expected_hex.to_lowercase(),
-            computed
-        );
-    }
-    Ok(())
-}
-
-/// Extract a single file from a .zip archive.
-fn extract_from_zip(
-    archive_path: &std::path::Path,
-    binary_name: &str,
-    dest_dir: &std::path::Path,
-) -> Result<PathBuf> {
-    // Guard against path traversal: binary_name must be a single normal component.
-    let name_path = std::path::Path::new(binary_name);
-    anyhow::ensure!(
-        name_path.components().count() == 1
-            && matches!(
-                name_path.components().next(),
-                Some(std::path::Component::Normal(_))
-            ),
-        "Invalid binary name (path traversal attempt?): {binary_name}"
-    );
-    let file = std::fs::File::open(archive_path)?;
-    let mut archive = zip::ZipArchive::new(file)?;
-
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i)?;
-        let entry_name = entry.name().to_string();
-        // Match by exact filename (last component), handles entries like "dir/binary"
-        let matches = std::path::Path::new(&entry_name)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|n| n == binary_name)
-            .unwrap_or(false);
-        if matches {
-            let dest = dest_dir.join(binary_name);
-            let mut out = std::fs::File::create(&dest)?;
-            std::io::copy(&mut entry, &mut out)?;
-            return Ok(dest);
-        }
-    }
-    anyhow::bail!("Binary '{binary_name}' not found in zip archive")
-}
-
-/// Extract a single file from a .tar.gz archive.
-fn extract_from_tar_gz(
-    archive_path: &std::path::Path,
-    binary_name: &str,
-    dest_dir: &std::path::Path,
-) -> Result<PathBuf> {
-    // Guard against path traversal: binary_name must be a single normal component.
-    let name_path = std::path::Path::new(binary_name);
-    anyhow::ensure!(
-        name_path.components().count() == 1
-            && matches!(
-                name_path.components().next(),
-                Some(std::path::Component::Normal(_))
-            ),
-        "Invalid binary name (path traversal attempt?): {binary_name}"
-    );
-    let file = std::fs::File::open(archive_path)?;
-    let gz = flate2::read::GzDecoder::new(file);
-    let mut archive = tar::Archive::new(gz);
-
-    for entry_result in archive.entries()? {
-        let mut entry = entry_result?;
-        let path = entry.path()?;
-        let matches = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|n| n == binary_name)
-            .unwrap_or(false);
-        if matches {
-            let dest = dest_dir.join(binary_name);
-            entry.unpack(&dest)?;
-            return Ok(dest);
-        }
-    }
-    anyhow::bail!("Binary '{binary_name}' not found in tar.gz archive")
-}
-
-/// Extract a binary from an archive based on its extension.
-fn extract_binary_from_archive(
-    archive_path: &std::path::Path,
-    binary_name: &str,
-    dest_dir: &std::path::Path,
-) -> Result<PathBuf> {
-    let filename = archive_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
-
-    if filename.ends_with(".zip") {
-        let result = extract_from_zip(archive_path, binary_name, dest_dir);
-        let _ = std::fs::remove_file(archive_path);
-        result
-    } else if filename.ends_with(".tar.gz") || filename.ends_with(".tgz") {
-        let result = extract_from_tar_gz(archive_path, binary_name, dest_dir);
-        let _ = std::fs::remove_file(archive_path);
-        result
-    } else {
-        // Raw binary (e.g. .exe, no archive extension) — rename to binary_name in dest_dir
-        let dest = dest_dir.join(binary_name);
-        std::fs::rename(archive_path, &dest)?;
-        Ok(dest)
-    }
-}
-
-/// Download a release asset to `<colony_apps_dir>/<repo_name>/<filename>`.
-/// If `expected_sha256` is provided, verifies the file integrity after download.
-/// If `binary_name` is provided, treats the downloaded file as an archive and
-/// extracts the named binary from it (supports .zip and .tar.gz).
-/// Returns the final path on success.
-pub async fn download_release_asset(
-    token: Option<String>,
-    repo_name: String,
-    tag: String,
-    filename: String,
-    binary_name: Option<String>,
-    expected_sha256: Option<String>,
-    progress_tx: Option<futures::channel::mpsc::UnboundedSender<f32>>,
-) -> Result<PathBuf> {
-    let dest_dir = colony_apps_dir()?.join(&repo_name);
-    std::fs::create_dir_all(&dest_dir)?;
-    let dest_path = dest_dir.join(&filename);
-
-    let url = format!(
-        "https://github.com/{GITHUB_ACCOUNT}/{repo_name}/releases/download/{tag}/{filename}"
-    );
-
-    let client = reqwest::Client::builder()
-        .user_agent(format!("Colony-Launcher/{APP_VERSION}"))
-        .timeout(Duration::from_secs(300))
-        .connect_timeout(CONNECT_TIMEOUT)
-        .build()?;
-
-    let mut request = client.get(&url);
-    if let Some(ref t) = token {
-        request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {t}"));
-    }
-
-    let resp = request.send().await.map_err(|e| {
-        if e.is_timeout() {
-            anyhow::anyhow!("Download timed out for {filename}")
-        } else {
-            anyhow::anyhow!("Download failed for {filename}: {e}")
-        }
-    })?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        anyhow::bail!("Download failed: HTTP {status} for {url}");
-    }
-
-    let total = resp.content_length();
-    let mut downloaded: u64 = 0;
-
-    // Stream the download in chunks using async bytes_stream
-    use futures::StreamExt;
-    use std::io::Write;
-    let mut file = std::fs::File::create(&dest_path)?;
-    let mut stream = resp.bytes_stream();
-
-    let mut last_pct: u32 = 0;
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        file.write_all(&chunk)?;
-        downloaded += chunk.len() as u64;
-
-        // Send progress updates (throttled to whole-percent changes)
-        if let (Some(ref tx), Some(total)) = (&progress_tx, total) {
-            if total > 0 {
-                let pct = ((downloaded as f64 / total as f64) * 100.0) as u32;
-                if pct != last_pct {
-                    last_pct = pct;
-                    let _ = tx.unbounded_send(downloaded as f32 / total as f32);
-                }
-            }
-        }
-    }
-    file.flush()?;
-
-    // SHA256 verification and archive extraction are CPU-bound — run in spawn_blocking
-    let final_path = {
-        let dest_path = dest_path.clone();
-        let expected_sha256 = expected_sha256.clone();
-        let binary_name = binary_name.clone();
-        let filename = filename.clone();
-        let dest_dir = dest_dir.clone();
-
-        tokio::task::spawn_blocking(move || -> Result<PathBuf> {
-            // Verify SHA256 checksum if provided (on the downloaded file, before extraction)
-            if let Some(ref expected) = expected_sha256 {
-                if let Err(e) = verify_sha256(&dest_path, expected) {
-                    // Remove the corrupt file
-                    let _ = std::fs::remove_file(&dest_path);
-                    return Err(e);
-                }
-                tracing::info!("SHA256 verified for {filename}");
-            }
-
-            // If `binary_name` is set, extract the binary from the archive
-            let final_path = if let Some(ref bin) = binary_name {
-                tracing::info!("Extracting '{bin}' from archive '{filename}'");
-                extract_binary_from_archive(&dest_path, bin, &dest_dir)?
-            } else {
-                dest_path
-            };
-
-            // Make executable on Linux/macOS
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let mut perms = std::fs::metadata(&final_path)?.permissions();
-                perms.set_mode(0o755);
-                std::fs::set_permissions(&final_path, perms)?;
-            }
-
-            Ok(final_path)
-        })
-        .await??
+        pinned_tag.to_string()
     };
 
-    Ok(final_path)
+    if target == installed {
+        return None;
+    }
+
+    match (parse_version_tag(&installed), parse_version_tag(&target)) {
+        (Some(installed_ver), Some(target_ver)) => {
+            if target_ver > installed_ver {
+                Some(target)
+            } else {
+                None
+            }
+        }
+        _ => {
+            tracing::warn!(
+                "Non-semver tags for {repo_name} (installed '{installed}', target '{target}'); using string comparison"
+            );
+            Some(target)
+        }
+    }
 }
 
 // --- Launcher self-update ---
@@ -1017,273 +799,13 @@ pub async fn check_launcher_update(
     }
 }
 
-/// Download a release asset from the Colony launcher repo.
-/// Returns the path to the downloaded file in a staging directory.
-pub async fn download_launcher_asset(
-    token: Option<String>,
-    tag: String,
-    filename: String,
-    progress_tx: Option<futures::channel::mpsc::UnboundedSender<f32>>,
-) -> Result<PathBuf> {
-    let temp_dir = colony_data_dir()?.join("update-staging");
-    std::fs::create_dir_all(&temp_dir)?;
-    let dest_path = temp_dir.join(&filename);
-
-    let url = format!(
-        "https://github.com/{LAUNCHER_OWNER}/{LAUNCHER_REPO}/releases/download/{tag}/{filename}"
-    );
-
-    let client = reqwest::Client::builder()
-        .user_agent(format!("Colony-Launcher/{APP_VERSION}"))
-        .timeout(Duration::from_secs(300))
-        .connect_timeout(CONNECT_TIMEOUT)
-        .build()?;
-
-    let mut request = client.get(&url);
-    if let Some(ref t) = token {
-        request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {t}"));
-    }
-
-    let resp = request.send().await.map_err(|e| {
-        if e.is_timeout() {
-            anyhow::anyhow!("Download timed out for {filename}")
-        } else {
-            anyhow::anyhow!("Download failed for {filename}: {e}")
-        }
-    })?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        anyhow::bail!("Download failed: HTTP {status} for {url}");
-    }
-
-    let total = resp.content_length();
-    let mut downloaded: u64 = 0;
-
-    use futures::StreamExt;
-    use std::io::Write;
-    let mut file = std::fs::File::create(&dest_path)?;
-    let mut stream = resp.bytes_stream();
-    let mut last_pct: u32 = 0;
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        file.write_all(&chunk)?;
-        downloaded += chunk.len() as u64;
-
-        if let (Some(ref tx), Some(total)) = (&progress_tx, total) {
-            if total > 0 {
-                let pct = ((downloaded as f64 / total as f64) * 100.0) as u32;
-                if pct != last_pct {
-                    last_pct = pct;
-                    let _ = tx.unbounded_send(downloaded as f32 / total as f32);
-                }
-            }
-        }
-    }
-    file.flush()?;
-
-    // Make executable on Unix
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&dest_path)?.permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&dest_path, perms)?;
-    }
-
-    Ok(dest_path)
-}
-
-/// Replace the running Colony binary with the downloaded update.
-/// Returns the exe path for relaunch on success. Restores backup on failure.
-pub fn apply_launcher_update(new_binary: &std::path::Path) -> Result<PathBuf> {
-    let current_exe = std::env::current_exe()
-        .map_err(|e| anyhow::anyhow!("Cannot determine current exe path: {e}"))?;
-
-    let backup_path = current_exe.with_extension("old");
-
-    // Remove stale backup from previous update
-    if backup_path.exists() {
-        let _ = std::fs::remove_file(&backup_path);
-    }
-
-    // Rename current binary to .old (running binary can be renamed on all platforms)
-    std::fs::rename(&current_exe, &backup_path)
-        .map_err(|e| anyhow::anyhow!("Failed to backup current binary: {e}"))?;
-
-    // Copy new binary into the current exe path
-    match std::fs::copy(new_binary, &current_exe) {
-        Ok(_) => {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let mut perms = std::fs::metadata(&current_exe)?.permissions();
-                perms.set_mode(0o755);
-                std::fs::set_permissions(&current_exe, perms)?;
-            }
-            // Clean up staged download
-            let _ = std::fs::remove_file(new_binary);
-            let _ = std::fs::remove_dir(new_binary.parent().unwrap_or(new_binary));
-            Ok(current_exe)
-        }
-        Err(e) => {
-            // Restore backup on failure
-            tracing::error!("Failed to copy new binary, restoring backup: {e}");
-            let _ = std::fs::rename(&backup_path, &current_exe);
-            Err(anyhow::anyhow!("Failed to install new binary: {e}"))
-        }
-    }
-}
-
 // --- Offline cache ---
-
-fn repos_cache_path() -> Result<PathBuf> {
-    let cache_dir = colony_data_dir()?.join("cache");
-    std::fs::create_dir_all(&cache_dir)?;
-    Ok(cache_dir.join("repos_cache.json"))
-}
-
-/// Save Colony repos to local cache for offline use.
-pub fn save_repos_cache(repos: &[ColonyRepo]) -> Result<()> {
-    let path = repos_cache_path()?;
-    let json = serde_json::to_string(repos)?;
-    std::fs::write(&path, json)?;
-    tracing::debug!("Saved {} repos to cache", repos.len());
-    Ok(())
-}
-
-/// Load cached Colony repos for offline use.
-pub fn load_repos_cache() -> Option<Vec<ColonyRepo>> {
-    let path = repos_cache_path().ok()?;
-    let content = std::fs::read_to_string(&path).ok()?;
-    let repos: Vec<ColonyRepo> = serde_json::from_str(&content).ok()?;
-    tracing::info!("Loaded {} repos from offline cache", repos.len());
-    Some(repos)
-}
 
 // --- Favorites persistence ---
 
-fn favorites_path() -> Result<PathBuf> {
-    let dir = colony_data_dir()?.join("preferences");
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir.join("favorites.json"))
-}
-
-/// Load the list of favorite application names.
-pub fn load_favorites() -> Vec<String> {
-    favorites_path()
-        .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|c| serde_json::from_str(&c).ok())
-        .unwrap_or_default()
-}
-
-/// Save the list of favorite application names.
-pub fn save_favorites(favorites: &[String]) -> Result<()> {
-    let path = favorites_path()?;
-    let json = serde_json::to_string(favorites)?;
-    std::fs::write(&path, json)?;
-    Ok(())
-}
-
 // --- User preferences persistence ---
 
-/// User preferences saved between sessions.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct UserPreferences {
-    pub selected_section: Option<usize>,
-    pub window_width: Option<f32>,
-    pub window_height: Option<f32>,
-    pub first_launch_done: Option<bool>,
-    pub selected_theme: Option<String>,
-    pub selected_variant: Option<String>,
-    pub selected_accent: Option<String>,
-    // General
-    pub auto_scan: Option<bool>,
-    pub restore_session: Option<bool>,
-    pub default_view: Option<String>,
-    pub close_behavior: Option<String>,
-    pub language: Option<String>,
-    pub auto_check_updates: Option<bool>,
-    pub update_channel: Option<String>,
-    pub auto_install_updates: Option<bool>,
-    // Appearance
-    pub font_size: Option<String>,
-    pub animations: Option<bool>,
-    // Accessibility
-    pub high_contrast: Option<bool>,
-    pub text_size_a11y: Option<String>,
-    pub reduce_motion: Option<bool>,
-    pub keyboard_nav: Option<bool>,
-    pub dyslexia_font: Option<bool>,
-    // Storage
-    pub scan_on_startup: Option<bool>,
-}
-
-fn preferences_path() -> Result<PathBuf> {
-    let dir = colony_data_dir()?.join("preferences");
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir.join("preferences.json"))
-}
-
-/// Load user preferences.
-pub fn load_preferences() -> UserPreferences {
-    preferences_path()
-        .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|c| serde_json::from_str(&c).ok())
-        .unwrap_or_default()
-}
-
-/// Save user preferences.
-pub fn save_preferences(prefs: &UserPreferences) -> Result<()> {
-    let path = preferences_path()?;
-    let json = serde_json::to_string_pretty(prefs)?;
-    std::fs::write(&path, json)?;
-    Ok(())
-}
-
 // --- Application scan cache ---
-
-fn scan_cache_path() -> Result<PathBuf> {
-    let cache_dir = colony_data_dir()?.join("cache");
-    std::fs::create_dir_all(&cache_dir)?;
-    Ok(cache_dir.join("scan_cache.json"))
-}
-
-/// Cached scan entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CachedScanResult {
-    pub apps: Vec<CachedApp>,
-    pub timestamp: u64,
-}
-
-/// Serializable application for cache.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CachedApp {
-    pub name: String,
-    pub exec: String,
-    pub icon: Option<String>,
-    pub category: String,
-    pub origin: String,
-}
-
-/// Save scanned applications to cache.
-pub fn save_scan_cache(apps: &[CachedApp]) -> Result<()> {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let entry = CachedScanResult {
-        apps: apps.to_vec(),
-        timestamp,
-    };
-    let path = scan_cache_path()?;
-    let json = serde_json::to_string(&entry)?;
-    std::fs::write(&path, json)?;
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {
@@ -1386,90 +908,6 @@ mod tests {
         }"#;
         let manifest: ColonyManifest = serde_json::from_str(json).unwrap();
         assert!(manifest.release_files["windows"].binary.is_none());
-    }
-
-    #[test]
-    fn extract_from_zip_works() {
-        use std::io::Write;
-        let dir = std::env::temp_dir().join("colony_test_zip_extract");
-        let _ = std::fs::create_dir_all(&dir);
-
-        // Create a zip archive with a binary inside
-        let zip_path = dir.join("test.zip");
-        let file = std::fs::File::create(&zip_path).unwrap();
-        let mut zip_writer = zip::ZipWriter::new(file);
-        zip_writer
-            .start_file("subdir/my-binary", zip::write::SimpleFileOptions::default())
-            .unwrap();
-        zip_writer.write_all(b"binary-content").unwrap();
-        zip_writer.finish().unwrap();
-
-        // Extract
-        let result = extract_from_zip(&zip_path, "my-binary", &dir);
-        assert!(result.is_ok());
-        let extracted = result.unwrap();
-        assert_eq!(extracted.file_name().unwrap().to_str().unwrap(), "my-binary");
-        assert_eq!(std::fs::read_to_string(&extracted).unwrap(), "binary-content");
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn extract_from_tar_gz_works() {
-        let dir = std::env::temp_dir().join("colony_test_targz_extract");
-        let _ = std::fs::create_dir_all(&dir);
-
-        // Create a tar.gz archive with a binary inside
-        let tar_gz_path = dir.join("test.tar.gz");
-        let file = std::fs::File::create(&tar_gz_path).unwrap();
-        let gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-        let mut tar_builder = tar::Builder::new(gz);
-
-        let content = b"binary-content-tar";
-        let mut header = tar::Header::new_gnu();
-        header.set_size(content.len() as u64);
-        header.set_mode(0o755);
-        header.set_cksum();
-        tar_builder
-            .append_data(&mut header, "subdir/my-cli", &content[..])
-            .unwrap();
-        // Finish tar, then finish gzip encoder to write the gzip footer
-        let gz = tar_builder.into_inner().unwrap();
-        gz.finish().unwrap();
-
-        // Extract
-        let result = extract_from_tar_gz(&tar_gz_path, "my-cli", &dir);
-        assert!(result.is_ok(), "extract failed: {:?}", result.err());
-        let extracted = result.unwrap();
-        assert_eq!(extracted.file_name().unwrap().to_str().unwrap(), "my-cli");
-        assert_eq!(
-            std::fs::read_to_string(&extracted).unwrap(),
-            "binary-content-tar"
-        );
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn extract_from_zip_missing_binary() {
-        use std::io::Write;
-        let dir = std::env::temp_dir().join("colony_test_zip_missing");
-        let _ = std::fs::create_dir_all(&dir);
-
-        let zip_path = dir.join("empty.zip");
-        let file = std::fs::File::create(&zip_path).unwrap();
-        let mut zip_writer = zip::ZipWriter::new(file);
-        zip_writer
-            .start_file("other-file", zip::write::SimpleFileOptions::default())
-            .unwrap();
-        zip_writer.write_all(b"data").unwrap();
-        zip_writer.finish().unwrap();
-
-        let result = extract_from_zip(&zip_path, "nonexistent", &dir);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("not found"));
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1584,14 +1022,6 @@ mod tests {
     }
 
     #[test]
-    fn colony_apps_dir_returns_path() {
-        let dir = colony_apps_dir();
-        assert!(dir.is_ok());
-        let path = dir.unwrap();
-        assert!(path.ends_with("Colony/apps"));
-    }
-
-    #[test]
     fn base64_decode_manifest() {
         let json = r#"{"name":"Test","category":"Games","platforms":["linux"],"releaseFiles":{"linux":{"tag":"v1","file":"test"}}}"#;
         let encoded = base64::engine::general_purpose::STANDARD.encode(json);
@@ -1623,61 +1053,6 @@ mod tests {
         let old = parse_version_tag("v1.0.0").unwrap();
         let new = parse_version_tag("v1.1.0").unwrap();
         assert!(new > old);
-    }
-
-    #[test]
-    fn sha256_verification_correct() {
-        use std::io::Write;
-        let dir = std::env::temp_dir().join("colony_test_sha256");
-        let _ = std::fs::create_dir_all(&dir);
-        let file_path = dir.join("test.bin");
-        let content = b"hello world";
-        let mut f = std::fs::File::create(&file_path).unwrap();
-        f.write_all(content).unwrap();
-        f.flush().unwrap();
-
-        // SHA256 of "hello world"
-        let expected = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9";
-        assert!(verify_sha256(&file_path, expected).is_ok());
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn sha256_verification_mismatch() {
-        use std::io::Write;
-        let dir = std::env::temp_dir().join("colony_test_sha256_bad");
-        let _ = std::fs::create_dir_all(&dir);
-        let file_path = dir.join("test.bin");
-        let mut f = std::fs::File::create(&file_path).unwrap();
-        f.write_all(b"hello world").unwrap();
-        f.flush().unwrap();
-
-        assert!(verify_sha256(&file_path, "0000000000000000").is_err());
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn preferences_default() {
-        let prefs = UserPreferences::default();
-        assert!(prefs.selected_section.is_none());
-        assert!(prefs.first_launch_done.is_none());
-    }
-
-    #[test]
-    fn preferences_serialization() {
-        let prefs = UserPreferences {
-            selected_section: Some(2),
-            window_width: Some(1200.0),
-            window_height: Some(800.0),
-            first_launch_done: Some(true),
-            ..Default::default()
-        };
-        let json = serde_json::to_string(&prefs).unwrap();
-        let loaded: UserPreferences = serde_json::from_str(&json).unwrap();
-        assert_eq!(loaded.selected_section, Some(2));
-        assert_eq!(loaded.first_launch_done, Some(true));
     }
 
     #[test]

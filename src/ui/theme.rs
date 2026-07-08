@@ -97,6 +97,36 @@ pub fn accent_key_to_color(key: &str) -> Option<Color> {
     })
 }
 
+/// Deterministic identity tint for an app, derived from its NAME only (stable
+/// across install/uninstall and across machines). Buckets the name hash into
+/// the 8 accent hues so every app gets a distinct, palette-harmonious color for
+/// its hexagon cell — no per-app assets required.
+pub fn app_tint(name: &str) -> Color {
+    const KEYS: [&str; 8] = [
+        "red", "orange", "yellow", "green", "blue", "indigo", "violet", "amber",
+    ];
+    // Classic string hash: h = c + h*31, wrapping.
+    let mut h: i64 = 0;
+    for b in name.bytes() {
+        h = (b as i64)
+            .wrapping_add(h.wrapping_shl(5))
+            .wrapping_sub(h);
+    }
+    let idx = (h.unsigned_abs() % KEYS.len() as u64) as usize;
+    accent_key_to_color(KEYS[idx]).unwrap_or_else(|| active_palette().accent_blue)
+}
+
+/// Pick a legible foreground (near-black or near-white) for a glyph drawn on top
+/// of `bg`, using perceptual (YIQ) luminance.
+pub fn contrast_on(bg: Color) -> Color {
+    let yiq = 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b;
+    if yiq > 0.6 {
+        Color { r: 0.08, g: 0.08, b: 0.10, a: 1.0 }
+    } else {
+        Color { r: 0.97, g: 0.98, b: 1.0, a: 1.0 }
+    }
+}
+
 /// Set the active palette based on theme + variant keys.
 pub fn set_active_theme(theme: &str, variant: &str) {
     let palette = match (theme, variant) {

@@ -161,13 +161,6 @@ impl App {
                     .color(Palette::TEXT_MUTED()),
                 container(text("")).height(12),
                 self.view_functional_toggle(
-                    &i18n::t("settings_auto_scan"),
-                    &i18n::t("settings_auto_scan_desc"),
-                    self.auto_scan,
-                    Message::ToggleAutoScan,
-                ),
-                container(text("")).height(4),
-                self.view_functional_toggle(
                     &i18n::t("settings_restore_session"),
                     &i18n::t("settings_restore_session_desc"),
                     self.restore_session,

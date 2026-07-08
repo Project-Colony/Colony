@@ -1,19 +1,22 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod config;
+mod download;
 mod github;
 mod i18n;
 mod message;
 mod oauth;
+mod persistence;
 mod scan;
 mod sections;
+mod signing;
 mod state;
 mod ui;
 mod update;
 
 use iced::font;
 use iced::widget::{
-    button, column, container, row, stack, text, Column,
+    button, column, container, mouse_area, opaque, row, stack, text, Column,
 };
 use iced::keyboard;
 use iced::{Element, Fill, Subscription, Task, Theme};
@@ -35,7 +38,8 @@ pub fn main() -> iced::Result {
         )
         .init();
 
-    i18n::init();
+    // Honor the saved language preference over environment locale detection.
+    i18n::init(github::load_preferences().language);
 
     iced::application(
         App::boot,
@@ -67,32 +71,16 @@ impl App {
     fn boot() -> (Self, Task<Message>) {
         let prefs = github::load_preferences();
 
+        // The filesystem application scan and its cache write are deferred off
+        // the boot path (dispatched as a Rescan task below) so the window
+        // appears immediately instead of after a recursive directory walk.
         let should_scan = prefs.scan_on_startup.unwrap_or(true);
-        let applications = if should_scan {
-            scan::scan_applications().unwrap_or_else(|e| {
-                tracing::error!("Scan error: {e}");
-                Vec::new()
-            })
+        let applications: Vec<scan::Application> = Vec::new();
+        let status_message = if should_scan {
+            i18n::t("scanning")
         } else {
-            Vec::new()
+            i18n::t_fmt("apps_found", &[("count", "0")])
         };
-
-        // Save scan results to cache
-        let cached_apps: Vec<github::CachedApp> = applications
-            .iter()
-            .map(|app| github::CachedApp {
-                name: app.name.clone(),
-                exec: app.exec.clone(),
-                icon: app.icon.clone(),
-                category: format!("{:?}", app.category),
-                origin: format!("{:?}", app.origin),
-            })
-            .collect();
-        if let Err(e) = github::save_scan_cache(&cached_apps) {
-            tracing::warn!("Failed to save scan cache: {e}");
-        }
-
-        let status_message = i18n::t_fmt("apps_found", &[("count", &applications.len().to_string())]);
 
         let sections = sections::load_sections();
 
@@ -116,8 +104,10 @@ impl App {
         };
         let show_first_launch = prefs.first_launch_done != Some(true);
 
-        // Try to restore a saved OAuth session
-        let github_state = match oauth::load_saved_token() {
+        // Try to restore a saved OAuth session (load the token exactly once).
+        let saved_token = oauth::load_saved_token();
+        let has_token = saved_token.is_some();
+        let github_state = match saved_token {
             Some(session) => {
                 tracing::info!("Restored GitHub session for {:?}", session.username);
                 GitHubState::Connected {
@@ -158,6 +148,7 @@ impl App {
             notifications: Vec::new(),
             next_notification_id: 0,
             download_progress: None,
+            download_abort: None,
             favorites,
             confirm_uninstall: None,
             show_first_launch,
@@ -170,7 +161,6 @@ impl App {
             selected_accent: prefs.selected_accent.clone().unwrap_or_else(|| "blue".into()),
             auto_accent: false,
             // General
-            auto_scan: prefs.auto_scan.unwrap_or(true),
             restore_session: prefs.restore_session.unwrap_or(true),
             default_view: prefs.default_view.clone().unwrap_or_else(|| "all".into()),
             language: prefs.language.clone().unwrap_or_else(|| i18n::current_lang().to_string()),
@@ -190,18 +180,20 @@ impl App {
             is_scanning: false,
             is_downloading: false,
             is_checking_updates: false,
-            is_fetching_repos: oauth::load_saved_token().is_some(),
+            is_fetching_repos: has_token,
             // Settings section state persistence
             settings_expanded_sections: HashSet::new(),
             // Detail tabs
             detail_tab: DetailTab::ReadMe,
             detail_blocks: Vec::new(),
             detail_md_source: None,
+            detail_is_placeholder: false,
             // Animation state
             progress_display: 0.0,
             sidebar_indicator_from: selected_section as f32 * 44.0,
             sidebar_indicator_target: selected_section as f32 * 44.0,
             sidebar_indicator_start: None,
+            available_updates: std::collections::HashMap::new(),
             // Launcher self-update
             launcher_update_available: None,
             is_checking_launcher_update: false,
@@ -226,7 +218,14 @@ impl App {
             Task::none()
         };
 
-        (app, Task::batch([load_fonts(), startup_task, launcher_check_task, tutorial_task]))
+        // Run the initial application scan off the boot thread.
+        let scan_task = if should_scan {
+            Task::done(Message::Rescan)
+        } else {
+            Task::none()
+        };
+
+        (app, Task::batch([load_fonts(), startup_task, launcher_check_task, tutorial_task, scan_task]))
     }
 
     fn title(&self) -> String {
@@ -444,13 +443,21 @@ impl App {
                 ..Default::default()
             });
 
-            return stack![base, backdrop].width(Fill).height(Fill).into();
+            // Make the overlay modal: `opaque` stops clicks from reaching the
+            // page underneath, and a click on the dimmed backdrop dismisses the
+            // dialog (standard click-outside-to-cancel).
+            let modal = opaque(
+                mouse_area(backdrop).on_press(Message::CancelUninstall),
+            );
+            return stack![base, modal].width(Fill).height(Fill).into();
         }
 
         // First-launch guided tutorial: real UI visible, spotlight zooms in on
         // each zone one by one (sidebar → search → grid → GitHub → finish).
         if self.show_first_launch {
-            let tutorial = self.view_tutorial();
+            // `opaque` keeps clicks on the dimmed tutorial bands from falling
+            // through to (and operating) the real UI underneath.
+            let tutorial = opaque(self.view_tutorial());
             return stack![base, tutorial].width(Fill).height(Fill).into();
         }
 
