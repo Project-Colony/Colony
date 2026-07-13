@@ -152,13 +152,30 @@ Colony extracts information from the repository to enrich the display:
 
 Colony shows a per-app icon in the grid. It is resolved, in order:
 
-1. The `icon` manifest field — a path relative to the repo root (e.g. `"icon.png"` or `"assets/icon.png"`), fetched from the repo like the README.
+1. The `icon` manifest field — a path relative to the repo root (e.g. `"assets/icons/icon.png"`), fetched from the repo like the README.
 2. If `icon` is absent, a conventional **`icon.png`** at the repo root.
 3. If neither exists, Colony draws a generated category tile (a tinted hexagon with the category glyph).
 
 The icon is fetched once and cached on disk (`<data>/repo-icons/<repo>/icon.png`), decoded to an image, and rendered at a fixed ~54 px tile.
 
 **Format**: a square **PNG** (transparent or opaque). PNG is the only format Colony decodes — not `.ico` / `.svg` / `.icns` (those are for a platform's *own* application icon, which is separate from the Colony grid icon). A 48–128 px source works well; pixel-art icons should be authored at their native size.
+
+### Standard icon layout
+
+Project-Colony repos keep every icon format in one uniform folder, so tooling (release workflows, `build.rs` resource embedding, future icon pipelines) can rely on the same path in every repo:
+
+```
+assets/icons/
+├── icon.png    — canonical square PNG; the Colony grid icon (declared via `icon`)
+├── icon.ico    — Windows application icon (multi-size container, 16–256 px)
+└── icon.icns   — macOS application icon (multi-size container)
+```
+
+```json
+{ "icon": "assets/icons/icon.png" }
+```
+
+Declaring the path explicitly is preferred over relying on the root-`icon.png` convention: it documents the layout and spares Colony a probing request. The `.ico` / `.icns` files are not read by Colony — they are staged there for each app's own platform packaging (executable icon, taskbar, dock).
 
 ## GitHub OAuth authentication
 

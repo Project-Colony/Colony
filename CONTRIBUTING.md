@@ -27,6 +27,8 @@ Minimal form:
 
 Valid categories: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Games`, `Other`.
 
+**App icon (recommended):** put a square PNG at `assets/icons/icon.png` and declare it in the manifest — `"icon": "assets/icons/icon.png"`. Colony shows it in the grid; without it your app gets a generated category tile. The same folder is the standard home for your `icon.ico` (Windows) and `icon.icns` (macOS). See the [App icon](docs/colony-spec.md#app-icon) section of the spec.
+
 For the full reference (pinned releases, explicit platforms, archive extraction, SHA256, pattern-matched asset names, etc.), read [docs/colony-spec.md](docs/colony-spec.md).
 
 ### Step 2 — Publish release assets
