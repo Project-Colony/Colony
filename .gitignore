@@ -3,3 +3,6 @@
 
 # Local audit/workflow scratch state (never committed)
 /.audit-tmp/
+
+# Playwright MCP scratch
+/.playwright-mcp/
