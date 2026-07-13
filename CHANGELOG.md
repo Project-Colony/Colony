@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/Project-Colony/Colony/compare/v0.5.0...v0.6.0) (2026-07-13)
+
+
+### Features
+
+* per-app icons in the grid (decentralized, PNG) ([#23](https://github.com/Project-Colony/Colony/issues/23)) ([4b45ed8](https://github.com/Project-Colony/Colony/commit/4b45ed8807a8891ae04e165b0918aeb67bb207a4))
+
 ## [0.5.0](https://github.com/Project-Colony/Colony/compare/v0.4.2...v0.5.0) (2026-07-08)
 
 
