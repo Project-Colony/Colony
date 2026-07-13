@@ -32,6 +32,7 @@ pub use crate::persistence::{
     CachedApp, UserPreferences,
 };
 use crate::persistence::save_repo_doc;
+use crate::persistence::save_repo_icon;
 
 // --- HTTP ETag Cache ---
 
@@ -220,6 +221,11 @@ pub struct ColonyManifest {
     pub platforms: Vec<String>,
     #[serde(default)]
     pub release_files: HashMap<String, ReleaseFileEntry>,
+    /// Optional path (relative to the repo root) to a square PNG app icon shown
+    /// in the Colony grid. When absent, Colony probes a conventional `icon.png`
+    /// at the repo root, then falls back to the tinted category hexagon.
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 /// Metadata for a Colony-compatible repository (has colony.json).
@@ -296,25 +302,29 @@ pub async fn fetch_colony_repos(token: Option<&str>) -> Result<Vec<ColonyRepo>> 
                     }
                 }
 
-                // Fetch README, LICENSE, CHANGELOG concurrently
+                // Fetch README, LICENSE, CHANGELOG, icon concurrently
                 let readme_fut = fetch_readme(&client, &name);
                 let license_fut = fetch_license_with_fallback(&client, &name);
                 let changelog_fut = fetch_repo_file_candidates(
                     &client, &name, &["CHANGELOG.md", "CHANGES.md", "CHANGELOG"],
                 );
+                let icon_fut = fetch_icon(&client, &name, manifest.icon.as_deref());
 
-                let (readme_result, license_result, changelog_result) =
-                    futures::future::join3(readme_fut, license_fut, changelog_fut).await;
+                let (readme_result, license_result, changelog_result, icon_result) =
+                    futures::future::join4(readme_fut, license_fut, changelog_fut, icon_fut).await;
 
                 let description = readme_result.unwrap_or(fallback_desc);
 
-                // Save docs to disk cache
+                // Save docs + icon to disk cache
                 save_repo_doc(&name, "README.md", &description);
                 if let Ok(Some(ref content)) = license_result {
                     save_repo_doc(&name, "LICENSE.md", content);
                 }
                 if let Ok(Some(ref content)) = changelog_result {
                     save_repo_doc(&name, "CHANGELOG.md", content);
+                }
+                if let Ok(Some(ref bytes)) = icon_result {
+                    save_repo_icon(&name, bytes);
                 }
 
                 Some(ColonyRepo {
@@ -534,6 +544,46 @@ async fn fetch_repo_file_candidates(
                 let bytes = base64::engine::general_purpose::STANDARD.decode(&cleaned)?;
                 let text = String::from_utf8_lossy(&bytes).to_string();
                 return Ok(Some(text));
+            }
+            Err(e) => {
+                if e.to_string().contains("404") {
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Fetch the app icon bytes from a repo: the manifest-declared `icon` path
+/// first, then a conventional `icon.png` at the repo root. Returns the raw PNG
+/// bytes of the first that exists, or None if neither is present (404).
+async fn fetch_icon(
+    client: &reqwest::Client,
+    repo_name: &str,
+    declared: Option<&str>,
+) -> Result<Option<Vec<u8>>> {
+    let mut candidates: Vec<&str> = Vec::new();
+    if let Some(p) = declared {
+        candidates.push(p);
+    }
+    if !candidates.contains(&"icon.png") {
+        candidates.push("icon.png");
+    }
+    for path in candidates {
+        let url = format!(
+            "{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/contents/{path}"
+        );
+        match cached_get(client, &url).await {
+            Ok((body, _)) => {
+                let content: GithubContent = serde_json::from_str(&body)?;
+                let raw = content.content.unwrap_or_default();
+                let cleaned: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
+                let bytes = base64::engine::general_purpose::STANDARD.decode(&cleaned)?;
+                if !bytes.is_empty() {
+                    return Ok(Some(bytes));
+                }
             }
             Err(e) => {
                 if e.to_string().contains("404") {

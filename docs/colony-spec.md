@@ -105,6 +105,7 @@ With `filePattern`, Colony fetches the release asset list and finds the one whos
 | `category` | `string` | yes | Colony category, as shown in the sidebar. Values: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Games`, `Other`. |
 | `platforms` | `string[]` | no | Supported platforms. Values: `"windows"`, `"linux"`, `"macos"` (Apple Silicon), `"macos-x86"` (Intel). Auto-detected if omitted. |
 | `releaseFiles` | `object` | no | Map of platform → release entry. Each key is a platform. Auto-detected if omitted. |
+| `icon` | `string` | no | Path (relative to the repo root) to a square **PNG** app icon shown in the Colony grid. See [App icon](#app-icon). |
 
 ### `releaseFiles` entry fields
 
@@ -146,6 +147,18 @@ Colony extracts information from the repository to enrich the display:
 - **Category**: from the `category` field. Determines which sidebar section the application appears in.
 - **License**: fetched from `LICENSE`, `LICENSE.md`, or `LICENSE.txt`.
 - **Changelog**: fetched from `CHANGELOG.md`, `CHANGES.md`, or `CHANGELOG`.
+
+## App icon
+
+Colony shows a per-app icon in the grid. It is resolved, in order:
+
+1. The `icon` manifest field — a path relative to the repo root (e.g. `"icon.png"` or `"assets/icon.png"`), fetched from the repo like the README.
+2. If `icon` is absent, a conventional **`icon.png`** at the repo root.
+3. If neither exists, Colony draws a generated category tile (a tinted hexagon with the category glyph).
+
+The icon is fetched once and cached on disk (`<data>/repo-icons/<repo>/icon.png`), decoded to an image, and rendered at a fixed ~54 px tile.
+
+**Format**: a square **PNG** (transparent or opaque). PNG is the only format Colony decodes — not `.ico` / `.svg` / `.icns` (those are for a platform's *own* application icon, which is separate from the Colony grid icon). A 48–128 px source works well; pixel-art icons should be authored at their native size.
 
 ## GitHub OAuth authentication
 

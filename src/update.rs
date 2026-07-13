@@ -31,6 +31,27 @@ impl App {
         }
     }
 
+    /// Decode any cached app icons that aren't yet in memory into image handles,
+    /// keyed by repo name. Runs when repos load; cheap and idempotent (skips
+    /// repos already decoded). Repos without a cached icon keep the hexagon.
+    pub fn reload_app_icons(&mut self) {
+        let names: Vec<String> = self
+            .colony_repos()
+            .iter()
+            .map(|repo| repo.name.clone())
+            .collect();
+        for name in names {
+            if self.app_icons.contains_key(&name) {
+                continue;
+            }
+            if let Some(bytes) = crate::persistence::load_repo_icon(&name) {
+                if let Some(handle) = crate::icons::decode_icon(&bytes) {
+                    self.app_icons.insert(name, handle);
+                }
+            }
+        }
+    }
+
     /// Rebuild `detail_blocks` for the currently-viewed (repo, tab) if that
     /// key differs from the last parse. Cheap no-op when the cache is valid.
     pub fn refresh_detail_markdown(&mut self) {
@@ -322,6 +343,8 @@ impl App {
                 if let GitHubState::Connected { repos: r, .. } = &mut self.github_state {
                     *r = repos;
                 }
+                // Decode any freshly-cached app icons into image handles.
+                self.reload_app_icons();
                 // New docs may have landed for the repo currently viewed.
                 self.detail_md_source = None;
                 self.refresh_detail_markdown();
@@ -343,6 +366,8 @@ impl App {
                         }
                     }
                 }
+                // Offline fallback repos may have cached icons on disk.
+                self.reload_app_icons();
                 self.status_message = i18n::t_fmt("github_api_error", &[("error", &e)]);
                 self.push_notification(i18n::t_fmt("github_api_error", &[("error", &e)]), NotificationLevel::Error)
             }

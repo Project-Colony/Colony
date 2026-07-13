@@ -3,6 +3,7 @@
 mod config;
 mod download;
 mod github;
+mod icons;
 mod i18n;
 mod message;
 mod oauth;
@@ -147,6 +148,7 @@ impl App {
             show_github_menu: false,
             notifications: Vec::new(),
             next_notification_id: 0,
+            app_icons: std::collections::HashMap::new(),
             download_progress: None,
             download_abort: None,
             favorites,
