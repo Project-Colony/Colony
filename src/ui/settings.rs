@@ -858,6 +858,14 @@ impl App {
                 ("operandi", "settings_theme_modus_operandi", 0xFFFFFF, 0x0031A9),
                 ("vivendi",  "settings_theme_modus_vivendi",  0x000000, 0x2FAFFF),
             ]),
+            // ── Fan-made character sets ──
+            ("stellar_blade", "settings_theme_stellar_blade", "\u{f04e5}", vec![  // sword
+                ("eve",   "settings_theme_stellar_blade_eve",   0xECEEEC, 0x21A04D),
+                ("tachy", "settings_theme_stellar_blade_tachy", 0x10121A, 0xFF7C1E),
+                ("lily",  "settings_theme_stellar_blade_lily",  0x111010, 0xFFD23E),
+                ("enya",  "settings_theme_stellar_blade_enya",  0xEEF0F3, 0x3E90C9),
+                ("kaya",  "settings_theme_stellar_blade_kaya",  0x1A1622, 0xCFA8FF),
+            ]),
         ];
 
         let mut col = column![].spacing(12);

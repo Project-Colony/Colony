@@ -206,6 +206,12 @@ pub fn set_active_theme(theme: &str, variant: &str) {
         // Modus
         ("modus", "operandi")        => ThemePalette::MODUS_OPERANDI,
         ("modus", "vivendi")         => ThemePalette::MODUS_VIVENDI,
+        // Stellar Blade (fan-made character set)
+        ("stellar_blade", "eve")     => ThemePalette::STELLAR_EVE,
+        ("stellar_blade", "tachy")   => ThemePalette::STELLAR_TACHY,
+        ("stellar_blade", "lily")    => ThemePalette::STELLAR_LILY,
+        ("stellar_blade", "enya")    => ThemePalette::STELLAR_ENYA,
+        ("stellar_blade", "kaya")    => ThemePalette::STELLAR_KAYA,
         // Fallback
         _ => ThemePalette::GRUVBOX_DARK,
     };
@@ -1679,5 +1685,106 @@ impl ThemePalette {
         btn_danger_bg: hex(0x1A0808), btn_danger_hover: hex(0x3A1818),
         btn_trash_hover: hex(0xFF5F59), btn_trash_pressed: hex(0xDF4F48),
         bg_modal_section: hex(0x000000), border_subtle: hex(0x303030), divider: hex(0x303030),
+    };
+
+    // ── Stellar Blade (fan-made character set) ─────────────────────────────
+    // Duotone design language: one surface material + the character's signature
+    // color as the ink (text + accent). Derived from each character's on-screen
+    // design; Shift Up publishes no official codes. Same palettes as SphereCord's
+    // bundled sbThemes — keep the two in sync.
+
+    /// EVE — her Planet Diving Suit: white/grey ceramic, green legs as the ink. Light.
+    pub const STELLAR_EVE: Self = Self {
+        bg_primary: hex(0xECEEEC), bg_sidebar: hex(0xD3D7D3), bg_card: hex(0xFFFFFF),
+        bg_card_hover: hex(0xE2E6E2), bg_card_pressed: hex(0xD7DCD7), bg_selected: hex(0xD9E4DA),
+        bg_input: hex(0xE0E4E0), bg_progress: hex(0xDEE1DE),
+        text_primary: hex(0x1A6B3B), text_secondary: hex(0x2B7D4A), text_muted: hex(0x4E8A63),
+        text_dim: hex(0x6FA082), text_dimmer: hex(0x84AD94), text_dimmest: hex(0x9ABDA7),
+        text_placeholder: hex(0x84AD94),
+        accent_blue: hex(0x21A04D), accent_icon: hex(0x21A04D), accent_progress: hex(0x21A04D),
+        btn_default: hex(0xDFE3DF), btn_hover: hex(0xD2D8D3), btn_pressed: hex(0xC5CDC7),
+        success: hex(0x2F9E5C), success_bg: hex(0xD3ECD9),
+        btn_success: hex(0x2F9E5C), btn_success_hover: hex(0x288B50), btn_success_pressed: hex(0x227A46),
+        warning: hex(0xC8861E), warning_bg: hex(0xF0E6C8),
+        error: hex(0xD5493C), error_light: hex(0xE05A4E), error_bg: hex(0xF0CDC8),
+        btn_danger_bg: hex(0xF0CDC8), btn_danger_hover: hex(0xE3B6B0),
+        btn_trash_hover: hex(0xC23A2E), btn_trash_pressed: hex(0xA93227),
+        bg_modal_section: hex(0xE7EAE7), border_subtle: hex(0xC0C8C1), divider: hex(0xC0C8C1),
+    };
+
+    /// Tachy — carbon-navy suit, amber text, orange-glow accent; teal glints as success.
+    pub const STELLAR_TACHY: Self = Self {
+        bg_primary: hex(0x10121A), bg_sidebar: hex(0x0A0B10), bg_card: hex(0x171A24),
+        bg_card_hover: hex(0x1E2230), bg_card_pressed: hex(0x252A3A), bg_selected: hex(0x202536),
+        bg_input: hex(0x191C28), bg_progress: hex(0x0D0E15),
+        text_primary: hex(0xF2BC4E), text_secondary: hex(0xD9A133), text_muted: hex(0xA58136),
+        text_dim: hex(0x75612F), text_dimmer: hex(0x5C4D28), text_dimmest: hex(0x453A20),
+        text_placeholder: hex(0x5C4D28),
+        accent_blue: hex(0xFF7C1E), accent_icon: hex(0xEAA72C), accent_progress: hex(0xFF7C1E),
+        btn_default: hex(0x171A24), btn_hover: hex(0x1E2230), btn_pressed: hex(0x252A3A),
+        success: hex(0x3FBFA8), success_bg: hex(0x0E2420),
+        btn_success: hex(0x2F9D8A), btn_success_hover: hex(0x298C7B), btn_success_pressed: hex(0x237B6C),
+        warning: hex(0xEAA72C), warning_bg: hex(0x2A2210),
+        error: hex(0xF0503C), error_light: hex(0xFF6A55), error_bg: hex(0x2A120E),
+        btn_danger_bg: hex(0x2A120E), btn_danger_hover: hex(0x41201A),
+        btn_trash_hover: hex(0xB8402F), btn_trash_pressed: hex(0x96331F),
+        bg_modal_section: hex(0x141720), border_subtle: hex(0x2B3040), divider: hex(0x2B3040),
+    };
+
+    /// Lily — strict duotone: amber-gold ink on neutral blacks.
+    pub const STELLAR_LILY: Self = Self {
+        bg_primary: hex(0x111010), bg_sidebar: hex(0x0A0909), bg_card: hex(0x191817),
+        bg_card_hover: hex(0x201E1C), bg_card_pressed: hex(0x262421), bg_selected: hex(0x232120),
+        bg_input: hex(0x1A1918), bg_progress: hex(0x0D0C0C),
+        text_primary: hex(0xF6C832), text_secondary: hex(0xD4A92C), text_muted: hex(0xA5842A),
+        text_dim: hex(0x7A6526), text_dimmer: hex(0x5F4F21), text_dimmest: hex(0x483C1B),
+        text_placeholder: hex(0x5F4F21),
+        accent_blue: hex(0xFFD23E), accent_icon: hex(0xFFD23E), accent_progress: hex(0xFFD23E),
+        btn_default: hex(0x191817), btn_hover: hex(0x201E1C), btn_pressed: hex(0x262421),
+        success: hex(0x5FB55A), success_bg: hex(0x15200F),
+        btn_success: hex(0x4C9D48), btn_success_hover: hex(0x428C3F), btn_success_pressed: hex(0x397B36),
+        warning: hex(0xE08A2A), warning_bg: hex(0x261C0C),
+        error: hex(0xE0503C), error_light: hex(0xF0654F), error_bg: hex(0x26100C),
+        btn_danger_bg: hex(0x26100C), btn_danger_hover: hex(0x3C1D16),
+        btn_trash_hover: hex(0xB8402F), btn_trash_pressed: hex(0x96331F),
+        bg_modal_section: hex(0x151413), border_subtle: hex(0x2E2B26), divider: hex(0x2E2B26),
+    };
+
+    /// Enya — white ceramic armour, ice-blue sheen. Light.
+    pub const STELLAR_ENYA: Self = Self {
+        bg_primary: hex(0xEEF0F3), bg_sidebar: hex(0xD5DAE1), bg_card: hex(0xFFFFFF),
+        bg_card_hover: hex(0xE4E8EE), bg_card_pressed: hex(0xD9DFE7), bg_selected: hex(0xDCE3EC),
+        bg_input: hex(0xE2E6EC), bg_progress: hex(0xDFE3EA),
+        text_primary: hex(0x171C23), text_secondary: hex(0x3F4A58), text_muted: hex(0x66727F),
+        text_dim: hex(0x8D97A3), text_dimmer: hex(0xA3ADB8), text_dimmest: hex(0xBAC2CC),
+        text_placeholder: hex(0xA3ADB8),
+        accent_blue: hex(0x3E90C9), accent_icon: hex(0x3E90C9), accent_progress: hex(0x3E90C9),
+        btn_default: hex(0xE1E5EB), btn_hover: hex(0xD4DAE2), btn_pressed: hex(0xC8CFD9),
+        success: hex(0x2F9E5C), success_bg: hex(0xD3ECD9),
+        btn_success: hex(0x2F9E5C), btn_success_hover: hex(0x288B50), btn_success_pressed: hex(0x227A46),
+        warning: hex(0xC8861E), warning_bg: hex(0xF0E6C8),
+        error: hex(0xD5493C), error_light: hex(0xE05A4E), error_bg: hex(0xF0CDC8),
+        btn_danger_bg: hex(0xF0CDC8), btn_danger_hover: hex(0xE3B6B0),
+        btn_trash_hover: hex(0xC23A2E), btn_trash_pressed: hex(0xA93227),
+        bg_modal_section: hex(0xE9ECF0), border_subtle: hex(0xC2CAD4), divider: hex(0xC2CAD4),
+    };
+
+    /// Kaya — lavender ink on deep violet; her khaki coat survives as the success state.
+    pub const STELLAR_KAYA: Self = Self {
+        bg_primary: hex(0x1A1622), bg_sidebar: hex(0x14111B), bg_card: hex(0x221D2E),
+        bg_card_hover: hex(0x292338), bg_card_pressed: hex(0x302A42), bg_selected: hex(0x2C2540),
+        bg_input: hex(0x241F31), bg_progress: hex(0x171320),
+        text_primary: hex(0xD9C8F0), text_secondary: hex(0xB49AE0), text_muted: hex(0x8D7BAE),
+        text_dim: hex(0x6B5C88), text_dimmer: hex(0x55486E), text_dimmest: hex(0x423857),
+        text_placeholder: hex(0x55486E),
+        accent_blue: hex(0xCFA8FF), accent_icon: hex(0xCFA8FF), accent_progress: hex(0xCFA8FF),
+        btn_default: hex(0x221D2E), btn_hover: hex(0x292338), btn_pressed: hex(0x302A42),
+        success: hex(0x8A9455), success_bg: hex(0x1D2012),
+        btn_success: hex(0x767F48), btn_success_hover: hex(0x68703F), btn_success_pressed: hex(0x5A6136),
+        warning: hex(0xD9A441), warning_bg: hex(0x271F0E),
+        error: hex(0xE06A6A), error_light: hex(0xEF8080), error_bg: hex(0x291214),
+        btn_danger_bg: hex(0x291214), btn_danger_hover: hex(0x3E1E21),
+        btn_trash_hover: hex(0xB84848), btn_trash_pressed: hex(0x963A3A),
+        bg_modal_section: hex(0x1E1928), border_subtle: hex(0x382F4C), divider: hex(0x382F4C),
     };
 }

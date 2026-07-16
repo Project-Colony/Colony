@@ -271,6 +271,12 @@ impl Locale {
                 strings.insert("settings_theme_modus".into(), "Modus".into());
                 strings.insert("settings_theme_modus_operandi".into(), "Operandi".into());
                 strings.insert("settings_theme_modus_vivendi".into(), "Vivendi".into());
+                strings.insert("settings_theme_stellar_blade".into(), "Stellar Blade".into());
+                strings.insert("settings_theme_stellar_blade_eve".into(), "EVE".into());
+                strings.insert("settings_theme_stellar_blade_tachy".into(), "Tachy".into());
+                strings.insert("settings_theme_stellar_blade_lily".into(), "Lily".into());
+                strings.insert("settings_theme_stellar_blade_enya".into(), "Enya".into());
+                strings.insert("settings_theme_stellar_blade_kaya".into(), "Kaya".into());
                 // Colors & accents
                 strings.insert("settings_section_colors".into(), "Couleurs & accents".into());
                 strings.insert("settings_colors_desc".into(), "Personnalisez la couleur d'accent de l'interface.".into());
@@ -623,6 +629,12 @@ impl Locale {
                 strings.insert("settings_theme_modus".into(), "Modus".into());
                 strings.insert("settings_theme_modus_operandi".into(), "Operandi".into());
                 strings.insert("settings_theme_modus_vivendi".into(), "Vivendi".into());
+                strings.insert("settings_theme_stellar_blade".into(), "Stellar Blade".into());
+                strings.insert("settings_theme_stellar_blade_eve".into(), "EVE".into());
+                strings.insert("settings_theme_stellar_blade_tachy".into(), "Tachy".into());
+                strings.insert("settings_theme_stellar_blade_lily".into(), "Lily".into());
+                strings.insert("settings_theme_stellar_blade_enya".into(), "Enya".into());
+                strings.insert("settings_theme_stellar_blade_kaya".into(), "Kaya".into());
                 // Colors & accents
                 strings.insert("settings_section_colors".into(), "Colors & accents".into());
                 strings.insert("settings_colors_desc".into(), "Customize the interface accent color.".into());
