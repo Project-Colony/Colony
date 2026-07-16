@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/Project-Colony/Colony/compare/v0.6.0...v0.7.0) (2026-07-16)
+
+
+### Features
+
+* **themes:** Stellar Blade character theme family (5 palettes) ([9b102ee](https://github.com/Project-Colony/Colony/commit/9b102ee0026a753e79a81cbd1146428837033f87))
+
 ## [0.6.0](https://github.com/Project-Colony/Colony/compare/v0.5.0...v0.6.0) (2026-07-13)
 
 
