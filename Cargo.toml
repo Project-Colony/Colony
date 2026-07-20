@@ -2,6 +2,8 @@
 name = "colony"
 version = "0.8.0"
 edition = "2021"
+# Enforced floor for the README's "Rust 1.80+" claim (std::sync::LazyLock).
+rust-version = "1.80"
 
 [dependencies]
 anyhow = "1.0.100"
