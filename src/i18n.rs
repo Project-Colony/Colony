@@ -698,6 +698,9 @@ impl Locale {
                     "Vérifier les mises à jour".into(),
                 );
                 strings.insert("launcher_up_to_date".into(), "Colony est à jour".into());
+                strings.insert("update_all".into(), "Tout mettre à jour ({count})".into());
+                strings.insert("whats_new".into(), "Nouveautés de {version}".into());
+                strings.insert("view_on_github".into(), "Voir sur GitHub".into());
                 strings.insert("launcher_update_system_managed".into(), "Mise à jour {version} disponible - cette installation est gérée par le gestionnaire de paquets, mettez à jour via « pacman -Syu » (colony-bin)".into());
                 // Detail tabs
                 strings.insert("tab_readme".into(), "ReadMe".into());
@@ -1331,6 +1334,9 @@ impl Locale {
                 );
                 strings.insert("check_launcher_updates".into(), "Check for updates".into());
                 strings.insert("launcher_up_to_date".into(), "Colony is up to date".into());
+                strings.insert("update_all".into(), "Update all ({count})".into());
+                strings.insert("whats_new".into(), "What's new in {version}".into());
+                strings.insert("view_on_github".into(), "View on GitHub".into());
                 strings.insert("launcher_update_system_managed".into(), "Update {version} is available - this install is managed by the package manager, update via 'pacman -Syu' (colony-bin)".into());
                 // Detail tabs
                 strings.insert("tab_readme".into(), "ReadMe".into());

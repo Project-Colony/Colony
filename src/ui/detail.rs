@@ -334,9 +334,38 @@ impl App {
             }
         };
 
-        let header = row![back_button, container(text("")).width(Fill), fav_btn]
-            .width(Fill)
-            .align_y(iced::Alignment::Center);
+        // "View on GitHub": html_url is fetched with the catalog but was never
+        // surfaced anywhere in the UI.
+        let github_url = repo.html_url.clone();
+        let github_btn = button(
+            text(format!("\u{f09b}  {}", crate::i18n::t("view_on_github")))
+                .size(self.sz(13))
+                .font(self.app_font()),
+        )
+        .on_press(Message::OpenUrl(github_url))
+        .padding([8, 12])
+        .style(|_theme, status| {
+            let bg = match status {
+                button::Status::Hovered => Palette::BG_CARD_HOVER(),
+                _ => iced::Color::TRANSPARENT,
+            };
+            button::Style {
+                background: Some(bg.into()),
+                text_color: Palette::TEXT_MUTED(),
+                border: iced::Border::default().rounded(8),
+                ..Default::default()
+            }
+        });
+
+        let header = row![
+            back_button,
+            container(text("")).width(Fill),
+            github_btn,
+            fav_btn
+        ]
+        .width(Fill)
+        .spacing(4)
+        .align_y(iced::Alignment::Center);
 
         // Wrap markdown in a Shrink-sized container so the outer scrollable
         // sees the true content height (iced #2630 — markdown rich_text can
@@ -348,12 +377,87 @@ impl App {
 
         let body = scrollable(desc_container).width(Fill).height(Fill);
 
+        // "What's new" panel when an update is pending: the GitHub release
+        // body, fetched on demand and rendered from pre-parsed blocks (zero
+        // per-frame markdown parsing).
+        let whats_new: Element<'_, Message> =
+            if let Some(new_tag) = self.available_updates.get(&repo.name) {
+                match self.release_notes.get(&repo.name) {
+                    Some((tag, blocks)) if tag == new_tag => {
+                        let md_settings = markdown::Settings::with_text_size(
+                            self.sz(13),
+                            markdown::Style::from_palette(iced::Theme::Dark.palette()),
+                        );
+                        let notes_title =
+                            text(crate::i18n::t_fmt("whats_new", &[("version", new_tag)]))
+                                .size(self.sz(14))
+                                .font(self.app_font_with_weight(Weight::Medium))
+                                .color(Palette::ACCENT());
+                        let notes_body: Element<'_, Message> = if blocks.is_empty() {
+                            text(crate::i18n::t("tab_not_available"))
+                                .size(self.sz(13))
+                                .font(self.app_font())
+                                .color(Palette::TEXT_MUTED())
+                                .into()
+                        } else {
+                            crate::ui::markdown_blocks::view(blocks, md_settings, &ColonyMdViewer)
+                        };
+                        container(column![notes_title, notes_body].spacing(8))
+                            .padding(14)
+                            .width(Fill)
+                            .style(|_theme| container::Style {
+                                background: Some(Palette::BG_CARD().into()),
+                                border: iced::Border::default().rounded(10),
+                                ..Default::default()
+                            })
+                            .into()
+                    }
+                    _ => {
+                        let fetching = self.fetching_notes.contains(&repo.name);
+                        let label = if fetching {
+                            format!(
+                                "\u{f110}  {}",
+                                crate::i18n::t_fmt("whats_new", &[("version", new_tag)])
+                            )
+                        } else {
+                            format!(
+                                "\u{f05a}  {}",
+                                crate::i18n::t_fmt("whats_new", &[("version", new_tag)])
+                            )
+                        };
+                        let btn = button(text(label).size(self.sz(13)).font(self.app_font()))
+                            .padding([8, 14])
+                            .style(|_theme, status| {
+                                let bg = match status {
+                                    button::Status::Hovered => Palette::BG_CARD_HOVER(),
+                                    _ => Palette::BG_SELECTED(),
+                                };
+                                button::Style {
+                                    background: Some(bg.into()),
+                                    text_color: Palette::ACCENT(),
+                                    border: iced::Border::default().rounded(6),
+                                    ..Default::default()
+                                }
+                            });
+                        let btn = if fetching {
+                            btn
+                        } else {
+                            btn.on_press(Message::FetchReleaseNotes(repo.name.clone()))
+                        };
+                        container(btn).width(Fill).into()
+                    }
+                }
+            } else {
+                container(text("")).into()
+            };
+
         let detail = column![
             header,
             container(title).width(Fill).center_x(Fill),
             container(text("")).height(8),
             container(tab_bar).width(Fill).center_x(Fill),
             container(text("")).height(4),
+            whats_new,
             body,
             container(action_row).width(Fill),
             container(text("")).height(8),

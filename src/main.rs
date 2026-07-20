@@ -227,6 +227,9 @@ impl App {
             sidebar_indicator_target: selected_section as f32 * 44.0,
             sidebar_indicator_start: None,
             available_updates: std::collections::HashMap::new(),
+            update_queue: Vec::new(),
+            release_notes: std::collections::HashMap::new(),
+            fetching_notes: std::collections::HashSet::new(),
             // Launcher self-update
             launcher_update_available: None,
             is_checking_launcher_update: false,

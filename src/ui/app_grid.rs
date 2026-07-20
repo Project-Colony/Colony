@@ -352,9 +352,42 @@ impl App {
             .font(self.app_font())
             .color(Palette::TEXT_DIMMER());
 
-        let header = row![search, spinner, status]
+        let mut header = row![search, spinner, status]
             .spacing(8)
             .align_y(iced::Alignment::Center);
+
+        // One-click "Update all (N)" whenever updates are pending. Disabled
+        // while a download runs - the queue chains off completions instead.
+        if !self.available_updates.is_empty() {
+            let label = crate::i18n::t_fmt(
+                "update_all",
+                &[("count", &self.available_updates.len().to_string())],
+            );
+            let btn = button(
+                text(format!("\u{f021}  {label}"))
+                    .size(self.sz(13))
+                    .font(self.app_font()),
+            )
+            .padding([8, 14])
+            .style(|_theme, status| {
+                let bg = match status {
+                    button::Status::Hovered => Palette::BG_CARD_HOVER(),
+                    _ => Palette::BG_SELECTED(),
+                };
+                button::Style {
+                    background: Some(bg.into()),
+                    text_color: Palette::ACCENT(),
+                    border: iced::Border::default().rounded(6),
+                    ..Default::default()
+                }
+            });
+            let btn = if self.is_downloading {
+                btn
+            } else {
+                btn.on_press(Message::UpdateAll)
+            };
+            header = header.push(btn);
+        }
 
         let app_grid = container(self.view_app_grid())
             .id(crate::ui::tutorial::ID_GRID)

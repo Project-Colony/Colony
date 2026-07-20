@@ -61,6 +61,18 @@ impl App {
         }
     }
 
+    /// Pop the next repo queued by "Update all" and start its download; no-op
+    /// when the queue is empty. Called from BOTH completion arms so one failed
+    /// install never strands the remaining queue.
+    fn dispatch_next_queued_update(&mut self) -> Task<Message> {
+        if self.update_queue.is_empty() {
+            return Task::none();
+        }
+        let next = self.update_queue.remove(0);
+        let platform = github::current_platform_key().to_string();
+        Task::done(Message::DownloadRelease(next, platform))
+    }
+
     /// Rebuild `detail_blocks` for the currently-viewed (repo, tab) if that
     /// key differs from the last parse. Cheap no-op when the cache is valid.
     pub fn refresh_detail_markdown(&mut self) {
@@ -543,24 +555,29 @@ impl App {
                         // Use the short binary name (not the full install path)
                         // so the header status text can't squeeze the search box.
                         self.status_message = i18n::t_fmt("installed", &[("path", &display_name)]);
-                        self.push_notification(
+                        let notif = self.push_notification(
                             i18n::t_fmt("installed", &[("path", &display_name)]),
                             NotificationLevel::Info,
-                        )
+                        );
+                        Task::batch([notif, self.dispatch_next_queued_update()])
                     }
                     Err(e) => {
                         self.status_message = i18n::t_fmt("download_error", &[("error", &e)]);
-                        self.push_notification(
+                        let notif = self.push_notification(
                             i18n::t_fmt("download_error", &[("error", &e)]),
                             NotificationLevel::Error,
-                        )
+                        );
+                        // A failed item does not strand the rest of the queue.
+                        Task::batch([notif, self.dispatch_next_queued_update()])
                     }
                 }
             }
             Message::CancelDownload => {
                 // Actually abort the running download + progress tasks so no
                 // phantom install completes and no second writer can race the
-                // same file on a retry.
+                // same file on a retry. Cancel also empties the "Update all"
+                // queue: cancelling means stop, not "skip this one".
+                self.update_queue.clear();
                 if let Some(handle) = self.download_abort.take() {
                     handle.abort();
                 }
@@ -876,6 +893,82 @@ impl App {
                     },
                     Message::UpdatesChecked,
                 )
+            }
+            Message::UpdateAll => {
+                if self.is_downloading {
+                    return Task::none();
+                }
+                let platform = github::current_platform_key();
+                // Queue every updatable repo that actually ships an asset for
+                // this platform; order follows the catalog for predictability.
+                let mut queue: Vec<String> = self
+                    .colony_repos()
+                    .iter()
+                    .filter(|r| {
+                        self.available_updates.contains_key(&r.name)
+                            && r.manifest.release_files.contains_key(platform)
+                    })
+                    .map(|r| r.name.clone())
+                    .collect();
+                if queue.is_empty() {
+                    return Task::none();
+                }
+                let first = queue.remove(0);
+                self.update_queue = queue;
+                Task::done(Message::DownloadRelease(first, platform.to_string()))
+            }
+            Message::FetchReleaseNotes(repo_name) => {
+                if self.fetching_notes.contains(&repo_name) {
+                    return Task::none();
+                }
+                // Show the notes of the AVAILABLE update when there is one,
+                // otherwise of the manifest's pinned/latest release.
+                let platform = github::current_platform_key();
+                let tag = self.available_updates.get(&repo_name).cloned().or_else(|| {
+                    self.colony_repos()
+                        .iter()
+                        .find(|r| r.name == repo_name)
+                        .and_then(|r| r.manifest.release_files.get(platform))
+                        .map(|e| e.tag.clone())
+                });
+                let Some(tag) = tag else {
+                    return Task::none();
+                };
+                self.fetching_notes.insert(repo_name.clone());
+                let token = if let GitHubState::Connected { session, .. } = &self.github_state {
+                    Some(session.access_token.clone())
+                } else {
+                    None
+                };
+                let repo_for_result = repo_name.clone();
+                Task::perform(
+                    async move {
+                        let client = github::build_update_client(token.as_deref())
+                            .map_err(|e| e.to_string())?;
+                        let info = github::fetch_release_info(&client, &repo_name, &tag)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        Ok((info.tag, info.body.unwrap_or_default()))
+                    },
+                    move |result: Result<(String, String), String>| {
+                        Message::ReleaseNotesFetched(repo_for_result, result)
+                    },
+                )
+            }
+            Message::ReleaseNotesFetched(repo_name, result) => {
+                self.fetching_notes.remove(&repo_name);
+                match result {
+                    Ok((tag, body)) => {
+                        let blocks = markdown_blocks::parse(&body);
+                        self.release_notes.insert(repo_name, (tag, blocks));
+                    }
+                    Err(e) => {
+                        // Non-blocking feature: a failed fetch surfaces in the
+                        // status line, never as a modal interruption.
+                        self.status_message = i18n::t_fmt("github_api_error", &[("error", &e)]);
+                    }
+                }
+                Task::none()
             }
             Message::UpdatesChecked(updates) => {
                 self.is_checking_updates = false;
