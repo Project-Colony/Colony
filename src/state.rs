@@ -250,6 +250,11 @@ pub struct App {
         std::collections::HashMap<String, (String, Vec<crate::ui::markdown_blocks::DetailBlock>)>,
     /// Repos whose release notes are currently being fetched.
     pub fetching_notes: std::collections::HashSet<String>,
+    /// Install status per store repo: (installed, installed version). The
+    /// grid used to stat the filesystem per card per FRAME; this cache is
+    /// refreshed only when it can actually change (catalog load, install
+    /// completion, uninstall).
+    pub install_status: std::collections::HashMap<String, (bool, Option<String>)>,
     /// Keyboard-highlighted grid row, as a stable key ("repo:<name>" or
     /// "app:<name>") so catalog refreshes and re-filters cannot silently move
     /// the highlight to a different item. Cleared on search/section changes.
@@ -544,6 +549,7 @@ impl App {
             update_queue: Vec::new(),
             release_notes: std::collections::HashMap::new(),
             fetching_notes: std::collections::HashSet::new(),
+            install_status: std::collections::HashMap::new(),
             keyboard_cursor: None,
             window_size: (1000.0, 700.0),
             window_save_gen: 0,

@@ -67,6 +67,26 @@ impl App {
         }
     }
 
+    /// Rebuild the per-repo install-status cache (one filesystem pass). The
+    /// grid and detail views read ONLY this cache - never the disk - so it
+    /// must be called whenever an install can have changed: catalog load,
+    /// download completion, uninstall.
+    pub fn refresh_install_status(&mut self) {
+        self.install_status = self
+            .colony_repo_list
+            .iter()
+            .map(|repo| {
+                let installed = github::installed_app_path(repo).is_some();
+                let version = if installed {
+                    github::load_installed_version(&repo.name)
+                } else {
+                    None
+                };
+                (repo.name.clone(), (installed, version))
+            })
+            .collect();
+    }
+
     /// Pop the next repo queued by "Update all" and start its download; no-op
     /// when the queue is empty. Called from BOTH completion arms so one failed
     /// install never strands the remaining queue.
@@ -399,6 +419,7 @@ impl App {
                 crate::persistence::prune_orphaned_repo_caches(&live);
                 // Decode any freshly-cached app icons into image handles.
                 self.reload_app_icons();
+                self.refresh_install_status();
                 // New docs may have landed for the repo currently viewed.
                 self.detail_md_source = None;
                 self.refresh_detail_markdown();
@@ -588,6 +609,7 @@ impl App {
                         // advertising: clear it, or the card keeps showing
                         // "Update vX -> vX" until the next global check.
                         self.available_updates.remove(&repo_name);
+                        self.refresh_install_status();
                         let display_name = path
                             .file_name()
                             .map(|n| n.to_string_lossy().to_string())
@@ -697,6 +719,9 @@ impl App {
                             } else {
                                 self.status_message =
                                     i18n::t_fmt("uninstalled", &[("name", &repo_name)]);
+                                // AFTER the directory removal, so the cache
+                                // records the app as gone.
+                                self.refresh_install_status();
                                 return Task::perform(
                                     async {
                                         tokio::time::sleep(Duration::from_secs(4)).await;
