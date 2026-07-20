@@ -101,11 +101,7 @@ async fn download_to_file(
 }
 
 /// Fetch a small resource (e.g. a detached signature) fully into memory.
-async fn fetch_bytes(
-    client: &reqwest::Client,
-    url: &str,
-    token: Option<&str>,
-) -> Result<Vec<u8>> {
+async fn fetch_bytes(client: &reqwest::Client, url: &str, token: Option<&str>) -> Result<Vec<u8>> {
     let mut request = client.get(url);
     if let Some(t) = token {
         request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {t}"));
@@ -131,6 +127,25 @@ fn verify_sha256(path: &std::path::Path, expected_hex: &str) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// True when the running executable lives in a system location owned by a
+/// package manager (AUR/pacman installs land in /usr/bin, manual system
+/// installs in /usr/local or /opt). Self-update can NEVER apply there - the
+/// backup rename of the running exe fails with EACCES after downloading the
+/// whole asset - so the UI offers package-manager guidance instead of a
+/// download button that is guaranteed to die.
+pub fn launcher_is_system_managed() -> bool {
+    #[cfg(unix)]
+    {
+        std::env::current_exe()
+            .map(|exe| exe.starts_with("/usr") || exe.starts_with("/opt"))
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
 }
 
 /// Ensure a filename is a single normal path component (no `..`, no path
@@ -431,7 +446,11 @@ pub async fn download_launcher_asset(
 
 /// Path of the detached signature staged next to a downloaded binary.
 fn staged_signature_path(binary: &std::path::Path) -> PathBuf {
-    PathBuf::from(format!("{}{}", binary.display(), crate::signing::SIGNATURE_SUFFIX))
+    PathBuf::from(format!(
+        "{}{}",
+        binary.display(),
+        crate::signing::SIGNATURE_SUFFIX
+    ))
 }
 
 /// Replace the running Colony binary with the downloaded update.
@@ -445,7 +464,10 @@ pub fn apply_launcher_update(new_binary: &std::path::Path) -> Result<PathBuf> {
     // update-staging dir) could have been swapped after the download-time check.
     let sig_path = staged_signature_path(new_binary);
     let signature = std::fs::read(&sig_path).map_err(|e| {
-        anyhow::anyhow!("Missing staged update signature ({}): {e}", sig_path.display())
+        anyhow::anyhow!(
+            "Missing staged update signature ({}): {e}",
+            sig_path.display()
+        )
     })?;
     let staged_bytes = std::fs::read(new_binary)
         .map_err(|e| anyhow::anyhow!("Cannot read staged update binary: {e}"))?;
@@ -453,7 +475,10 @@ pub fn apply_launcher_update(new_binary: &std::path::Path) -> Result<PathBuf> {
         .map_err(|e| anyhow::anyhow!("Refusing to apply update: {e}"))?;
 
     // Refuse to touch the running binary if the staged update is empty/missing.
-    anyhow::ensure!(!staged_bytes.is_empty(), "Staged update binary is empty; refusing to apply");
+    anyhow::ensure!(
+        !staged_bytes.is_empty(),
+        "Staged update binary is empty; refusing to apply"
+    );
 
     let backup_path = current_exe.with_extension("old");
     if backup_path.exists() {
@@ -508,7 +533,7 @@ pub fn apply_launcher_update(new_binary: &std::path::Path) -> Result<PathBuf> {
 mod tests {
     use super::*;
 
-#[test]
+    #[test]
     fn extract_from_zip_works() {
         use std::io::Write;
         let dir = std::env::temp_dir().join("colony_test_zip_extract");
@@ -528,8 +553,14 @@ mod tests {
         let result = extract_from_zip(&zip_path, "my-binary", &dir);
         assert!(result.is_ok());
         let extracted = result.unwrap();
-        assert_eq!(extracted.file_name().unwrap().to_str().unwrap(), "my-binary");
-        assert_eq!(std::fs::read_to_string(&extracted).unwrap(), "binary-content");
+        assert_eq!(
+            extracted.file_name().unwrap().to_str().unwrap(),
+            "my-binary"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&extracted).unwrap(),
+            "binary-content"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -557,7 +588,10 @@ mod tests {
         assert!(result.is_ok(), "extract failed: {:?}", result.err());
         let extracted = result.unwrap();
         assert_eq!(extracted.file_name().unwrap().to_str().unwrap(), "my-app");
-        assert_eq!(std::fs::read_to_string(&extracted).unwrap(), "real-elf-bytes");
+        assert_eq!(
+            std::fs::read_to_string(&extracted).unwrap(),
+            "real-elf-bytes"
+        );
         // The staging archive is consumed.
         assert!(!staged.exists());
 
