@@ -25,14 +25,13 @@ const MAX_CONCURRENT_REPO_FETCHES: usize = 8;
 // Storage and download/self-update now live in dedicated modules; re-export
 // their public API so existing `github::` call sites keep working unchanged.
 pub use crate::download::{apply_launcher_update, download_launcher_asset, download_release_asset};
-pub use crate::persistence::{
-    colony_apps_dir, colony_data_dir, installed_app_path, load_favorites,
-    load_installed_version, load_preferences, load_repos_cache, load_scan_cache, read_repo_doc,
-    save_favorites, save_preferences, save_repos_cache, save_scan_cache, CachedApp,
-    UserPreferences,
-};
 use crate::persistence::save_repo_doc;
 use crate::persistence::save_repo_icon;
+pub use crate::persistence::{
+    colony_apps_dir, colony_data_dir, installed_app_path, load_favorites, load_installed_version,
+    load_preferences, load_repos_cache, load_scan_cache, read_repo_doc, save_favorites,
+    save_preferences, save_repos_cache, save_scan_cache, CachedApp, UserPreferences,
+};
 
 // --- HTTP ETag Cache ---
 
@@ -156,16 +155,41 @@ async fn cached_get(
                             let wait = rl.reset - now;
                             anyhow::bail!(
                                 "{}",
-                                crate::i18n::t_fmt("github_rate_limit", &[("wait", &wait.to_string())])
+                                crate::i18n::t_fmt(
+                                    "github_rate_limit",
+                                    &[("wait", &wait.to_string())]
+                                )
                             );
                         }
                     }
                 }
             }
             let body = resp.text().await.unwrap_or_default();
-            anyhow::bail!("GitHub API error {status}: {body}");
+            Err(anyhow::Error::new(HttpStatus(status))
+                .context(format!("GitHub API error {status}: {body}")))
         }
     }
+}
+
+/// Typed HTTP failure status carried inside the `anyhow` chain, so callers can
+/// classify not-found precisely with [`is_not_found`] instead of substring-
+/// matching "404" against the message - which misfired on any response body
+/// that merely CONTAINED "404" and silently dropped legitimate repos from the
+/// catalog (then clobbered the offline cache without them).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HttpStatus(pub u16);
+
+impl std::fmt::Display for HttpStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HTTP {}", self.0)
+    }
+}
+
+impl std::error::Error for HttpStatus {}
+
+/// True when the error chain carries an HTTP 404 from the GitHub API.
+pub fn is_not_found(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<HttpStatus>().is_some_and(|s| s.0 == 404)
 }
 
 fn parse_rate_limit(headers: &reqwest::header::HeaderMap) -> Option<RateLimitInfo> {
@@ -306,7 +330,9 @@ pub async fn fetch_colony_repos(token: Option<&str>) -> Result<Vec<ColonyRepo>> 
                 let readme_fut = fetch_readme(&client, &name);
                 let license_fut = fetch_license_with_fallback(&client, &name);
                 let changelog_fut = fetch_repo_file_candidates(
-                    &client, &name, &["CHANGELOG.md", "CHANGES.md", "CHANGELOG"],
+                    &client,
+                    &name,
+                    &["CHANGELOG.md", "CHANGES.md", "CHANGELOG"],
                 );
                 let icon_fut = fetch_icon(&client, &name, manifest.icon.as_deref());
 
@@ -431,28 +457,29 @@ async fn fetch_colony_manifest(
     client: &reqwest::Client,
     repo_name: &str,
 ) -> Result<Option<ColonyManifest>> {
-    let url = format!(
-        "{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/contents/colony.json"
-    );
+    let url = format!("{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/contents/colony.json");
     match cached_get(client, &url).await {
         Ok((body, _)) => {
-            let content: GithubContent = serde_json::from_str(&body)
-                .map_err(|e| anyhow::anyhow!("Failed to parse GitHub content response for {repo_name}: {e}"))?;
+            let content: GithubContent = serde_json::from_str(&body).map_err(|e| {
+                anyhow::anyhow!("Failed to parse GitHub content response for {repo_name}: {e}")
+            })?;
             if content.name != "colony.json" {
                 return Ok(None);
             }
             // Decode Base64 content
             let raw = content.content.unwrap_or_default();
             let cleaned: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
-            let bytes = base64::engine::general_purpose::STANDARD.decode(&cleaned)
-                .map_err(|e| anyhow::anyhow!("Failed to decode base64 for {repo_name}/colony.json: {e}"))?;
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(&cleaned)
+                .map_err(|e| {
+                    anyhow::anyhow!("Failed to decode base64 for {repo_name}/colony.json: {e}")
+                })?;
             let manifest: ColonyManifest = serde_json::from_slice(&bytes)
                 .map_err(|e| anyhow::anyhow!("Invalid colony.json in {repo_name}: {e}"))?;
             Ok(Some(manifest))
         }
         Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("404") {
+            if is_not_found(&e) {
                 Ok(None)
             } else {
                 Err(e)
@@ -463,9 +490,7 @@ async fn fetch_colony_manifest(
 
 /// Fetch the README content from a repo, returning the first ~500 chars as plain text.
 async fn fetch_readme(client: &reqwest::Client, repo_name: &str) -> Result<String> {
-    let url = format!(
-        "{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/readme"
-    );
+    let url = format!("{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/readme");
     let (body, _) = cached_get(client, &url).await?;
     let readme: GithubReadme = serde_json::from_str(&body)?;
     let raw = readme.content.unwrap_or_default();
@@ -494,7 +519,7 @@ async fn fetch_license(client: &reqwest::Client, repo_name: &str) -> Result<Opti
             Ok(Some(String::from_utf8_lossy(&bytes).to_string()))
         }
         Err(e) => {
-            if e.to_string().contains("404") {
+            if is_not_found(&e) {
                 Ok(None)
             } else {
                 Err(e)
@@ -533,9 +558,7 @@ async fn fetch_repo_file_candidates(
     candidates: &[&str],
 ) -> Result<Option<String>> {
     for path in candidates {
-        let url = format!(
-            "{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/contents/{path}"
-        );
+        let url = format!("{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/contents/{path}");
         match cached_get(client, &url).await {
             Ok((body, _)) => {
                 let content: GithubContent = serde_json::from_str(&body)?;
@@ -546,7 +569,7 @@ async fn fetch_repo_file_candidates(
                 return Ok(Some(text));
             }
             Err(e) => {
-                if e.to_string().contains("404") {
+                if is_not_found(&e) {
                     continue;
                 }
                 return Err(e);
@@ -572,9 +595,7 @@ async fn fetch_icon(
         candidates.push("icon.png");
     }
     for path in candidates {
-        let url = format!(
-            "{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/contents/{path}"
-        );
+        let url = format!("{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/contents/{path}");
         match cached_get(client, &url).await {
             Ok((body, _)) => {
                 let content: GithubContent = serde_json::from_str(&body)?;
@@ -586,7 +607,7 @@ async fn fetch_icon(
                 }
             }
             Err(e) => {
-                if e.to_string().contains("404") {
+                if is_not_found(&e) {
                     continue;
                 }
                 return Err(e);
@@ -631,10 +652,7 @@ pub async fn fetch_latest_release_tag_for(
 }
 
 /// Fetch the latest release tag for a Colony app repo.
-pub async fn fetch_latest_release_tag(
-    client: &reqwest::Client,
-    repo_name: &str,
-) -> Result<String> {
+pub async fn fetch_latest_release_tag(client: &reqwest::Client, repo_name: &str) -> Result<String> {
     fetch_latest_release_tag_for(client, GITHUB_ACCOUNT, repo_name).await
 }
 
@@ -684,8 +702,16 @@ pub async fn fetch_release_info(
 /// pattern matching - otherwise `app-linux.sig` would make the pattern
 /// "linux" ambiguous the day a repo starts signing its releases (Colony's own
 /// releases already ship `.sig` siblings).
-const NON_INSTALLABLE_SUFFIXES: &[&str] =
-    &[".sig", ".asc", ".sha256", ".sha256sum", ".txt", ".yml", ".yaml", ".json"];
+const NON_INSTALLABLE_SUFFIXES: &[&str] = &[
+    ".sig",
+    ".asc",
+    ".sha256",
+    ".sha256sum",
+    ".txt",
+    ".yml",
+    ".yaml",
+    ".json",
+];
 
 pub fn find_asset_by_pattern(assets: &[String], pattern: &str) -> Result<String> {
     let pattern_lower = pattern.to_lowercase();
@@ -706,10 +732,12 @@ pub fn find_asset_by_pattern(assets: &[String], pattern: &str) -> Result<String>
     match matches.len() {
         0 => anyhow::bail!("No release asset matching pattern '{pattern}'"),
         1 => Ok(matches[0].clone()),
-        n => anyhow::bail!(
+        n => {
+            anyhow::bail!(
             "Ambiguous pattern '{pattern}': {n} assets match ({}). Use a more specific pattern.",
             matches.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
-        ),
+        )
+        }
     }
 }
 
@@ -779,10 +807,7 @@ pub async fn auto_detect_release(
     let release_files = build_release_files_from_assets(repo_name, &release.asset_names);
 
     if !platforms.is_empty() {
-        tracing::info!(
-            "Auto-detected platforms for {repo_name}: {:?}",
-            platforms
-        );
+        tracing::info!("Auto-detected platforms for {repo_name}: {:?}", platforms);
         manifest.platforms = platforms;
         manifest.release_files = release_files;
     }
@@ -844,7 +869,11 @@ pub async fn check_update_available(
 /// Expected release asset name for the Colony launcher binary on the current platform.
 pub fn launcher_asset_name() -> String {
     let platform = current_platform_key();
-    let ext = if cfg!(target_os = "windows") { ".exe" } else { "" };
+    let ext = if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    };
     format!("colony-{platform}{ext}")
 }
 
@@ -853,11 +882,8 @@ pub fn launcher_asset_name() -> String {
 /// `Ok(None)` means the check RAN and Colony is current; failures propagate so
 /// the UI never reports "up to date" when the check could not run at all
 /// (offline, rate limited, or an unparseable release tag).
-pub async fn check_launcher_update(
-    client: &reqwest::Client,
-) -> Result<Option<(String, String)>> {
-    let latest_tag =
-        fetch_latest_release_tag_for(client, LAUNCHER_OWNER, LAUNCHER_REPO).await?;
+pub async fn check_launcher_update(client: &reqwest::Client) -> Result<Option<(String, String)>> {
+    let latest_tag = fetch_latest_release_tag_for(client, LAUNCHER_OWNER, LAUNCHER_REPO).await?;
 
     let current = parse_version_tag(APP_VERSION)
         .ok_or_else(|| anyhow::anyhow!("unparseable app version '{APP_VERSION}'"))?;
@@ -896,9 +922,15 @@ mod tests {
         assert_eq!(manifest.platforms, vec!["windows", "linux"]);
         assert_eq!(manifest.release_files.len(), 2);
         assert_eq!(manifest.release_files["windows"].tag, "Windows");
-        assert_eq!(manifest.release_files["windows"].file.as_deref(), Some("TestApp.exe"));
+        assert_eq!(
+            manifest.release_files["windows"].file.as_deref(),
+            Some("TestApp.exe")
+        );
         assert_eq!(manifest.release_files["linux"].tag, "Linux");
-        assert_eq!(manifest.release_files["linux"].file.as_deref(), Some("TestApp"));
+        assert_eq!(
+            manifest.release_files["linux"].file.as_deref(),
+            Some("TestApp")
+        );
     }
 
     #[test]
@@ -949,7 +981,10 @@ mod tests {
         // Windows: archive + binary + latest
         let win = &manifest.release_files["windows"];
         assert_eq!(win.tag, "latest");
-        assert_eq!(win.file.as_deref(), Some("lilypad-x86_64-pc-windows-msvc.zip"));
+        assert_eq!(
+            win.file.as_deref(),
+            Some("lilypad-x86_64-pc-windows-msvc.zip")
+        );
         assert_eq!(win.binary.as_deref(), Some("lilypad-cli.exe"));
         assert_eq!(win.sha256.as_deref(), Some("abc123"));
         // Linux: archive + binary + latest, no sha256
@@ -1062,6 +1097,20 @@ mod tests {
     }
 
     #[test]
+    fn is_not_found_matches_typed_status_not_message_text() {
+        // A 404 is recognized through the typed status...
+        let e404 = anyhow::Error::new(HttpStatus(404)).context("GitHub API error 404: Not Found");
+        assert!(is_not_found(&e404));
+        // ...a different status is not, even if its BODY contains "404" (the
+        // old substring check misclassified this and dropped live repos).
+        let e500 = anyhow::Error::new(HttpStatus(500))
+            .context("GitHub API error 500: upstream said 404 somewhere");
+        assert!(!is_not_found(&e500));
+        // ...and a plain network error without a status is not a 404 either.
+        assert!(!is_not_found(&anyhow::anyhow!("Network error: dns 404ish")));
+    }
+
+    #[test]
     fn find_asset_by_pattern_exact_name_beats_substring_overlap() {
         // "app-macos" is a substring of "app-macos-x86": an exact name match
         // must win instead of erroring as ambiguous, so Apple Silicon
@@ -1088,7 +1137,10 @@ mod tests {
             "app-linux.sha256".to_string(),
             "latest-linux.yml".to_string(),
         ];
-        assert_eq!(find_asset_by_pattern(&assets, "linux").unwrap(), "app-linux");
+        assert_eq!(
+            find_asset_by_pattern(&assets, "linux").unwrap(),
+            "app-linux"
+        );
     }
 
     #[test]
@@ -1123,7 +1175,9 @@ mod tests {
     fn base64_decode_manifest() {
         let json = r#"{"name":"Test","category":"Games","platforms":["linux"],"releaseFiles":{"linux":{"tag":"v1","file":"test"}}}"#;
         let encoded = base64::engine::general_purpose::STANDARD.encode(json);
-        let decoded = base64::engine::general_purpose::STANDARD.decode(&encoded).unwrap();
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(&encoded)
+            .unwrap();
         let manifest: ColonyManifest = serde_json::from_slice(&decoded).unwrap();
         assert_eq!(manifest.name, "Test");
         assert_eq!(manifest.category, "Games");
@@ -1193,10 +1247,7 @@ mod tests {
 
     #[test]
     fn build_release_files_creates_entries() {
-        let assets = vec![
-            "orcal-linux".to_string(),
-            "orcal-windows.exe".to_string(),
-        ];
+        let assets = vec!["orcal-linux".to_string(), "orcal-windows.exe".to_string()];
         let files = build_release_files_from_assets("orcal", &assets);
         assert_eq!(files.len(), 2);
 

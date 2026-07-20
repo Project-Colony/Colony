@@ -231,6 +231,7 @@ impl App {
             launcher_update_available: None,
             is_checking_launcher_update: false,
             launcher_update_staged: None,
+            launcher_system_managed: download::launcher_is_system_managed(),
         };
 
         // Cached catalog repos may have icons already on disk: decode them now

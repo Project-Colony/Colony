@@ -794,10 +794,8 @@ impl App {
                                 && !self.show_first_launch
                                 && self.active_colony_repo.is_none() =>
                         {
-                            let first = self
-                                .filtered_colony_repos()
-                                .first()
-                                .map(|r| r.name.clone());
+                            let first =
+                                self.filtered_colony_repos().first().map(|r| r.name.clone());
                             if let Some(name) = first {
                                 self.active_colony_repo = Some(name);
                                 // Refresh the (repo, tab) markdown cache — the
@@ -902,7 +900,10 @@ impl App {
                     self.push_notification(msg, NotificationLevel::Info)
                 };
                 // Also check for launcher self-update
-                Task::batch([notif_task, Task::done(Message::CheckLauncherUpdate { manual: false })])
+                Task::batch([
+                    notif_task,
+                    Task::done(Message::CheckLauncherUpdate { manual: false }),
+                ])
             }
             Message::ToggleFavorite(name) => {
                 if let Some(pos) = self.favorites.iter().position(|f| f == &name) {
@@ -1073,8 +1074,8 @@ impl App {
 
                 Task::perform(
                     async move {
-                        let client =
-                            github::build_update_client(token.as_deref()).map_err(|e| e.to_string())?;
+                        let client = github::build_update_client(token.as_deref())
+                            .map_err(|e| e.to_string())?;
                         github::check_launcher_update(&client)
                             .await
                             .map_err(|e| e.to_string())
@@ -1088,8 +1089,16 @@ impl App {
                     Ok(Some((tag, asset))) => {
                         let tag_display = tag.clone();
                         self.launcher_update_available = Some((tag, asset));
+                        // On a package-managed install the in-app flow cannot
+                        // apply: announce the update with the pacman guidance
+                        // instead of pointing at a doomed download button.
+                        let key = if self.launcher_system_managed {
+                            "launcher_update_system_managed"
+                        } else {
+                            "launcher_update_available"
+                        };
                         self.push_notification(
-                            i18n::t_fmt("launcher_update_available", &[("version", &tag_display)]),
+                            i18n::t_fmt(key, &[("version", &tag_display)]),
                             NotificationLevel::Info,
                         )
                     }
@@ -1124,6 +1133,24 @@ impl App {
             Message::DownloadLauncherUpdate => {
                 if self.is_downloading {
                     return Task::none();
+                }
+                // Defense in depth behind the UI gate: a package-managed exe
+                // dir is not writable, so the flow would download the whole
+                // asset and then die on the backup rename with EACCES.
+                if self.launcher_system_managed {
+                    let msg = i18n::t_fmt(
+                        "launcher_update_system_managed",
+                        &[(
+                            "version",
+                            &self
+                                .launcher_update_available
+                                .as_ref()
+                                .map(|(t, _)| t.clone())
+                                .unwrap_or_default(),
+                        )],
+                    );
+                    self.status_message = msg.clone();
+                    return self.push_notification(msg, NotificationLevel::Warning);
                 }
                 let (tag, asset) = match &self.launcher_update_available {
                     Some(t) => t.clone(),

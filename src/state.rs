@@ -226,6 +226,10 @@ pub struct App {
     pub launcher_update_available: Option<(String, String)>, // (tag, asset_filename)
     pub is_checking_launcher_update: bool,
     pub launcher_update_staged: Option<std::path::PathBuf>,
+    /// True when the exe lives in a package-manager-owned location (/usr,
+    /// /opt): self-update cannot apply there, the UI offers pacman guidance
+    /// instead. Computed once at boot.
+    pub launcher_system_managed: bool,
     // Animation state
     pub progress_display: f32, // smoothly interpolated progress bar value
     pub sidebar_indicator_from: f32, // start Y position of current animation
