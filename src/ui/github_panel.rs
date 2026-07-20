@@ -3,9 +3,9 @@ use iced::widget::{button, column, container, row, scrollable, text, Column};
 use iced::{Element, Fill, Length};
 
 use crate::github::ColonyRepo;
-use crate::ui::theme::Palette;
-use crate::state::{App, GitHubState};
 use crate::message::Message;
+use crate::state::{App, GitHubState};
+use crate::ui::theme::Palette;
 
 impl App {
     pub(crate) fn view_github_panel(&self) -> Element<'_, Message> {
@@ -23,17 +23,21 @@ impl App {
 
                 let login_btn_content = row![
                     text("\u{f09b}").size(self.sz(18)).font(self.app_font()),
-                    text(crate::i18n::t("github_login")).size(self.sz(14)).font(self.app_font()),
+                    text(crate::i18n::t("github_login"))
+                        .size(self.sz(14))
+                        .font(self.app_font()),
                 ]
                 .spacing(10)
                 .align_y(iced::Alignment::Center);
 
                 let login_btn = button(login_btn_content)
-                    .on_press_maybe(if matches!(self.github_state, crate::GitHubState::Connecting { .. }) {
-                        None
-                    } else {
-                        Some(Message::GitHubLogin)
-                    })
+                    .on_press_maybe(
+                        if matches!(self.github_state, crate::GitHubState::Connecting { .. }) {
+                            None
+                        } else {
+                            Some(Message::GitHubLogin)
+                        },
+                    )
                     .padding([12, 24])
                     .style(|_theme, status| {
                         let bg = match status {
@@ -54,76 +58,93 @@ impl App {
                     .font(self.app_font())
                     .color(Palette::TEXT_MUTED());
 
-                column![desc, container(text("")).height(16), login_btn, container(text("")).height(12), info]
-                    .spacing(8)
-                    .into()
+                column![
+                    desc,
+                    container(text("")).height(16),
+                    login_btn,
+                    container(text("")).height(12),
+                    info
+                ]
+                .spacing(8)
+                .into()
             }
-            GitHubState::Connecting { user_code } => {
-                match user_code {
-                    Some(code) => {
-                        let spinner_label = text("\u{f110}  ")
-                            .size(self.sz(14))
+            GitHubState::Connecting { user_code } => match user_code {
+                Some(code) => {
+                    let spinner_label = text("\u{f110}  ")
+                        .size(self.sz(14))
+                        .font(self.app_font())
+                        .color(Palette::ACCENT());
+                    let label = text(crate::i18n::t("github_enter_code"))
+                        .size(self.sz(14))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_MUTED());
+                    let code_btn = button(
+                        text(code.as_str())
+                            .size(self.sz(28))
                             .font(self.app_font())
-                            .color(Palette::ACCENT());
-                        let label = text(crate::i18n::t("github_enter_code"))
-                            .size(self.sz(14))
-                            .font(self.app_font())
-                            .color(Palette::TEXT_MUTED());
-                        let code_btn = button(
-                            text(code.as_str())
-                                .size(self.sz(28))
-                                .font(self.app_font())
-                                .color(Palette::TEXT_SECONDARY())
-                        )
-                        .on_press(Message::CopyToClipboard(code.clone()))
-                        .padding([8, 16])
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => Palette::BG_SELECTED(),
-                                _ => Palette::BG_INPUT(),
-                            };
-                            button::Style {
-                                background: Some(bg.into()),
-                                text_color: Palette::TEXT_SECONDARY(),
-                                border: iced::Border::default().rounded(8),
-                                ..Default::default()
-                            }
-                        });
-                        let hint = text(crate::i18n::t("github_copy_hint"))
-                            .size(self.sz(12))
-                            .font(self.app_font())
-                            .color(Palette::TEXT_DIMMEST());
-                        column![spinner_label, label, code_btn, hint]
-                            .spacing(8)
-                            .into()
-                    }
-                    None => {
-                        row![
-                            text("\u{f110}").size(self.sz(16)).font(self.app_font()).color(Palette::ACCENT()),
-                            text(crate::i18n::t("github_connecting"))
-                                .size(self.sz(16))
-                                .font(self.app_font())
-                                .color(Palette::TEXT_SECONDARY()),
-                        ]
+                            .color(Palette::TEXT_SECONDARY()),
+                    )
+                    .on_press(Message::CopyToClipboard(code.clone()))
+                    .padding([8, 16])
+                    .style(|_theme, status| {
+                        let bg = match status {
+                            button::Status::Hovered => Palette::BG_SELECTED(),
+                            _ => Palette::BG_INPUT(),
+                        };
+                        button::Style {
+                            background: Some(bg.into()),
+                            text_color: Palette::TEXT_SECONDARY(),
+                            border: iced::Border::default().rounded(8),
+                            ..Default::default()
+                        }
+                    });
+                    let hint = text(crate::i18n::t("github_copy_hint"))
+                        .size(self.sz(12))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_DIMMEST());
+                    column![spinner_label, label, code_btn, hint]
                         .spacing(8)
-                        .align_y(iced::Alignment::Center)
                         .into()
-                    }
                 }
-            }
-            GitHubState::Connected { session, repos } => {
+                None => row![
+                    text("\u{f110}")
+                        .size(self.sz(16))
+                        .font(self.app_font())
+                        .color(Palette::ACCENT()),
+                    text(crate::i18n::t("github_connecting"))
+                        .size(self.sz(16))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_SECONDARY()),
+                ]
+                .spacing(8)
+                .align_y(iced::Alignment::Center)
+                .into(),
+            },
+            GitHubState::Connected { session } => {
+                let repos = self.colony_repos();
                 let connected_text = format!(
                     "{}{}",
                     crate::i18n::t("github_connected"),
-                    session.username.as_ref().map(|u| format!(" — {u}")).unwrap_or_default()
+                    session
+                        .username
+                        .as_ref()
+                        .map(|u| format!(" — {u}"))
+                        .unwrap_or_default()
                 );
                 let user_label: Element<'_, Message> = if self.is_fetching_repos {
                     row![
-                        text("\u{f110}").size(self.sz(14)).font(self.app_font()).color(Palette::ACCENT()),
-                        text(format!("{} ({})", connected_text, crate::i18n::t("syncing_repos")))
+                        text("\u{f110}")
                             .size(self.sz(14))
                             .font(self.app_font())
-                            .color(Palette::SUCCESS()),
+                            .color(Palette::ACCENT()),
+                        text(format!(
+                            "{} ({})",
+                            connected_text,
+                            crate::i18n::t("syncing_repos")
+                        ))
+                        .size(self.sz(14))
+                        .font(self.app_font())
+                        .color(Palette::SUCCESS()),
                     ]
                     .spacing(8)
                     .align_y(iced::Alignment::Center)
@@ -150,18 +171,18 @@ impl App {
                 }
 
                 let repo_list = if repo_list_items.is_empty() {
-                    column![
-                        text(crate::i18n::t("github_no_repos"))
-                            .size(self.sz(13))
-                            .font(self.app_font())
-                            .color(Palette::TEXT_DIMMER())
-                    ]
+                    column![text(crate::i18n::t("github_no_repos"))
+                        .size(self.sz(13))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_DIMMER())]
                 } else {
                     Column::with_children(repo_list_items).spacing(8)
                 };
 
                 let refresh_btn_base = button(
-                    text(crate::i18n::t("github_refresh")).size(self.sz(13)).font(self.app_font()),
+                    text(crate::i18n::t("github_refresh"))
+                        .size(self.sz(13))
+                        .font(self.app_font()),
                 )
                 .padding([8, 16]);
                 let refresh_btn = if self.is_fetching_repos {
@@ -183,7 +204,9 @@ impl App {
                 });
 
                 let logout_btn = button(
-                    text(crate::i18n::t("github_logout")).size(self.sz(13)).font(self.app_font()),
+                    text(crate::i18n::t("github_logout"))
+                        .size(self.sz(13))
+                        .font(self.app_font()),
                 )
                 .on_press(Message::GitHubLogout)
                 .padding([8, 16])
@@ -221,7 +244,9 @@ impl App {
                     .color(Palette::ERROR());
 
                 let retry_btn = button(
-                    text(crate::i18n::t("github_retry")).size(self.sz(13)).font(self.app_font()),
+                    text(crate::i18n::t("github_retry"))
+                        .size(self.sz(13))
+                        .font(self.app_font()),
                 )
                 .on_press(Message::GitHubLogin)
                 .padding([8, 16]);
@@ -232,15 +257,11 @@ impl App {
             }
         };
 
-        let panel = column![
-            header_text,
-            container(text("")).height(16),
-            content,
-        ]
-        .spacing(8)
-        .padding(24)
-        .width(Fill)
-        .height(Fill);
+        let panel = column![header_text, container(text("")).height(16), content,]
+            .spacing(8)
+            .padding(24)
+            .width(Fill)
+            .height(Fill);
 
         container(panel)
             .style(|_theme| container::Style {

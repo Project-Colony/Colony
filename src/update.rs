@@ -8,10 +8,16 @@ use crate::oauth;
 use crate::scan;
 use crate::state::{App, DetailTab, GitHubState, Notification, NotificationLevel};
 use crate::ui::markdown_blocks;
-use crate::ui::theme::{accent_key_to_color, set_active_accent, set_active_theme, set_high_contrast};
+use crate::ui::theme::{
+    accent_key_to_color, set_active_accent, set_active_theme, set_high_contrast,
+};
 
 impl App {
-    pub fn push_notification(&mut self, message: String, level: NotificationLevel) -> Task<Message> {
+    pub fn push_notification(
+        &mut self,
+        message: String,
+        level: NotificationLevel,
+    ) -> Task<Message> {
         let id = self.next_notification_id;
         self.next_notification_id += 1;
         let timeout = match level {
@@ -19,13 +25,16 @@ impl App {
             NotificationLevel::Warning => Duration::from_secs(7),
             NotificationLevel::Info => Duration::from_secs(5),
         };
-        self.notifications.push(Notification::new(id, message, level));
+        self.notifications
+            .push(Notification::new(id, message, level));
         // When reduce_motion or animations off, don't auto-dismiss (user must click)
         if self.reduce_motion || !self.animations {
             Task::none()
         } else {
             Task::perform(
-                async move { tokio::time::sleep(timeout).await; },
+                async move {
+                    tokio::time::sleep(timeout).await;
+                },
                 |_| Message::TickNotifications,
             )
         }
@@ -168,7 +177,8 @@ impl App {
                 self.is_scanning = false;
                 match result {
                     Ok(apps) => {
-                        self.status_message = i18n::t_fmt("apps_found", &[("count", &apps.len().to_string())]);
+                        self.status_message =
+                            i18n::t_fmt("apps_found", &[("count", &apps.len().to_string())]);
                         // Refresh the offline scan cache (previously written on
                         // the boot path, now that the scan runs off-thread).
                         let cached: Vec<github::CachedApp> = apps
@@ -200,7 +210,9 @@ impl App {
                             .args(["/C", "start", "", &exec])
                             .spawn()
                             .map(|_| ())
-                            .map_err(|error| i18n::t_fmt("launch_error", &[("error", &error.to_string())]))
+                            .map_err(|error| {
+                                i18n::t_fmt("launch_error", &[("error", &error.to_string())])
+                            })
                     }
 
                     #[cfg(not(windows))]
@@ -214,13 +226,19 @@ impl App {
                                         .spawn()
                                         .map(|_| ())
                                         .map_err(|error| {
-                                            i18n::t_fmt("launch_error", &[("error", &error.to_string())])
+                                            i18n::t_fmt(
+                                                "launch_error",
+                                                &[("error", &error.to_string())],
+                                            )
                                         })
                                 } else {
                                     Err(i18n::t("launch_error_empty"))
                                 }
                             }
-                            Err(error) => Err(i18n::t_fmt("launch_error", &[("error", &error.to_string())])),
+                            Err(error) => Err(i18n::t_fmt(
+                                "launch_error",
+                                &[("error", &error.to_string())],
+                            )),
                         }
                     }
                 };
@@ -229,7 +247,9 @@ impl App {
                     Ok(()) => {
                         self.status_message = i18n::t("app_launched");
                         Task::perform(
-                            async { tokio::time::sleep(Duration::from_secs(4)).await; },
+                            async {
+                                tokio::time::sleep(Duration::from_secs(4)).await;
+                            },
                             |_| Message::ClearStatus,
                         )
                     }
@@ -251,7 +271,10 @@ impl App {
                 Task::none()
             }
             Message::ClearStatus => {
-                self.status_message = i18n::t_fmt("apps_found", &[("count", &self.applications.len().to_string())]);
+                self.status_message = i18n::t_fmt(
+                    "apps_found",
+                    &[("count", &self.applications.len().to_string())],
+                );
                 Task::none()
             }
             Message::FontLoaded(_) => Task::none(),
@@ -272,34 +295,34 @@ impl App {
                     Message::GitHubDeviceCodeReceived,
                 )
             }
-            Message::GitHubDeviceCodeReceived(result) => {
-                match result {
-                    Ok(device) => {
-                        self.github_state = GitHubState::Connecting {
-                            user_code: Some(device.user_code.clone()),
-                        };
-                        Task::perform(
-                            async move {
-                                oauth::poll_for_token(device)
-                                    .await
-                                    .map_err(|e| e.to_string())
-                            },
-                            Message::GitHubLoginCompleted,
-                        )
-                    }
-                    Err(e) => {
-                        self.github_state = GitHubState::Error(e.clone());
-                        self.status_message = i18n::t_fmt("oauth_error", &[("error", &e)]);
-                        self.push_notification(i18n::t_fmt("oauth_error", &[("error", &e)]), NotificationLevel::Error)
-                    }
+            Message::GitHubDeviceCodeReceived(result) => match result {
+                Ok(device) => {
+                    self.github_state = GitHubState::Connecting {
+                        user_code: Some(device.user_code.clone()),
+                    };
+                    Task::perform(
+                        async move {
+                            oauth::poll_for_token(device)
+                                .await
+                                .map_err(|e| e.to_string())
+                        },
+                        Message::GitHubLoginCompleted,
+                    )
                 }
-            }
+                Err(e) => {
+                    self.github_state = GitHubState::Error(e.clone());
+                    self.status_message = i18n::t_fmt("oauth_error", &[("error", &e)]);
+                    self.push_notification(
+                        i18n::t_fmt("oauth_error", &[("error", &e)]),
+                        NotificationLevel::Error,
+                    )
+                }
+            },
             Message::GitHubLoginCompleted(result) => {
                 match result {
                     Ok(session) => {
                         self.github_state = GitHubState::Connected {
                             session: session.clone(),
-                            repos: Vec::new(),
                         };
                         self.status_message = format!(
                             "{}{}",
@@ -311,10 +334,11 @@ impl App {
                                 .unwrap_or_default()
                         );
                         let token = session.access_token.clone();
+                        // Guard the refetch like every other fetch path, so a
+                        // concurrent GitHubRefreshRepos cannot double-fetch.
+                        self.is_fetching_repos = true;
                         Task::perform(
-                            async move {
-                                github::fetch_colony_repos(Some(&token)).await
-                            },
+                            async move { github::fetch_colony_repos(Some(&token)).await },
                             |result| match result {
                                 Ok(repos) => Message::GitHubReposFetched(repos),
                                 Err(e) => Message::GitHubError(e.to_string()),
@@ -324,7 +348,10 @@ impl App {
                     Err(e) => {
                         self.github_state = GitHubState::Error(e.clone());
                         self.status_message = i18n::t_fmt("oauth_error", &[("error", &e)]);
-                        self.push_notification(i18n::t_fmt("oauth_error", &[("error", &e)]), NotificationLevel::Error)
+                        self.push_notification(
+                            i18n::t_fmt("oauth_error", &[("error", &e)]),
+                            NotificationLevel::Error,
+                        )
                     }
                 }
             }
@@ -340,15 +367,16 @@ impl App {
                 if let Err(e) = github::save_repos_cache(&repos) {
                     tracing::warn!("Failed to save repos cache: {e}");
                 }
-                if let GitHubState::Connected { repos: r, .. } = &mut self.github_state {
-                    *r = repos;
-                }
+                // The catalog is stored regardless of sign-in state: anonymous
+                // fetches land here too.
+                self.colony_repo_list = repos;
                 // Decode any freshly-cached app icons into image handles.
                 self.reload_app_icons();
                 // New docs may have landed for the repo currently viewed.
                 self.detail_md_source = None;
                 self.refresh_detail_markdown();
-                self.status_message = i18n::t_fmt("github_repos_detected", &[("count", &count.to_string())]);
+                self.status_message =
+                    i18n::t_fmt("github_repos_detected", &[("count", &count.to_string())]);
                 if self.auto_check_updates {
                     Task::done(Message::CheckUpdates)
                 } else {
@@ -358,18 +386,27 @@ impl App {
             Message::GitHubError(e) => {
                 self.is_fetching_repos = false;
                 tracing::error!(error = %e, "GitHub error");
-                if let GitHubState::Connected { repos, .. } = &mut self.github_state {
-                    if repos.is_empty() {
-                        if let Some(cached) = github::load_repos_cache() {
-                            tracing::info!("Using {} cached repos as fallback", cached.len());
-                            *repos = cached;
-                        }
+                if self.colony_repo_list.is_empty() {
+                    if let Some(cached) = github::load_repos_cache() {
+                        tracing::info!("Using {} cached repos as fallback", cached.len());
+                        self.colony_repo_list = cached;
                     }
                 }
                 // Offline fallback repos may have cached icons on disk.
                 self.reload_app_icons();
                 self.status_message = i18n::t_fmt("github_api_error", &[("error", &e)]);
-                self.push_notification(i18n::t_fmt("github_api_error", &[("error", &e)]), NotificationLevel::Error)
+                if self.colony_repo_list.is_empty() {
+                    self.push_notification(
+                        i18n::t_fmt("github_api_error", &[("error", &e)]),
+                        NotificationLevel::Error,
+                    )
+                } else {
+                    // The catalog is showing (cached or previously fetched): a
+                    // toast on every offline boot would be pure noise - the
+                    // status line already carries the error. Only an EMPTY
+                    // catalog warrants interrupting the user.
+                    Task::none()
+                }
             }
             Message::DownloadRelease(repo_name, platform_key) => {
                 if self.is_downloading {
@@ -384,16 +421,19 @@ impl App {
                         let binary = entry.binary.clone();
                         let expected_sha256 = entry.sha256.clone();
                         let repo_name = repo.name.clone();
-                        let token = if let GitHubState::Connected { session, .. } = &self.github_state {
-                            Some(session.access_token.clone())
-                        } else {
-                            None
-                        };
-                        let display_name = file.as_deref()
+                        let token =
+                            if let GitHubState::Connected { session, .. } = &self.github_state {
+                                Some(session.access_token.clone())
+                            } else {
+                                None
+                            };
+                        let display_name = file
+                            .as_deref()
                             .or(file_pattern.as_deref())
                             .unwrap_or(&repo.name)
                             .to_string();
-                        self.status_message = i18n::t_fmt("downloading", &[("file", &display_name)]);
+                        self.status_message =
+                            i18n::t_fmt("downloading", &[("file", &display_name)]);
                         self.download_progress = Some((display_name.clone(), 0.0));
                         self.is_downloading = true;
                         let dl_repo = repo_name.clone();
@@ -403,21 +443,33 @@ impl App {
                         let download_task = Task::perform(
                             async move {
                                 // Fetch release info if we need tag resolution or asset matching
-                                let needs_release_info = tag.eq_ignore_ascii_case("latest") || file_pattern.is_some();
+                                let needs_release_info =
+                                    tag.eq_ignore_ascii_case("latest") || file_pattern.is_some();
 
                                 let (resolved_tag, resolved_file) = if needs_release_info {
                                     let client = github::build_update_client(token.as_deref())?;
-                                    let release_info = github::fetch_release_info(&client, &repo_name, &tag).await?;
+                                    let release_info =
+                                        github::fetch_release_info(&client, &repo_name, &tag)
+                                            .await?;
                                     let filename = if let Some(ref f) = file {
                                         f.clone()
                                     } else if let Some(ref pattern) = file_pattern {
-                                        github::find_asset_by_pattern(&release_info.asset_names, pattern)?
+                                        github::find_asset_by_pattern(
+                                            &release_info.asset_names,
+                                            pattern,
+                                        )?
                                     } else {
-                                        anyhow::bail!("colony.json: 'file' or 'filePattern' is required");
+                                        anyhow::bail!(
+                                            "colony.json: 'file' or 'filePattern' is required"
+                                        );
                                     };
                                     (release_info.tag, filename)
                                 } else {
-                                    let f = file.ok_or_else(|| anyhow::anyhow!("colony.json: 'file' or 'filePattern' is required"))?;
+                                    let f = file.ok_or_else(|| {
+                                        anyhow::anyhow!(
+                                            "colony.json: 'file' or 'filePattern' is required"
+                                        )
+                                    })?;
                                     (tag, f)
                                 };
 
@@ -429,11 +481,13 @@ impl App {
                                     binary,
                                     expected_sha256,
                                     Some(progress_tx),
-                                ).await?;
+                                )
+                                .await?;
 
                                 // Save resolved asset name when using filePattern (for installed_app_path)
                                 if file_pattern.is_some() {
-                                    let _ = github::save_installed_asset(&repo_name, &resolved_file);
+                                    let _ =
+                                        github::save_installed_asset(&repo_name, &resolved_file);
                                 }
 
                                 Ok((path, dl_repo, resolved_tag))
@@ -443,10 +497,9 @@ impl App {
                             },
                         );
 
-                        let progress_task = Task::run(
-                            progress_rx,
-                            move |pct| Message::DownloadProgress(progress_name.clone(), pct),
-                        );
+                        let progress_task = Task::run(progress_rx, move |pct| {
+                            Message::DownloadProgress(progress_name.clone(), pct)
+                        });
 
                         // Keep an abort handle so CancelDownload actually stops
                         // the download and its progress stream (dropping the
@@ -456,7 +509,8 @@ impl App {
                         self.download_abort = Some(handle);
                         return task;
                     } else {
-                        self.status_message = i18n::t_fmt("no_release_for", &[("platform", &platform_key)]);
+                        self.status_message =
+                            i18n::t_fmt("no_release_for", &[("platform", &platform_key)]);
                     }
                 }
                 Task::none()
@@ -478,7 +532,8 @@ impl App {
                         if let Err(e) = github::save_installed_version(&repo_name, &tag) {
                             tracing::warn!("Failed to save version info: {e}");
                         }
-                        let display_name = path.file_name()
+                        let display_name = path
+                            .file_name()
                             .map(|n| n.to_string_lossy().to_string())
                             .unwrap_or_else(|| path.display().to_string());
                         // Use the short binary name (not the full install path)
@@ -491,7 +546,10 @@ impl App {
                     }
                     Err(e) => {
                         self.status_message = i18n::t_fmt("download_error", &[("error", &e)]);
-                        self.push_notification(i18n::t_fmt("download_error", &[("error", &e)]), NotificationLevel::Error)
+                        self.push_notification(
+                            i18n::t_fmt("download_error", &[("error", &e)]),
+                            NotificationLevel::Error,
+                        )
                     }
                 }
             }
@@ -514,15 +572,15 @@ impl App {
                     .spawn()
                     .map(|_| ());
                 #[cfg(not(windows))]
-                let result = std::process::Command::new(&path)
-                    .spawn()
-                    .map(|_| ());
+                let result = std::process::Command::new(&path).spawn().map(|_| ());
 
                 match result {
                     Ok(()) => {
                         self.status_message = i18n::t("app_launched");
                         Task::perform(
-                            async { tokio::time::sleep(Duration::from_secs(4)).await; },
+                            async {
+                                tokio::time::sleep(Duration::from_secs(4)).await;
+                            },
                             |_| Message::ClearStatus,
                         )
                     }
@@ -548,18 +606,23 @@ impl App {
                         let app_dir = apps_dir.join(&repo_name);
                         if app_dir.exists() {
                             if let Err(e) = std::fs::remove_dir_all(&app_dir) {
-                                self.status_message = i18n::t_fmt("uninstall_error", &[("error", &e.to_string())]);
+                                self.status_message =
+                                    i18n::t_fmt("uninstall_error", &[("error", &e.to_string())]);
                             } else {
-                                self.status_message = i18n::t_fmt("uninstalled", &[("name", &repo_name)]);
+                                self.status_message =
+                                    i18n::t_fmt("uninstalled", &[("name", &repo_name)]);
                                 return Task::perform(
-                                    async { tokio::time::sleep(Duration::from_secs(4)).await; },
+                                    async {
+                                        tokio::time::sleep(Duration::from_secs(4)).await;
+                                    },
                                     |_| Message::ClearStatus,
                                 );
                             }
                         }
                     }
                     Err(e) => {
-                        self.status_message = i18n::t_fmt("scan_error", &[("error", &e.to_string())]);
+                        self.status_message =
+                            i18n::t_fmt("scan_error", &[("error", &e.to_string())]);
                     }
                 }
                 Task::none()
@@ -569,23 +632,22 @@ impl App {
                     return Task::none();
                 }
                 self.is_fetching_repos = true;
-                if let GitHubState::Connected { session, .. } = &self.github_state {
-                    let token = session.access_token.clone();
-                    return Task::perform(
-                        async move {
-                            github::fetch_colony_repos(Some(&token)).await
-                        },
-                        |result| match result {
-                            Ok(repos) => Message::GitHubReposFetched(repos),
-                            Err(e) => Message::GitHubError(e.to_string()),
-                        },
-                    );
-                }
-                Task::none()
+                // Anonymous refresh is supported: the token only raises the
+                // rate limit (60 req/h unauthenticated vs 5000 signed-in).
+                let token = if let GitHubState::Connected { session } = &self.github_state {
+                    Some(session.access_token.clone())
+                } else {
+                    None
+                };
+                Task::perform(
+                    async move { github::fetch_colony_repos(token.as_deref()).await },
+                    |result| match result {
+                        Ok(repos) => Message::GitHubReposFetched(repos),
+                        Err(e) => Message::GitHubError(e.to_string()),
+                    },
+                )
             }
-            Message::CopyToClipboard(value) => {
-                iced::clipboard::write(value)
-            }
+            Message::CopyToClipboard(value) => iced::clipboard::write(value),
             Message::OpenUrl(url) => {
                 if let Err(err) = open::that(&url) {
                     tracing::warn!("failed to open url {url:?}: {err}");
@@ -610,7 +672,9 @@ impl App {
                     // Fade in
                     if notif.fade_in < 1.0 && !notif.removing {
                         notif.fade_in = (notif.fade_in + SPEED).min(1.0);
-                        if (1.0 - notif.fade_in) < SNAP { notif.fade_in = 1.0; }
+                        if (1.0 - notif.fade_in) < SNAP {
+                            notif.fade_in = 1.0;
+                        }
                     }
                     // Start fade-out before expiration
                     let timeout = match notif.level {
@@ -624,7 +688,9 @@ impl App {
                     // Fade out
                     if notif.removing {
                         notif.fade_out = (notif.fade_out - SPEED).max(0.0);
-                        if notif.fade_out < SNAP { notif.fade_out = 0.0; }
+                        if notif.fade_out < SNAP {
+                            notif.fade_out = 0.0;
+                        }
                     }
                 }
                 self.notifications.retain(|n| n.fade_out > 0.0);
@@ -674,13 +740,19 @@ impl App {
                             }
                         }
                         iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab)
-                            if !self.show_settings && !self.show_github_menu && !self.show_first_launch =>
+                            if !self.show_settings
+                                && !self.show_github_menu
+                                && !self.show_first_launch =>
                         {
                             let len = self.sections.len();
                             if len > 0 {
                                 self.sidebar_indicator_from = self.sidebar_indicator_pos();
                                 if modifiers.shift() {
-                                    self.selected_section = if self.selected_section == 0 { len - 1 } else { self.selected_section - 1 };
+                                    self.selected_section = if self.selected_section == 0 {
+                                        len - 1
+                                    } else {
+                                        self.selected_section - 1
+                                    };
                                 } else {
                                     self.selected_section = (self.selected_section + 1) % len;
                                 }
@@ -740,7 +812,8 @@ impl App {
                 // installed Colony app so update detection compares against the
                 // tag that would actually be installed, not /releases/latest.
                 let platform = github::current_platform_key();
-                let repos: Vec<(String, String)> = self.colony_repos()
+                let repos: Vec<(String, String)> = self
+                    .colony_repos()
                     .iter()
                     .filter(|r| github::installed_app_path(r).is_some())
                     .filter_map(|r| {
@@ -756,7 +829,10 @@ impl App {
                     // forever, blocking all later checks) and still run the
                     // chained launcher self-update check.
                     self.is_checking_updates = false;
-                    self.status_message = i18n::t_fmt("apps_found", &[("count", &self.applications.len().to_string())]);
+                    self.status_message = i18n::t_fmt(
+                        "apps_found",
+                        &[("count", &self.applications.len().to_string())],
+                    );
                     return Task::done(Message::CheckLauncherUpdate);
                 }
 
@@ -772,15 +848,24 @@ impl App {
                             Ok(c) => c,
                             Err(_) => return Vec::new(),
                         };
-                        let futs: Vec<_> = repos.iter().map(|(name, tag)| {
-                            let c = client.clone();
-                            let n = name.clone();
-                            let t = tag.clone();
-                            async move {
-                                github::check_update_available(&c, &n, &t).await.map(|v| (n, v))
-                            }
-                        }).collect();
-                        futures::future::join_all(futs).await.into_iter().flatten().collect()
+                        let futs: Vec<_> = repos
+                            .iter()
+                            .map(|(name, tag)| {
+                                let c = client.clone();
+                                let n = name.clone();
+                                let t = tag.clone();
+                                async move {
+                                    github::check_update_available(&c, &n, &t)
+                                        .await
+                                        .map(|v| (n, v))
+                                }
+                            })
+                            .collect();
+                        futures::future::join_all(futs)
+                            .await
+                            .into_iter()
+                            .flatten()
+                            .collect()
                     },
                     Message::UpdatesChecked,
                 )
@@ -791,11 +876,20 @@ impl App {
                 // show an update badge (not just a transient toast).
                 self.available_updates = updates.iter().cloned().collect();
                 let notif_task = if updates.is_empty() {
-                    self.status_message = i18n::t_fmt("apps_found", &[("count", &self.applications.len().to_string())]);
+                    self.status_message = i18n::t_fmt(
+                        "apps_found",
+                        &[("count", &self.applications.len().to_string())],
+                    );
                     Task::none()
                 } else {
                     let names: Vec<&str> = updates.iter().map(|(n, _)| n.as_str()).collect();
-                    let msg = i18n::t_fmt("updates_available", &[("count", &updates.len().to_string()), ("names", &names.join(", "))]);
+                    let msg = i18n::t_fmt(
+                        "updates_available",
+                        &[
+                            ("count", &updates.len().to_string()),
+                            ("names", &names.join(", ")),
+                        ],
+                    );
                     self.push_notification(msg, NotificationLevel::Info)
                 };
                 // Also check for launcher self-update
@@ -989,10 +1083,8 @@ impl App {
                     }
                     // Give explicit feedback that the check ran and Colony is
                     // current, instead of silently doing nothing.
-                    None => self.push_notification(
-                        i18n::t("launcher_up_to_date"),
-                        NotificationLevel::Info,
-                    ),
+                    None => self
+                        .push_notification(i18n::t("launcher_up_to_date"), NotificationLevel::Info),
                 }
             }
             Message::DownloadLauncherUpdate => {
@@ -1025,10 +1117,7 @@ impl App {
                     Message::LauncherDownloadCompleted,
                 );
 
-                let progress_task = Task::run(
-                    progress_rx,
-                    Message::LauncherDownloadProgress,
-                );
+                let progress_task = Task::run(progress_rx, Message::LauncherDownloadProgress);
 
                 let (task, handle) = Task::batch([download_task, progress_task]).abortable();
                 self.download_abort = Some(handle);
@@ -1062,31 +1151,24 @@ impl App {
                     }
                 }
             }
-            Message::ApplyLauncherUpdate(new_binary) => {
-                Task::perform(
-                    async move {
-                        tokio::task::spawn_blocking(move || {
-                            github::apply_launcher_update(&new_binary)
-                                .map_err(|e| e.to_string())
-                        })
-                        .await
-                        .map_err(|e| e.to_string())
-                        .and_then(|r| r)
-                    },
-                    |result: Result<std::path::PathBuf, String>| {
-                        match result {
-                            Ok(exe_path) => {
-                                tracing::info!("Launching updated Colony: {}", exe_path.display());
-                                let _ = std::process::Command::new(&exe_path).spawn();
-                                std::process::exit(0);
-                            }
-                            Err(e) => {
-                                Message::LauncherDownloadCompleted(Err(e))
-                            }
-                        }
-                    },
-                )
-            }
+            Message::ApplyLauncherUpdate(new_binary) => Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || {
+                        github::apply_launcher_update(&new_binary).map_err(|e| e.to_string())
+                    })
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|r| r)
+                },
+                |result: Result<std::path::PathBuf, String>| match result {
+                    Ok(exe_path) => {
+                        tracing::info!("Launching updated Colony: {}", exe_path.display());
+                        let _ = std::process::Command::new(&exe_path).spawn();
+                        std::process::exit(0);
+                    }
+                    Err(e) => Message::LauncherDownloadCompleted(Err(e)),
+                },
+            ),
         }
     }
 }

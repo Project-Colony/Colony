@@ -19,7 +19,10 @@ pub fn ease_out_cubic(t: f32) -> f32 {
 
 /// Apply alpha to a Color by multiplying its existing alpha channel.
 pub fn with_alpha(color: iced::Color, alpha: f32) -> iced::Color {
-    iced::Color { a: color.a * alpha, ..color }
+    iced::Color {
+        a: color.a * alpha,
+        ..color
+    }
 }
 
 // --- Font constants ---
@@ -116,10 +119,7 @@ impl Notification {
 pub enum GitHubState {
     Disconnected,
     Connecting { user_code: Option<String> },
-    Connected {
-        session: OAuthSession,
-        repos: Vec<ColonyRepo>,
-    },
+    Connected { session: OAuthSession },
     Error(String),
 }
 
@@ -145,6 +145,13 @@ pub struct App {
     // GitHub / OAuth
     pub github_state: GitHubState,
     pub show_github_menu: bool,
+    /// The store catalog. Lives OUTSIDE GitHubState on purpose: the catalog is
+    /// public data, browsable anonymously (60 req/h unauthenticated GitHub API)
+    /// and restored from the on-disk cache at boot - signing in only raises the
+    /// rate limit and unlocks account features. Keyed UI state (e.g. the open
+    /// detail page) must reference repos by NAME, not index: refreshes replace
+    /// and reorder this vector.
+    pub colony_repo_list: Vec<ColonyRepo>,
     // Notifications
     pub notifications: Vec<Notification>,
     pub next_notification_id: u64,
@@ -172,21 +179,21 @@ pub struct App {
     pub show_settings: bool,
     pub settings_category: usize,
     // Appearance
-    pub selected_theme: String,        // e.g. "gruvbox"
-    pub selected_variant: String,      // e.g. "dark"
-    pub selected_accent: String,       // e.g. "blue"
+    pub selected_theme: String,   // e.g. "gruvbox"
+    pub selected_variant: String, // e.g. "dark"
+    pub selected_accent: String,  // e.g. "blue"
     pub auto_accent: bool,
     // General preferences
     pub restore_session: bool,
-    pub default_view: String,          // "all", "favorites"
-    pub language: String,              // "fr", "en"
+    pub default_view: String, // "all", "favorites"
+    pub language: String,     // "fr", "en"
     pub auto_check_updates: bool,
     // Appearance extras
-    pub font_size: String,             // "small", "default", "large"
+    pub font_size: String, // "small", "default", "large"
     pub animations: bool,
     // Accessibility
     pub high_contrast: bool,
-    pub text_size_a11y: String,        // "small", "default", "large", "xlarge"
+    pub text_size_a11y: String, // "small", "default", "large", "xlarge"
     pub reduce_motion: bool,
     pub keyboard_nav: bool,
     pub dyslexia_font: bool,
@@ -213,24 +220,20 @@ pub struct App {
     /// Message::UpdatesChecked; read by the grid cards to show an update badge.
     pub available_updates: std::collections::HashMap<String, String>,
     // Launcher self-update
-    pub launcher_update_available: Option<(String, String)>,  // (tag, asset_filename)
+    pub launcher_update_available: Option<(String, String)>, // (tag, asset_filename)
     pub is_checking_launcher_update: bool,
     pub launcher_update_staged: Option<std::path::PathBuf>,
     // Animation state
-    pub progress_display: f32,             // smoothly interpolated progress bar value
-    pub sidebar_indicator_from: f32,       // start Y position of current animation
-    pub sidebar_indicator_target: f32,     // target Y position
+    pub progress_display: f32, // smoothly interpolated progress bar value
+    pub sidebar_indicator_from: f32, // start Y position of current animation
+    pub sidebar_indicator_target: f32, // target Y position
     pub sidebar_indicator_start: Option<Instant>, // when the animation started (None = idle)
 }
 
 impl App {
-    /// Get the list of Colony repos from GitHub state.
+    /// Get the store catalog (available signed-in or anonymous).
     pub fn colony_repos(&self) -> &[ColonyRepo] {
-        if let GitHubState::Connected { repos, .. } = &self.github_state {
-            repos
-        } else {
-            &[]
-        }
+        &self.colony_repo_list
     }
 
     /// Filter local applications by the currently selected section.
@@ -303,9 +306,15 @@ impl App {
 
     pub fn app_font_with_weight(&self, weight: Weight) -> Font {
         if self.dyslexia_font {
-            Font { weight, ..Font::with_name(DYSLEXIA_FONT_NAME) }
+            Font {
+                weight,
+                ..Font::with_name(DYSLEXIA_FONT_NAME)
+            }
         } else {
-            Font { weight, ..self.font }
+            Font {
+                weight,
+                ..self.font
+            }
         }
     }
 
@@ -340,7 +349,8 @@ impl App {
                 let elapsed = start.elapsed().as_secs_f32() * 1000.0;
                 let t = (elapsed / Self::SIDEBAR_ANIM_MS).min(1.0);
                 let eased = ease_out_cubic(t);
-                self.sidebar_indicator_from + (self.sidebar_indicator_target - self.sidebar_indicator_from) * eased
+                self.sidebar_indicator_from
+                    + (self.sidebar_indicator_target - self.sidebar_indicator_from) * eased
             }
             None => self.sidebar_indicator_target,
         }
