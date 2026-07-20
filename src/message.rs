@@ -47,6 +47,12 @@ pub enum Message {
     KeyboardEvent(keyboard::Event),
     CheckUpdates,
     UpdatesChecked(Vec<(String, String)>), // Vec<(repo_name, latest_tag)>
+    /// One-click sequential update of every app with a pending update.
+    UpdateAll,
+    /// Fetch the release notes ("what's new") for a repo's available update.
+    FetchReleaseNotes(String),
+    /// (repo, Ok((tag, body_markdown))) - notes fetched (or failed).
+    ReleaseNotesFetched(String, Result<(String, String), String>),
     // Favorites
     ToggleFavorite(String),
     // First launch

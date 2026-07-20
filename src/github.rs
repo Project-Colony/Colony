@@ -661,6 +661,10 @@ pub async fn fetch_latest_release_tag(client: &reqwest::Client, repo_name: &str)
 pub struct ResolvedRelease {
     pub tag: String,
     pub asset_names: Vec<String>,
+    /// The release notes (GitHub release body, markdown). Previously never
+    /// fetched anywhere: the detail Changelog tab only showed the repo's
+    /// CHANGELOG.md file frozen at catalog-fetch time.
+    pub body: Option<String>,
 }
 
 /// Fetch release info (tag + asset list) for a repo.
@@ -686,12 +690,14 @@ pub async fn fetch_release_info(
     struct Release {
         tag_name: String,
         assets: Vec<Asset>,
+        body: Option<String>,
     }
 
     let release: Release = serde_json::from_str(&body)?;
     Ok(ResolvedRelease {
         tag: release.tag_name,
         asset_names: release.assets.into_iter().map(|a| a.name).collect(),
+        body: release.body,
     })
 }
 

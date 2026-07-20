@@ -222,6 +222,17 @@ pub struct App {
     /// Repos with a pending app update: repo_name -> available tag. Populated by
     /// Message::UpdatesChecked; read by the grid cards to show an update badge.
     pub available_updates: std::collections::HashMap<String, String>,
+    /// Repos queued behind the in-flight download by "Update all". Installs
+    /// run sequentially (one progress slot, one writer); each completion -
+    /// success or failure - dispatches the next entry.
+    pub update_queue: Vec<String>,
+    /// Fetched release notes per repo: repo_name -> (tag, pre-parsed markdown
+    /// blocks). Parsed once at fetch time so the view renders cached blocks
+    /// with zero per-frame parsing (same discipline as detail_blocks).
+    pub release_notes:
+        std::collections::HashMap<String, (String, Vec<crate::ui::markdown_blocks::DetailBlock>)>,
+    /// Repos whose release notes are currently being fetched.
+    pub fetching_notes: std::collections::HashSet<String>,
     // Launcher self-update
     pub launcher_update_available: Option<(String, String)>, // (tag, asset_filename)
     pub is_checking_launcher_update: bool,
