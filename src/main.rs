@@ -196,10 +196,7 @@ impl App {
             // General
             restore_session: prefs.restore_session.unwrap_or(true),
             default_view: prefs.default_view.clone().unwrap_or_else(|| "all".into()),
-            language: prefs
-                .language
-                .clone()
-                .unwrap_or_else(|| i18n::current_lang().to_string()),
+            language: prefs.language.clone().unwrap_or_else(i18n::current_lang),
             // ON by default: a store that never checks for updates leaves its
             // badges permanently invisible. The check is cheap (batched; zero
             // API calls for apps pinned to a fixed tag).

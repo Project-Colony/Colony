@@ -417,6 +417,12 @@ pub async fn download_release_asset(
             if record_asset {
                 crate::persistence::save_installed_asset(&repo_name, &filename)?;
             }
+            // Desktop integration (Linux): index the installed app in the
+            // desktop environment. Best-effort - a failure here must not fail
+            // an otherwise complete install.
+            if let Err(e) = crate::persistence::write_desktop_entry(&repo_name, &final_path) {
+                tracing::warn!("could not write desktop entry for {repo_name}: {e}");
+            }
 
             Ok(final_path)
         })

@@ -602,6 +602,15 @@ fn parse_desktop_file(path: &Path) -> Result<Application> {
                 "Categories" => categories = value.to_string(),
                 "NoDisplay" => no_display = value.eq_ignore_ascii_case("true"),
                 "Hidden" => hidden = value.eq_ignore_ascii_case("true"),
+                // Entries Colony itself wrote for installed store apps: real
+                // desktop launchers should show them, but Colony's own scan
+                // must skip them - the app is already represented by its
+                // store card, a local duplicate would appear twice.
+                "X-Colony-Managed" => {
+                    if value.eq_ignore_ascii_case("true") {
+                        anyhow::bail!("Colony-managed entry (represented by its store card)");
+                    }
+                }
                 _ => {}
             }
         }

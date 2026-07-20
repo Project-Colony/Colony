@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::RwLock;
 
-static LOCALE: OnceLock<Locale> = OnceLock::new();
+static LOCALE: RwLock<Option<Locale>> = RwLock::new(None);
 
 pub struct Locale {
     strings: HashMap<String, String>,
@@ -243,10 +243,6 @@ impl Locale {
                 strings.insert(
                     "n_results_found".into(),
                     "{count} résultat(s) pour « {query} »".into(),
-                );
-                strings.insert(
-                    "language_restart_notice".into(),
-                    "Le changement de langue prendra effet au prochain lancement.".into(),
                 );
                 strings.insert("theme_applied".into(), "Thème appliqué.".into());
 
@@ -703,6 +699,8 @@ impl Locale {
                 strings.insert("view_on_github".into(), "Voir sur GitHub".into());
                 strings.insert("installed_version".into(), "Installé : {version}".into());
                 strings.insert("launch_action".into(), "Lancer".into());
+                strings.insert("section_security".into(), "Sécurité".into());
+                strings.insert("language_changed".into(), "Langue changée".into());
                 strings.insert("launcher_update_system_managed".into(), "Mise à jour {version} disponible - cette installation est gérée par le gestionnaire de paquets, mettez à jour via « pacman -Syu » (colony-bin)".into());
                 // Detail tabs
                 strings.insert("tab_readme".into(), "ReadMe".into());
@@ -917,10 +915,6 @@ impl Locale {
                 strings.insert(
                     "n_results_found".into(),
                     "{count} result(s) for \"{query}\"".into(),
-                );
-                strings.insert(
-                    "language_restart_notice".into(),
-                    "Language change will take effect on next launch.".into(),
                 );
                 strings.insert("theme_applied".into(), "Theme applied.".into());
 
@@ -1341,6 +1335,8 @@ impl Locale {
                 strings.insert("view_on_github".into(), "View on GitHub".into());
                 strings.insert("installed_version".into(), "Installed: {version}".into());
                 strings.insert("launch_action".into(), "Launch".into());
+                strings.insert("section_security".into(), "Security".into());
+                strings.insert("language_changed".into(), "Language changed".into());
                 strings.insert("launcher_update_system_managed".into(), "Update {version} is available - this install is managed by the package manager, update via 'pacman -Syu' (colony-bin)".into());
                 // Detail tabs
                 strings.insert("tab_readme".into(), "ReadMe".into());
@@ -1368,8 +1364,22 @@ pub fn init(preferred: Option<String>) {
     let lang = preferred
         .filter(|l| l == "fr" || l == "en")
         .unwrap_or_else(detect_language);
+    set_language(&lang);
+}
+
+/// Swap the active locale at runtime. Views call `t()` on every render, so
+/// the whole UI re-labels on the next frame - no restart required (the locale
+/// used to live in a OnceLock, forcing one).
+pub fn set_language(lang: &str) {
+    let lang = if lang == "fr" || lang == "en" {
+        lang
+    } else {
+        "en"
+    };
     tracing::info!("Locale: {lang}");
-    LOCALE.get_or_init(|| Locale::new(&lang));
+    if let Ok(mut locale) = LOCALE.write() {
+        *locale = Some(Locale::new(lang));
+    }
 }
 
 /// Localized display name for a built-in sidebar section, keyed by its
@@ -1388,23 +1398,24 @@ pub fn section_display_name(name: &str) -> String {
         "multimedia" => "section_multimedia",
         "system" => "section_system",
         "utilities" | "utility" => "section_utilities",
+        "security" => "section_security",
         "games" | "game" => "section_games",
         "other" => "section_other",
         _ => return name.to_string(),
     };
     LOCALE
-        .get()
-        .and_then(|locale| locale.strings.get(key))
-        .cloned()
+        .read()
+        .ok()
+        .and_then(|l| l.as_ref().and_then(|l| l.strings.get(key).cloned()))
         .unwrap_or_else(|| name.to_string())
 }
 
 /// Get a translated string by key.
 pub fn t(key: &str) -> String {
     LOCALE
-        .get()
-        .and_then(|locale| locale.strings.get(key))
-        .cloned()
+        .read()
+        .ok()
+        .and_then(|l| l.as_ref().and_then(|l| l.strings.get(key).cloned()))
         .unwrap_or_else(|| {
             tracing::warn!("Missing translation key: {key}");
             key.to_string()
@@ -1422,8 +1433,12 @@ pub fn t_fmt(key: &str, vars: &[(&str, &str)]) -> String {
 }
 
 /// Get the current language code.
-pub fn current_lang() -> &'static str {
-    LOCALE.get().map(|l| l.lang.as_str()).unwrap_or("en")
+pub fn current_lang() -> String {
+    LOCALE
+        .read()
+        .ok()
+        .and_then(|l| l.as_ref().map(|l| l.lang.clone()))
+        .unwrap_or_else(|| "en".to_string())
 }
 
 /// Detect the user's language from environment.
@@ -1492,7 +1507,7 @@ mod tests {
     #[test]
     fn t_fmt_substitution() {
         // Initialize with English for test
-        let _ = LOCALE.set(Locale::new("en"));
+        set_language("en");
         let result = t_fmt("apps_found", &[("count", "42")]);
         assert_eq!(result, "42 applications found");
     }
