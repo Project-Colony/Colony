@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.0](https://github.com/Project-Colony/Colony/compare/v0.8.0...v0.9.0) (2026-07-20)
+
+
+### Features
+
+* signature enforcement, strict ed25519, and self-update TOCTOU fix ([#50](https://github.com/Project-Colony/Colony/issues/50)) ([1f57b45](https://github.com/Project-Colony/Colony/commit/1f57b456ddd39a5b906a70ff1b5a7a0c02cdfb9b))
+* UX polish batch and github.rs facade removal ([#53](https://github.com/Project-Colony/Colony/issues/53)) ([a10f33a](https://github.com/Project-Colony/Colony/commit/a10f33add55a4b0dc2843293de5fd34d5a3d24f9))
+
+
+### Bug Fixes
+
+* **ci:** AUR bump compatible with the two-source PKGBUILD (binary + icon) ([#51](https://github.com/Project-Colony/Colony/issues/51)) ([a3a981a](https://github.com/Project-Colony/Colony/commit/a3a981a284e81ff8a2eaeb795106944c5ec99b15))
+
 ## [0.8.0](https://github.com/Project-Colony/Colony/compare/v0.7.1...v0.8.0) (2026-07-20)
 
 
