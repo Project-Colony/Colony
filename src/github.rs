@@ -28,8 +28,8 @@ pub use crate::download::{apply_launcher_update, download_launcher_asset, downlo
 pub use crate::persistence::{
     colony_apps_dir, colony_data_dir, installed_app_path, load_favorites,
     load_installed_version, load_preferences, load_repos_cache, load_scan_cache, read_repo_doc,
-    save_favorites, save_installed_asset, save_installed_version, save_preferences,
-    save_repos_cache, save_scan_cache, CachedApp, UserPreferences,
+    save_favorites, save_preferences, save_repos_cache, save_scan_cache, CachedApp,
+    UserPreferences,
 };
 use crate::persistence::save_repo_doc;
 use crate::persistence::save_repo_icon;
@@ -679,11 +679,29 @@ pub async fn fetch_release_info(
 
 /// Find an asset whose name contains the given pattern (case-insensitive).
 /// Returns an error if zero or multiple assets match.
+/// Metadata companions published alongside release binaries (signatures,
+/// checksums, updater manifests). Never installable, so they are excluded from
+/// pattern matching - otherwise `app-linux.sig` would make the pattern
+/// "linux" ambiguous the day a repo starts signing its releases (Colony's own
+/// releases already ship `.sig` siblings).
+const NON_INSTALLABLE_SUFFIXES: &[&str] =
+    &[".sig", ".asc", ".sha256", ".sha256sum", ".txt", ".yml", ".yaml", ".json"];
+
 pub fn find_asset_by_pattern(assets: &[String], pattern: &str) -> Result<String> {
     let pattern_lower = pattern.to_lowercase();
+    // An exact (case-insensitive) name match always wins: it cannot be
+    // ambiguous, and it lets a manifest pin `app-macos` even though
+    // `app-macos-x86` also contains that pattern as a substring.
+    if let Some(exact) = assets.iter().find(|n| n.to_lowercase() == pattern_lower) {
+        return Ok(exact.clone());
+    }
     let matches: Vec<&String> = assets
         .iter()
-        .filter(|name| name.to_lowercase().contains(&pattern_lower))
+        .filter(|name| {
+            let lower = name.to_lowercase();
+            lower.contains(&pattern_lower)
+                && !NON_INSTALLABLE_SUFFIXES.iter().any(|s| lower.ends_with(s))
+        })
         .collect();
     match matches.len() {
         0 => anyhow::bail!("No release asset matching pattern '{pattern}'"),
@@ -1041,6 +1059,36 @@ mod tests {
         let result = find_asset_by_pattern(&assets, "linux");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Ambiguous"));
+    }
+
+    #[test]
+    fn find_asset_by_pattern_exact_name_beats_substring_overlap() {
+        // "app-macos" is a substring of "app-macos-x86": an exact name match
+        // must win instead of erroring as ambiguous, so Apple Silicon
+        // manifests can pin the shorter asset name.
+        let assets = vec!["app-macos".to_string(), "app-macos-x86".to_string()];
+        assert_eq!(
+            find_asset_by_pattern(&assets, "app-macos").unwrap(),
+            "app-macos"
+        );
+        assert_eq!(
+            find_asset_by_pattern(&assets, "app-macos-x86").unwrap(),
+            "app-macos-x86"
+        );
+    }
+
+    #[test]
+    fn find_asset_by_pattern_ignores_signature_and_checksum_siblings() {
+        // The day a repo signs its releases (like Colony itself), every binary
+        // grows a .sig sibling containing the same name: the pattern must
+        // keep resolving to the binary, not error as ambiguous.
+        let assets = vec![
+            "app-linux".to_string(),
+            "app-linux.sig".to_string(),
+            "app-linux.sha256".to_string(),
+            "latest-linux.yml".to_string(),
+        ];
+        assert_eq!(find_asset_by_pattern(&assets, "linux").unwrap(), "app-linux");
     }
 
     #[test]

@@ -470,22 +470,25 @@ impl App {
                                     (tag, f)
                                 };
 
+                                // The version/asset records are written by
+                                // download_release_asset itself, inside the
+                                // blocking install step: writing them here (or
+                                // in DownloadCompleted) meant a cancel landing
+                                // mid-install detached the blocking task and
+                                // left an installed binary with no metadata.
                                 let path = github::download_release_asset(
                                     token,
-                                    repo_name.clone(),
-                                    resolved_tag.clone(),
-                                    resolved_file.clone(),
-                                    binary,
-                                    expected_sha256,
+                                    crate::download::AssetInstall {
+                                        repo_name: repo_name.clone(),
+                                        tag: resolved_tag.clone(),
+                                        filename: resolved_file.clone(),
+                                        binary_name: binary,
+                                        expected_sha256,
+                                        record_asset: file_pattern.is_some(),
+                                    },
                                     Some(progress_tx),
                                 )
                                 .await?;
-
-                                // Save resolved asset name when using filePattern (for installed_app_path)
-                                if file_pattern.is_some() {
-                                    let _ =
-                                        github::save_installed_asset(&repo_name, &resolved_file);
-                                }
 
                                 Ok((path, dl_repo, resolved_tag))
                             },
@@ -525,10 +528,10 @@ impl App {
                 self.is_downloading = false;
                 self.download_abort = None;
                 match result {
-                    Ok((path, repo_name, tag)) => {
-                        if let Err(e) = github::save_installed_version(&repo_name, &tag) {
-                            tracing::warn!("Failed to save version info: {e}");
-                        }
+                    // Version/asset records were written atomically with the
+                    // install (inside download_release_asset), so the tag is
+                    // no longer needed here.
+                    Ok((path, repo_name, _tag)) => {
                         // The just-installed version IS the one the badge was
                         // advertising: clear it, or the card keeps showing
                         // "Update vX -> vX" until the next global check.

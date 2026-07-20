@@ -136,7 +136,7 @@ fn verify_sha256(path: &std::path::Path, expected_hex: &str) -> Result<()> {
 /// Ensure a filename is a single normal path component (no `..`, no path
 /// separators, not absolute) before it is joined into a destination directory.
 /// Shared by archive extraction and raw-asset download to block path traversal.
-fn ensure_safe_component(name: &str) -> Result<()> {
+pub(crate) fn ensure_safe_component(name: &str) -> Result<()> {
     let p = std::path::Path::new(name);
     anyhow::ensure!(
         p.components().count() == 1
@@ -248,20 +248,39 @@ fn extract_binary_from_archive(
     }
 }
 
-/// Download a release asset to `<colony_apps_dir>/<repo_name>/<filename>`.
-/// If `expected_sha256` is provided, verifies the file integrity after download.
-/// If `binary_name` is provided, treats the downloaded file as an archive and
-/// extracts the named binary from it (supports .zip and .tar.gz).
-/// Returns the final path on success.
+/// Everything needed to install one resolved release asset.
+pub struct AssetInstall {
+    pub repo_name: String,
+    /// The resolved (never "latest") release tag being installed.
+    pub tag: String,
+    /// The resolved asset name to download.
+    pub filename: String,
+    /// When set, the download is an archive and this named binary is extracted.
+    pub binary_name: Option<String>,
+    /// When set, the download is integrity-checked against this hex digest.
+    pub expected_sha256: Option<String>,
+    /// True when `filename` was resolved from a filePattern: the name is then
+    /// persisted next to the binary so `installed_app_path` can find the
+    /// install again.
+    pub record_asset: bool,
+}
+
+/// Download a release asset to `<colony_apps_dir>/<repo_name>/<filename>`,
+/// verify/extract it, atomically promote it into place, and record the
+/// installed version. Returns the final path on success.
 pub async fn download_release_asset(
     token: Option<String>,
-    repo_name: String,
-    tag: String,
-    filename: String,
-    binary_name: Option<String>,
-    expected_sha256: Option<String>,
+    install: AssetInstall,
     progress_tx: Option<futures::channel::mpsc::UnboundedSender<f32>>,
 ) -> Result<PathBuf> {
+    let AssetInstall {
+        repo_name,
+        tag,
+        filename,
+        binary_name,
+        expected_sha256,
+        record_asset,
+    } = install;
     // The manifest-supplied filename becomes a local path — guard it against
     // traversal (`../`, absolute paths) before joining, mirroring the archive
     // `binary` guard.
@@ -322,6 +341,18 @@ pub async fn download_release_asset(
                 let mut perms = std::fs::metadata(&final_path)?.permissions();
                 perms.set_mode(0o755);
                 std::fs::set_permissions(&final_path, perms)?;
+            }
+
+            // Record WHAT is installed here, atomically with the install
+            // itself - not in the UI message handler. A cancel mid-install
+            // drops the awaiting future but this blocking task runs to
+            // completion: writing the version from the handler meant an
+            // installed binary with no version file, silently excluded from
+            // every future update check (or, in the filePattern case, an
+            // orphaned binary the app no longer even sees as installed).
+            crate::persistence::save_installed_version(&repo_name, &tag)?;
+            if record_asset {
+                crate::persistence::save_installed_asset(&repo_name, &filename)?;
             }
 
             Ok(final_path)
