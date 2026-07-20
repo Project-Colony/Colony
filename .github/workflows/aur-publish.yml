@@ -99,7 +99,9 @@ jobs:
           # Reset pkgrel to 1 because pkgver changed — standard AUR convention.
           sed -i "s/^pkgver=.*/pkgver=${PKGVER}/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
-          sed -i "s/^sha256sums=('.*')/sha256sums=('${SHA256}')/" PKGBUILD
+          # The binary hash lives in its own _binsha variable (the icon's
+          # _iconsha is stable across releases and must not be touched).
+          sed -i "s/^_binsha=.*/_binsha='${SHA256}'/" PKGBUILD
 
           # .SRCINFO mirrors the PKGBUILD metadata. We sed the three fields
           # that track pkgver (pkgver itself, noextract filename, source URL)
@@ -109,7 +111,9 @@ jobs:
           sed -i "s|noextract = colony-[^[:space:]]*|noextract = colony-${PKGVER}|" .SRCINFO
           sed -i "s|colony-[0-9.]*::https|colony-${PKGVER}::https|" .SRCINFO
           sed -i "s|download/v[0-9.]*/colony-linux|download/v${PKGVER}/colony-linux|" .SRCINFO
-          sed -i "s/^\tsha256sums = .*/\tsha256sums = ${SHA256}/" .SRCINFO
+          # Only the FIRST sha256sums line is the binary's; the second is the
+          # stable icon hash.
+          sed -i "0,/^\tsha256sums = .*/s//\tsha256sums = ${SHA256}/" .SRCINFO
 
           echo "--- PKGBUILD diff ---"
           git --no-pager diff PKGBUILD || true
