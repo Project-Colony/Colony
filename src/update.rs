@@ -1359,3 +1359,245 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::github::{ColonyManifest, ColonyRepo, ReleaseFileEntry};
+
+    fn repo(name: &str, desc: &str) -> ColonyRepo {
+        let mut release_files = std::collections::HashMap::new();
+        release_files.insert(
+            github::current_platform_key().to_string(),
+            ReleaseFileEntry {
+                tag: "latest".into(),
+                file: Some(format!("{name}-bin")),
+                file_pattern: None,
+                binary: None,
+                sha256: None,
+            },
+        );
+        ColonyRepo {
+            name: name.into(),
+            description: desc.into(),
+            language: "Rust".into(),
+            html_url: format!("https://github.com/Project-Colony/{name}"),
+            manifest: ColonyManifest {
+                name: name.into(),
+                category: "Development".into(),
+                platforms: vec!["linux".into()],
+                release_files,
+                icon: None,
+            },
+        }
+    }
+
+    /// Serialize tests that redirect XDG dirs (env vars are process-global)
+    /// and keep every disk write inside a throwaway directory. `dirs` only
+    /// honors XDG on Linux, so callers gate on cfg(target_os = "linux").
+    #[cfg(target_os = "linux")]
+    fn with_temp_dirs(f: impl FnOnce()) {
+        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let old_config = std::env::var_os("XDG_CONFIG_HOME");
+        let old_data = std::env::var_os("XDG_DATA_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", tmp.path().join("config"));
+        std::env::set_var("XDG_DATA_HOME", tmp.path().join("data"));
+        f();
+        match old_config {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match old_data {
+            Some(v) => std::env::set_var("XDG_DATA_HOME", v),
+            None => std::env::remove_var("XDG_DATA_HOME"),
+        }
+    }
+
+    #[test]
+    fn open_detail_survives_catalog_replacement_and_reorder() {
+        let mut app = App::new_for_test();
+        app.colony_repo_list = vec![repo("Alpha", ""), repo("Beta", ""), repo("Gamma", "")];
+        let _ = app.update(Message::ColonyRepoSelected("Beta".into()));
+        assert_eq!(app.active_repo().map(|r| r.name.as_str()), Some("Beta"));
+
+        // A refresh replaces AND reorders the vector (GitHub sorts by last
+        // push): the open detail page must still resolve to the same app.
+        app.colony_repo_list = vec![repo("Gamma", ""), repo("Beta", ""), repo("Alpha", "")];
+        assert_eq!(app.active_repo().map(|r| r.name.as_str()), Some("Beta"));
+
+        // A repo that vanished resolves to None (the view falls back to the
+        // grid) instead of showing someone else's page.
+        app.colony_repo_list = vec![repo("Alpha", "")];
+        assert!(app.active_repo().is_none());
+    }
+
+    #[test]
+    fn download_completion_clears_the_update_badge() {
+        let mut app = App::new_for_test();
+        app.available_updates
+            .insert("Grape".to_string(), "v2.0.0".to_string());
+        let _ = app.update(Message::DownloadCompleted(Ok((
+            std::path::PathBuf::from("/tmp/grape-bin"),
+            "Grape".to_string(),
+            "v2.0.0".to_string(),
+        ))));
+        assert!(
+            !app.available_updates.contains_key("Grape"),
+            "badge must not survive the update it advertised"
+        );
+        assert!(!app.is_downloading);
+    }
+
+    #[test]
+    fn update_all_queues_updatable_repos_and_chains_on_completion() {
+        let mut app = App::new_for_test();
+        app.colony_repo_list = vec![repo("One", ""), repo("Two", ""), repo("Three", "")];
+        app.available_updates
+            .insert("One".to_string(), "v2".to_string());
+        app.available_updates
+            .insert("Three".to_string(), "v2".to_string());
+
+        let _ = app.update(Message::UpdateAll);
+        // The first updatable repo is dispatched immediately; the rest queue.
+        assert_eq!(app.update_queue, vec!["Three".to_string()]);
+
+        // A completion - success or failure - pops the next entry.
+        let _ = app.update(Message::DownloadCompleted(Err("boom".into())));
+        assert!(
+            app.update_queue.is_empty(),
+            "failure must not strand the queue"
+        );
+    }
+
+    #[test]
+    fn cancel_download_empties_the_update_queue() {
+        let mut app = App::new_for_test();
+        app.update_queue = vec!["A".into(), "B".into()];
+        app.is_downloading = true;
+        let _ = app.update(Message::CancelDownload);
+        assert!(app.update_queue.is_empty(), "cancel means stop, not skip");
+        assert!(!app.is_downloading);
+    }
+
+    #[test]
+    fn launcher_check_failure_never_claims_up_to_date() {
+        let mut app = App::new_for_test();
+        app.is_checking_launcher_update = true;
+        let _ = app.update(Message::LauncherUpdateChecked(
+            false,
+            Err("network down".into()),
+        ));
+        assert!(!app.is_checking_launcher_update);
+        assert!(app.launcher_update_available.is_none());
+        assert!(
+            app.status_message.contains("network down"),
+            "the failure must surface, got: {}",
+            app.status_message
+        );
+        // Automatic check: no toast for the failure either (status line only).
+        assert!(app.notifications.is_empty());
+
+        // A clean Ok(None) on an AUTOMATIC check stays quiet (no toast)...
+        let _ = app.update(Message::LauncherUpdateChecked(false, Ok(None)));
+        assert!(app.notifications.is_empty());
+        // ...but a MANUAL check gets explicit feedback.
+        let _ = app.update(Message::LauncherUpdateChecked(true, Ok(None)));
+        assert_eq!(app.notifications.len(), 1);
+    }
+
+    #[test]
+    fn window_resize_bumps_generation_and_stale_saves_are_ignored() {
+        let mut app = App::new_for_test();
+        let _ = app.update(Message::WindowResized(1280.0, 800.0));
+        let _ = app.update(Message::WindowResized(1300.0, 820.0));
+        assert_eq!(app.window_size, (1300.0, 820.0));
+        assert_eq!(app.window_save_gen, 2);
+        // A stale generation must not trigger a save; the state check here is
+        // that the handler is a no-op (the fresh gen path writes prefs, which
+        // is covered by the linux-gated persistence test).
+        let _ = app.update(Message::PersistWindowSize(1));
+        assert_eq!(app.window_save_gen, 2);
+    }
+
+    #[test]
+    fn search_matches_description_and_display_name() {
+        let mut app = App::new_for_test();
+        app.colony_repo_list = vec![
+            repo("Grape", "Lecteur musique en Rust"),
+            repo("orCAL", "Calendar overlay"),
+        ];
+        app.search_query = "musique".into();
+        let hits: Vec<&str> = app
+            .filtered_colony_repos()
+            .iter()
+            .map(|r| r.name.as_str())
+            .collect();
+        assert_eq!(hits, vec!["Grape"]);
+    }
+
+    #[test]
+    fn section_selection_out_of_bounds_is_ignored() {
+        let mut app = App::new_for_test();
+        // No sections loaded: any index is out of bounds and must be ignored
+        // (and must not write preferences or panic).
+        let _ = app.update(Message::SectionSelected(3));
+        assert_eq!(app.selected_section, 0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn repos_fetched_stores_catalog_while_disconnected_and_prunes_orphans() {
+        with_temp_dirs(|| {
+            let mut app = App::new_for_test();
+            assert!(matches!(app.github_state, GitHubState::Disconnected));
+
+            // Seed an orphaned doc cache for a repo that no longer exists.
+            let orphan = crate::persistence::colony_data_dir()
+                .unwrap()
+                .join("repo-docs")
+                .join("Ghost");
+            std::fs::create_dir_all(&orphan).unwrap();
+
+            let _ = app.update(Message::GitHubReposFetched(vec![repo("Alive", "")]));
+
+            // The catalog is stored even though no session exists (anonymous
+            // mode), and the orphaned cache is pruned.
+            assert_eq!(app.colony_repos().len(), 1);
+            assert!(!orphan.exists(), "orphaned cache must be pruned");
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn github_error_only_toasts_when_the_catalog_is_empty() {
+        with_temp_dirs(|| {
+            // Empty catalog + no cache: the failure interrupts (error toast).
+            let mut app = App::new_for_test();
+            let _ = app.update(Message::GitHubError("boom".into()));
+            assert_eq!(app.notifications.len(), 1);
+
+            // Catalog showing: the same failure stays in the status line.
+            let mut app = App::new_for_test();
+            app.colony_repo_list = vec![repo("Alive", "")];
+            let _ = app.update(Message::GitHubError("boom".into()));
+            assert!(app.notifications.is_empty());
+            assert!(app.status_message.contains("boom"));
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn toggle_favorite_persists_to_disk() {
+        with_temp_dirs(|| {
+            let mut app = App::new_for_test();
+            let _ = app.update(Message::ToggleFavorite("Grape".into()));
+            assert!(app.is_favorite("Grape"));
+            assert_eq!(crate::github::load_favorites(), vec!["Grape".to_string()]);
+            let _ = app.update(Message::ToggleFavorite("Grape".into()));
+            assert!(!app.is_favorite("Grape"));
+            assert!(crate::github::load_favorites().is_empty());
+        });
+    }
+}
