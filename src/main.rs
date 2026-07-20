@@ -113,7 +113,12 @@ impl App {
         let default_view = prefs.default_view.clone().unwrap_or_else(|| "all".into());
         let restore = prefs.restore_session.unwrap_or(true);
         let selected_section = if restore {
-            prefs.selected_section.unwrap_or(0)
+            // Clamp against the LOADED sections: a categories.json override
+            // that shrank the list must not leave a dangling index.
+            prefs
+                .selected_section
+                .unwrap_or(0)
+                .min(sections.len().saturating_sub(1))
         } else {
             match default_view.as_str() {
                 "favorites" => sections.iter().position(|s| s.is_favorites).unwrap_or(0),
@@ -167,6 +172,7 @@ impl App {
             app_icons: std::collections::HashMap::new(),
             download_progress: None,
             download_abort: None,
+            downloading_repo: None,
             favorites,
             confirm_uninstall: None,
             show_first_launch,

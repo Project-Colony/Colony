@@ -57,6 +57,19 @@ pub enum NotificationLevel {
     Error,
 }
 
+impl NotificationLevel {
+    /// Auto-dismiss delay - the single source for the three places that used
+    /// to hardcode these numbers (push_notification, AnimationTick's fade
+    /// lead, is_expired) and could silently drift apart.
+    pub fn timeout(&self) -> Duration {
+        match self {
+            NotificationLevel::Error => Duration::from_secs(10),
+            NotificationLevel::Warning => Duration::from_secs(7),
+            NotificationLevel::Info => Duration::from_secs(5),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Notification {
     pub id: u64,
@@ -104,12 +117,7 @@ impl Notification {
     }
 
     pub fn is_expired(&self) -> bool {
-        let timeout = match self.level {
-            NotificationLevel::Error => Duration::from_secs(10),
-            NotificationLevel::Warning => Duration::from_secs(7),
-            NotificationLevel::Info => Duration::from_secs(5),
-        };
-        self.created_at.elapsed() > timeout
+        self.created_at.elapsed() > self.level.timeout()
     }
 }
 
@@ -167,6 +175,9 @@ pub struct App {
     /// Abort handle for the in-flight download (app asset or launcher self-
     /// update). Cancelling actually aborts the task instead of only clearing UI.
     pub download_abort: Option<iced::task::Handle>,
+    /// Repo of the in-flight app download, so CancelDownload can sweep its
+    /// orphaned `*.part` staging files (the aborted task cannot clean up).
+    pub downloading_repo: Option<String>,
     // Favorites
     pub favorites: Vec<String>,
     // Uninstall confirmation
@@ -449,6 +460,7 @@ impl App {
             app_icons: std::collections::HashMap::new(),
             download_progress: None,
             download_abort: None,
+            downloading_repo: None,
             favorites: Vec::new(),
             confirm_uninstall: None,
             show_first_launch: false,

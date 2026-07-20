@@ -50,11 +50,7 @@ struct TokenResponse {
 /// Step 1: Request a device code from GitHub and open the browser.
 /// Returns the device code info so the UI can display the user_code.
 pub async fn request_device_code() -> Result<DeviceCode> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .connect_timeout(Duration::from_secs(10))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
+    let client = http_client()?;
 
     let resp = client
         .post(DEVICE_CODE_URL)
@@ -86,14 +82,22 @@ pub async fn request_device_code() -> Result<DeviceCode> {
 
 /// Step 2: Poll GitHub until the user authorizes (or timeout).
 /// Call this after `request_device_code`.
-pub async fn poll_for_token(device: DeviceCode) -> Result<OAuthSession> {
-    let client = reqwest::Client::builder()
+/// The OAuth HTTP client. One builder instead of three copies - and a build
+/// failure now propagates instead of silently falling back to a client with
+/// NO timeout (which turned a 30s bound into a potential forever-hang).
+fn http_client() -> Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .user_agent(format!("Colony-Launcher/{}", crate::github::APP_VERSION))
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
+        .build()?)
+}
+
+pub async fn poll_for_token(device: DeviceCode) -> Result<OAuthSession> {
+    let client = http_client()?;
 
     let poll_interval = Duration::from_secs(device.interval.max(5));
+    let mut consecutive_errors: u32 = 0;
     let deadline = std::time::Instant::now() + Duration::from_secs(device.expires_in);
 
     let access_token = loop {
@@ -103,18 +107,37 @@ pub async fn poll_for_token(device: DeviceCode) -> Result<OAuthSession> {
             anyhow::bail!("{}", crate::i18n::t("oauth_device_expired"));
         }
 
-        let resp = client
-            .post(TOKEN_URL)
-            .header("Accept", "application/json")
-            .form(&[
-                ("client_id", CLIENT_ID),
-                ("device_code", device.device_code.as_str()),
-                ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
-            ])
-            .send()
-            .await?;
-
-        let token_resp: TokenResponse = resp.json().await?;
+        // One WiFi blip used to kill the whole login even though the device
+        // code was still valid; tolerate a few consecutive transient errors.
+        let token_resp: TokenResponse = match async {
+            client
+                .post(TOKEN_URL)
+                .header("Accept", "application/json")
+                .form(&[
+                    ("client_id", CLIENT_ID),
+                    ("device_code", device.device_code.as_str()),
+                    ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+                ])
+                .send()
+                .await?
+                .json::<TokenResponse>()
+                .await
+        }
+        .await
+        {
+            Ok(r) => {
+                consecutive_errors = 0;
+                r
+            }
+            Err(e) => {
+                consecutive_errors += 1;
+                if consecutive_errors >= 3 {
+                    return Err(e.into());
+                }
+                tracing::warn!("transient error while polling for token (retrying): {e}");
+                continue;
+            }
+        };
 
         match token_resp.error.as_deref() {
             Some("authorization_pending") => continue,
@@ -151,11 +174,7 @@ pub async fn poll_for_token(device: DeviceCode) -> Result<OAuthSession> {
 
 /// Fetch the authenticated user's login name.
 async fn fetch_username(token: &str) -> Result<String> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .connect_timeout(Duration::from_secs(10))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
+    let client = http_client()?;
     let resp = client
         .get("https://api.github.com/user")
         .header("Authorization", format!("Bearer {token}"))

@@ -217,8 +217,13 @@ fn default_unix_dirs() -> Vec<PathBuf> {
 
     #[cfg(not(target_os = "macos"))]
     {
-        // Linux: User applications
-        if let Ok(home) = std::env::var("HOME") {
+        // Linux: User applications. XDG_DATA_HOME wins when set (the spec
+        // default ~/.local/share is only the fallback).
+        if let Ok(xdg_data_home) = std::env::var("XDG_DATA_HOME") {
+            if !xdg_data_home.is_empty() {
+                dirs.push(PathBuf::from(format!("{xdg_data_home}/applications")));
+            }
+        } else if let Ok(home) = std::env::var("HOME") {
             dirs.push(PathBuf::from(format!("{}/.local/share/applications", home)));
         }
 

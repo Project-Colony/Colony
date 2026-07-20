@@ -13,6 +13,16 @@ use crate::ui::theme::{
 };
 
 impl App {
+    /// The OAuth token of the signed-in session, if any - the one-liner that
+    /// used to be copy-pasted at five call sites.
+    fn github_token(&self) -> Option<String> {
+        if let GitHubState::Connected { session, .. } = &self.github_state {
+            Some(session.access_token.clone())
+        } else {
+            None
+        }
+    }
+
     pub fn push_notification(
         &mut self,
         message: String,
@@ -20,11 +30,7 @@ impl App {
     ) -> Task<Message> {
         let id = self.next_notification_id;
         self.next_notification_id += 1;
-        let timeout = match level {
-            NotificationLevel::Error => Duration::from_secs(10),
-            NotificationLevel::Warning => Duration::from_secs(7),
-            NotificationLevel::Info => Duration::from_secs(5),
-        };
+        let timeout = level.timeout();
         self.notifications
             .push(Notification::new(id, message, level));
         // When reduce_motion or animations off, don't auto-dismiss (user must click)
@@ -438,12 +444,7 @@ impl App {
                         let binary = entry.binary.clone();
                         let expected_sha256 = entry.sha256.clone();
                         let repo_name = repo.name.clone();
-                        let token =
-                            if let GitHubState::Connected { session, .. } = &self.github_state {
-                                Some(session.access_token.clone())
-                            } else {
-                                None
-                            };
+                        let token = self.github_token();
                         let display_name = file
                             .as_deref()
                             .or(file_pattern.as_deref())
@@ -453,6 +454,7 @@ impl App {
                             i18n::t_fmt("downloading", &[("file", &display_name)]);
                         self.download_progress = Some((display_name.clone(), 0.0));
                         self.is_downloading = true;
+                        self.downloading_repo = Some(repo_name.clone());
                         let dl_repo = repo_name.clone();
                         let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<f32>();
                         let progress_name = display_name;
@@ -547,6 +549,7 @@ impl App {
                 self.download_progress = None;
                 self.is_downloading = false;
                 self.download_abort = None;
+                self.downloading_repo = None;
                 match result {
                     // Version/asset records were written atomically with the
                     // install (inside download_release_asset), so the tag is
@@ -588,6 +591,20 @@ impl App {
                 self.update_queue.clear();
                 if let Some(handle) = self.download_abort.take() {
                     handle.abort();
+                }
+                // The aborted task cannot clean up its staging file: sweep
+                // the cancelled repo's *.part leftovers here.
+                if let Some(repo) = self.downloading_repo.take() {
+                    if let Ok(apps_dir) = github::colony_apps_dir() {
+                        if let Ok(entries) = std::fs::read_dir(apps_dir.join(&repo)) {
+                            for entry in entries.flatten() {
+                                let name = entry.file_name().to_string_lossy().to_string();
+                                if name.ends_with(".part") {
+                                    let _ = std::fs::remove_file(entry.path());
+                                }
+                            }
+                        }
+                    }
                 }
                 self.download_progress = None;
                 self.is_downloading = false;
@@ -670,11 +687,7 @@ impl App {
                 self.is_fetching_repos = true;
                 // Anonymous refresh is supported: the token only raises the
                 // rate limit (60 req/h unauthenticated vs 5000 signed-in).
-                let token = if let GitHubState::Connected { session } = &self.github_state {
-                    Some(session.access_token.clone())
-                } else {
-                    None
-                };
+                let token = self.github_token();
                 Task::perform(
                     async move { github::fetch_colony_repos(token.as_deref()).await },
                     |result| match result {
@@ -695,7 +708,19 @@ impl App {
                 Task::none()
             }
             Message::TickNotifications => {
-                self.notifications.retain(|n| !n.is_expired());
+                if self.animations && !self.reduce_motion {
+                    // Mark expired toasts for fade-out instead of dropping
+                    // them: `removing` re-arms the animation subscription
+                    // (has_active_animations), which previously stopped
+                    // before the fade could ever play.
+                    for n in &mut self.notifications {
+                        if n.is_expired() {
+                            n.removing = true;
+                        }
+                    }
+                } else {
+                    self.notifications.retain(|n| !n.is_expired());
+                }
                 Task::none()
             }
             Message::AnimationTick => {
@@ -713,11 +738,7 @@ impl App {
                         }
                     }
                     // Start fade-out before expiration
-                    let timeout = match notif.level {
-                        NotificationLevel::Error => Duration::from_secs(10),
-                        NotificationLevel::Warning => Duration::from_secs(7),
-                        NotificationLevel::Info => Duration::from_secs(5),
-                    };
+                    let timeout = notif.level.timeout();
                     if notif.created_at.elapsed() + fade_lead >= timeout && !notif.removing {
                         notif.removing = true;
                     }
@@ -873,11 +894,7 @@ impl App {
                     return Task::done(Message::CheckLauncherUpdate { manual: false });
                 }
 
-                let token = if let GitHubState::Connected { session, .. } = &self.github_state {
-                    Some(session.access_token.clone())
-                } else {
-                    None
-                };
+                let token = self.github_token();
 
                 Task::perform(
                     async move {
@@ -968,11 +985,7 @@ impl App {
                     return Task::none();
                 };
                 self.fetching_notes.insert(repo_name.clone());
-                let token = if let GitHubState::Connected { session, .. } = &self.github_state {
-                    Some(session.access_token.clone())
-                } else {
-                    None
-                };
+                let token = self.github_token();
                 let repo_for_result = repo_name.clone();
                 Task::perform(
                     async move {
@@ -1192,11 +1205,7 @@ impl App {
                 }
                 self.is_checking_launcher_update = true;
 
-                let token = if let GitHubState::Connected { session, .. } = &self.github_state {
-                    Some(session.access_token.clone())
-                } else {
-                    None
-                };
+                let token = self.github_token();
 
                 Task::perform(
                     async move {
@@ -1283,11 +1292,7 @@ impl App {
                     None => return Task::none(),
                 };
 
-                let token = if let GitHubState::Connected { session, .. } = &self.github_state {
-                    Some(session.access_token.clone())
-                } else {
-                    None
-                };
+                let token = self.github_token();
 
                 self.is_downloading = true;
                 self.download_progress = Some((asset.clone(), 0.0));
