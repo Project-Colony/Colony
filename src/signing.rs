@@ -13,7 +13,7 @@
 
 use anyhow::Result;
 use base64::Engine;
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, VerifyingKey};
 
 /// Colony release signing public key (ed25519, raw 32 bytes).
 ///
@@ -38,7 +38,11 @@ fn verify_with_key(pubkey: &[u8; 32], data: &[u8], signature_bytes: &[u8]) -> Re
     let sig = parse_signature(signature_bytes)?;
     let vk = VerifyingKey::from_bytes(pubkey)
         .map_err(|e| anyhow::anyhow!("invalid release public key: {e}"))?;
-    vk.verify(data, &sig)
+    // verify_strict: rejects malleable/non-canonical signatures and small-
+    // order key components - the recommended verifier for update/security
+    // contexts (plain verify() accepts signatures strict verification would
+    // refuse).
+    vk.verify_strict(data, &sig)
         .map_err(|_| anyhow::anyhow!("signature verification failed (untrusted or corrupt update)"))
 }
 
