@@ -208,7 +208,7 @@ impl App {
             .align_y(iced::Alignment::End);
 
         // Action row: Launch if installed, Download if not
-        let installed_path = github::installed_app_path(repo);
+        let installed_path = crate::persistence::installed_app_path(repo);
         let current_platform = github::current_platform_key();
 
         let action_row = if let Some(app_path) = installed_path {

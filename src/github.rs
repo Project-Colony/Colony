@@ -22,16 +22,9 @@ pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// cannot fire an unbounded burst of requests at the GitHub API at once.
 const MAX_CONCURRENT_REPO_FETCHES: usize = 8;
 
-// Storage and download/self-update now live in dedicated modules; re-export
-// their public API so existing `github::` call sites keep working unchanged.
-pub use crate::download::{apply_launcher_update, download_launcher_asset, download_release_asset};
 use crate::persistence::save_repo_doc;
 use crate::persistence::save_repo_icon;
-pub use crate::persistence::{
-    colony_apps_dir, colony_data_dir, installed_app_path, load_favorites, load_installed_version,
-    load_preferences, load_repos_cache, load_scan_cache, read_repo_doc, save_favorites,
-    save_preferences, save_repos_cache, save_scan_cache, CachedApp, UserPreferences,
-};
+use crate::persistence::{load_installed_version, load_repos_cache};
 
 // --- HTTP ETag Cache ---
 
@@ -909,7 +902,9 @@ pub async fn check_update_available(
         pinned_tag.to_string()
     };
 
-    if target == installed {
+    // Case-insensitive: "Nightly" vs "nightly" must not read as an update
+    // (with non-semver tags the string fallback below would flag it forever).
+    if target.eq_ignore_ascii_case(&installed) {
         return None;
     }
 

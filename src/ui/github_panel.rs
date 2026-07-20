@@ -279,15 +279,24 @@ impl App {
             .font(self.app_font_with_weight(Weight::Medium))
             .color(Palette::TEXT_PRIMARY());
 
-        let card = container(name)
+        // Clickable: opens the repo's detail page (the panel used to render an
+        // inert list that duplicated the grid without its function).
+        button(name)
+            .on_press(Message::ColonyRepoSelected(repo.name.clone()))
             .padding([10, 14])
             .width(Fill)
-            .style(|_theme| container::Style {
-                background: Some(Palette::BG_CARD().into()),
-                border: iced::Border::default().rounded(8),
-                ..Default::default()
-            });
-
-        card.into()
+            .style(|_theme, status| {
+                let bg = match status {
+                    button::Status::Hovered => Palette::BG_CARD_HOVER(),
+                    _ => Palette::BG_CARD(),
+                };
+                button::Style {
+                    background: Some(bg.into()),
+                    text_color: Palette::TEXT_PRIMARY(),
+                    border: iced::Border::default().rounded(8),
+                    ..Default::default()
+                }
+            })
+            .into()
     }
 }

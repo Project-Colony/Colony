@@ -76,9 +76,9 @@ impl App {
             .colony_repo_list
             .iter()
             .map(|repo| {
-                let installed = github::installed_app_path(repo).is_some();
+                let installed = crate::persistence::installed_app_path(repo).is_some();
                 let version = if installed {
-                    github::load_installed_version(&repo.name)
+                    crate::persistence::load_installed_version(&repo.name)
                 } else {
                     None
                 };
@@ -117,14 +117,17 @@ impl App {
         // does no disk I/O.
         let (content, is_placeholder) = match self.detail_tab {
             DetailTab::ReadMe => (repo.description.clone(), false),
-            DetailTab::License => match github::read_repo_doc(&repo.name, "LICENSE.md") {
+            DetailTab::License => match crate::persistence::read_repo_doc(&repo.name, "LICENSE.md")
+            {
                 Some(c) => (c, false),
                 None => (String::new(), true),
             },
-            DetailTab::Changelog => match github::read_repo_doc(&repo.name, "CHANGELOG.md") {
-                Some(c) => (c, false),
-                None => (String::new(), true),
-            },
+            DetailTab::Changelog => {
+                match crate::persistence::read_repo_doc(&repo.name, "CHANGELOG.md") {
+                    Some(c) => (c, false),
+                    None => (String::new(), true),
+                }
+            }
         };
         self.detail_blocks = markdown_blocks::parse(&content);
         self.detail_is_placeholder = is_placeholder;
@@ -132,7 +135,7 @@ impl App {
     }
 
     pub fn save_preferences(&self) {
-        let prefs = github::UserPreferences {
+        let prefs = crate::persistence::UserPreferences {
             selected_section: Some(self.selected_section),
             window_width: Some(self.window_size.0),
             window_height: Some(self.window_size.1),
@@ -160,7 +163,7 @@ impl App {
             // Storage
             scan_on_startup: Some(self.scan_on_startup),
         };
-        if let Err(e) = github::save_preferences(&prefs) {
+        if let Err(e) = crate::persistence::save_preferences(&prefs) {
             tracing::warn!("Failed to save preferences: {e}");
         }
     }
@@ -220,9 +223,9 @@ impl App {
                             i18n::t_fmt("apps_found", &[("count", &apps.len().to_string())]);
                         // Refresh the offline scan cache (previously written on
                         // the boot path, now that the scan runs off-thread).
-                        let cached: Vec<github::CachedApp> = apps
+                        let cached: Vec<crate::persistence::CachedApp> = apps
                             .iter()
-                            .map(|app| github::CachedApp {
+                            .map(|app| crate::persistence::CachedApp {
                                 name: app.name.clone(),
                                 exec: app.exec.clone(),
                                 icon: app.icon.clone(),
@@ -230,7 +233,7 @@ impl App {
                                 origin: format!("{:?}", app.origin),
                             })
                             .collect();
-                        if let Err(e) = github::save_scan_cache(&cached) {
+                        if let Err(e) = crate::persistence::save_scan_cache(&cached) {
                             tracing::warn!("Failed to save scan cache: {e}");
                         }
                         self.applications = apps;
@@ -300,6 +303,9 @@ impl App {
             }
             Message::ColonyRepoSelected(name) => {
                 self.active_colony_repo = Some(name);
+                // A selection made from the GitHub panel must actually show
+                // the detail page, not stay hidden behind the overlay.
+                self.show_github_menu = false;
                 self.refresh_detail_markdown();
                 Task::none()
             }
@@ -403,7 +409,7 @@ impl App {
             Message::GitHubReposFetched(repos) => {
                 self.is_fetching_repos = false;
                 let count = repos.len();
-                if let Err(e) = github::save_repos_cache(&repos) {
+                if let Err(e) = crate::persistence::save_repos_cache(&repos) {
                     tracing::warn!("Failed to save repos cache: {e}");
                 }
                 // The catalog is stored regardless of sign-in state: anonymous
@@ -435,7 +441,7 @@ impl App {
                 self.is_fetching_repos = false;
                 tracing::error!(error = %e, "GitHub error");
                 if self.colony_repo_list.is_empty() {
-                    if let Some(cached) = github::load_repos_cache() {
+                    if let Some(cached) = crate::persistence::load_repos_cache() {
                         tracing::info!("Using {} cached repos as fallback", cached.len());
                         self.colony_repo_list = cached;
                     }
@@ -529,7 +535,7 @@ impl App {
                                 // in DownloadCompleted) meant a cancel landing
                                 // mid-install detached the blocking task and
                                 // left an installed binary with no metadata.
-                                let path = github::download_release_asset(
+                                let path = crate::download::download_release_asset(
                                     None,
                                     crate::download::AssetInstall {
                                         repo_name: repo_name.clone(),
@@ -652,7 +658,7 @@ impl App {
                 // The aborted task cannot clean up its staging file: sweep
                 // the cancelled repo's *.part leftovers here.
                 if let Some(repo) = self.downloading_repo.take() {
-                    if let Ok(apps_dir) = github::colony_apps_dir() {
+                    if let Ok(apps_dir) = crate::persistence::colony_apps_dir() {
                         if let Ok(entries) = std::fs::read_dir(apps_dir.join(&repo)) {
                             for entry in entries.flatten() {
                                 let name = entry.file_name().to_string_lossy().to_string();
@@ -715,7 +721,7 @@ impl App {
                 // cleanup happens on catalog refresh instead.)
                 self.release_notes.remove(&repo_name);
                 crate::persistence::remove_desktop_entry(&repo_name);
-                match github::colony_apps_dir() {
+                match crate::persistence::colony_apps_dir() {
                     Ok(apps_dir) => {
                         let app_dir = apps_dir.join(&repo_name);
                         if app_dir.exists() {
@@ -759,6 +765,16 @@ impl App {
                         Err(e) => Message::GitHubError(e.to_string()),
                     },
                 )
+            }
+            Message::ClearStoreCaches => {
+                let removed = crate::persistence::clear_store_caches();
+                self.app_icons.clear();
+                self.release_notes.clear();
+                self.detail_md_source = None;
+                self.refresh_detail_markdown();
+                let msg = i18n::t_fmt("caches_cleared", &[("count", &removed.to_string())]);
+                self.status_message = msg.clone();
+                self.push_notification(msg, NotificationLevel::Info)
             }
             Message::CopyToClipboard(value) => iced::clipboard::write(value),
             Message::OpenUrl(url) => {
@@ -996,7 +1012,7 @@ impl App {
                 let repos: Vec<(String, String)> = self
                     .colony_repos()
                     .iter()
-                    .filter(|r| github::installed_app_path(r).is_some())
+                    .filter(|r| crate::persistence::installed_app_path(r).is_some())
                     .filter_map(|r| {
                         r.manifest
                             .release_files
@@ -1173,7 +1189,7 @@ impl App {
                 } else {
                     self.favorites.push(name);
                 }
-                if let Err(e) = github::save_favorites(&self.favorites) {
+                if let Err(e) = crate::persistence::save_favorites(&self.favorites) {
                     tracing::warn!("Failed to save favorites: {e}");
                 }
                 Task::none()
@@ -1430,9 +1446,14 @@ impl App {
 
                 let download_task = Task::perform(
                     async move {
-                        github::download_launcher_asset(token, tag, asset, Some(progress_tx))
-                            .await
-                            .map_err(|e| e.to_string())
+                        crate::download::download_launcher_asset(
+                            token,
+                            tag,
+                            asset,
+                            Some(progress_tx),
+                        )
+                        .await
+                        .map_err(|e| e.to_string())
                     },
                     Message::LauncherDownloadCompleted,
                 );
@@ -1481,7 +1502,8 @@ impl App {
             Message::ApplyLauncherUpdate(new_binary) => Task::perform(
                 async move {
                     tokio::task::spawn_blocking(move || {
-                        github::apply_launcher_update(&new_binary).map_err(|e| e.to_string())
+                        crate::download::apply_launcher_update(&new_binary)
+                            .map_err(|e| e.to_string())
                     })
                     .await
                     .map_err(|e| e.to_string())
@@ -1735,10 +1757,13 @@ mod tests {
             let mut app = App::new_for_test();
             let _ = app.update(Message::ToggleFavorite("Grape".into()));
             assert!(app.is_favorite("Grape"));
-            assert_eq!(crate::github::load_favorites(), vec!["Grape".to_string()]);
+            assert_eq!(
+                crate::persistence::load_favorites(),
+                vec!["Grape".to_string()]
+            );
             let _ = app.update(Message::ToggleFavorite("Grape".into()));
             assert!(!app.is_favorite("Grape"));
-            assert!(crate::github::load_favorites().is_empty());
+            assert!(crate::persistence::load_favorites().is_empty());
         });
     }
 }

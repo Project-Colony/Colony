@@ -19,7 +19,7 @@ impl Locale {
                 strings.insert("rescan".into(), "Rescan".into());
 
                 // GitHub panel
-                strings.insert("github_connect_desc".into(), "Connectez-vous à GitHub pour détecter les dépôts Colony (colony.json) du compte MotherSphere.".into());
+                strings.insert("github_connect_desc".into(), "Connectez-vous à GitHub pour détecter les dépôts Colony (colony.json) de l'organisation Project-Colony.".into());
                 strings.insert("github_login".into(), "Se connecter avec GitHub".into());
                 strings.insert(
                     "github_public_api".into(),
@@ -162,7 +162,7 @@ impl Locale {
 
                 // First launch — carousel (3 steps)
                 strings.insert("welcome_title".into(), "Bienvenue dans Colony".into());
-                strings.insert("welcome_desc".into(), "Le lanceur centralisé de l'écosystème MotherSphere. Découvrez, installez et lancez vos apps en un clic.".into());
+                strings.insert("welcome_desc".into(), "Le lanceur centralisé de l'écosystème Project-Colony. Découvrez, installez et lancez vos apps en un clic.".into());
                 // Step 1 — interface tour
                 strings.insert(
                     "welcome_step1_title".into(),
@@ -701,6 +701,12 @@ impl Locale {
                 strings.insert("launch_action".into(), "Lancer".into());
                 strings.insert("section_security".into(), "Sécurité".into());
                 strings.insert("language_changed".into(), "Langue changée".into());
+                strings.insert("clear_caches".into(), "Vider les caches du store".into());
+                strings.insert("clear_caches_desc".into(), "Supprime les descriptions et icônes mises en cache (elles se re-téléchargent au prochain rafraîchissement). Les applications installées ne sont pas touchées.".into());
+                strings.insert(
+                    "caches_cleared".into(),
+                    "{count} cache(s) supprimé(s)".into(),
+                );
                 strings.insert("launcher_update_system_managed".into(), "Mise à jour {version} disponible - cette installation est gérée par le gestionnaire de paquets, mettez à jour via « pacman -Syu » (colony-bin)".into());
                 // Detail tabs
                 strings.insert("tab_readme".into(), "ReadMe".into());
@@ -716,7 +722,7 @@ impl Locale {
                 strings.insert("rescan".into(), "Rescan".into());
 
                 // GitHub panel
-                strings.insert("github_connect_desc".into(), "Connect to GitHub to detect Colony repos (colony.json) from the MotherSphere account.".into());
+                strings.insert("github_connect_desc".into(), "Connect to GitHub to detect Colony repos (colony.json) from the Project-Colony organization.".into());
                 strings.insert("github_login".into(), "Sign in with GitHub".into());
                 strings.insert(
                     "github_public_api".into(),
@@ -844,7 +850,7 @@ impl Locale {
 
                 // First launch — carousel (3 steps)
                 strings.insert("welcome_title".into(), "Welcome to Colony".into());
-                strings.insert("welcome_desc".into(), "The centralized launcher for the MotherSphere ecosystem. Discover, install and launch apps in one click.".into());
+                strings.insert("welcome_desc".into(), "The centralized launcher for the Project-Colony ecosystem. Discover, install and launch apps in one click.".into());
                 // Step 1 — interface tour
                 strings.insert(
                     "welcome_step1_title".into(),
@@ -1337,6 +1343,9 @@ impl Locale {
                 strings.insert("launch_action".into(), "Launch".into());
                 strings.insert("section_security".into(), "Security".into());
                 strings.insert("language_changed".into(), "Language changed".into());
+                strings.insert("clear_caches".into(), "Clear store caches".into());
+                strings.insert("clear_caches_desc".into(), "Removes cached descriptions and icons (they re-download on the next refresh). Installed applications are not touched.".into());
+                strings.insert("caches_cleared".into(), "{count} cache(s) removed".into());
                 strings.insert("launcher_update_system_managed".into(), "Update {version} is available - this install is managed by the package manager, update via 'pacman -Syu' (colony-bin)".into());
                 // Detail tabs
                 strings.insert("tab_readme".into(), "ReadMe".into());

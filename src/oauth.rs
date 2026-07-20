@@ -199,7 +199,7 @@ const KEYRING_SERVICE: &str = "colony-launcher";
 const KEYRING_USER: &str = "github-oauth";
 
 fn token_path() -> PathBuf {
-    match crate::github::colony_data_dir() {
+    match crate::persistence::colony_data_dir() {
         Ok(dir) => {
             let auth_dir = dir.join("auth");
             let _ = std::fs::create_dir_all(&auth_dir);
