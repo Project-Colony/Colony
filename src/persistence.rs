@@ -259,6 +259,59 @@ pub struct CachedApp {
     pub origin: String,
 }
 
+/// Write a `.desktop` launcher entry for an installed store app, so desktop
+/// environments (rofi/wofi/GNOME/KDE) index it like any other application.
+/// The entry is tagged `X-Colony-Managed=true`, which Colony's own scan skips
+/// (the app is already represented by its store card). Linux only; no-op
+/// elsewhere.
+#[cfg(target_os = "linux")]
+pub fn write_desktop_entry(repo_name: &str, exec_path: &std::path::Path) -> Result<()> {
+    let dir = dirs::data_dir()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine data directory"))?
+        .join("applications");
+    std::fs::create_dir_all(&dir)?;
+    let icon_line = repo_icon_dir(repo_name)
+        .ok()
+        .map(|d| d.join("icon.png"))
+        .filter(|p| p.exists())
+        .map(|p| format!("Icon={}\n", p.display()))
+        .unwrap_or_default();
+    let entry = format!(
+        "[Desktop Entry]\nType=Application\nName={repo_name}\nExec=\"{}\"\nTerminal=false\nCategories=Utility;\nComment=Installed by Colony\nX-Colony-Managed=true\n{icon_line}",
+        exec_path.display()
+    );
+    std::fs::write(dir.join(desktop_entry_filename(repo_name)), entry)?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn write_desktop_entry(_repo_name: &str, _exec_path: &std::path::Path) -> Result<()> {
+    Ok(())
+}
+
+/// Remove the `.desktop` entry written by [`write_desktop_entry`] (no-op when
+/// absent or on non-Linux platforms).
+pub fn remove_desktop_entry(repo_name: &str) {
+    #[cfg(target_os = "linux")]
+    if let Some(data) = dirs::data_dir() {
+        let path = data
+            .join("applications")
+            .join(desktop_entry_filename(repo_name));
+        if path.exists() {
+            if let Err(e) = std::fs::remove_file(&path) {
+                tracing::warn!("failed to remove desktop entry {}: {e}", path.display());
+            }
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = repo_name;
+}
+
+#[cfg(target_os = "linux")]
+fn desktop_entry_filename(repo_name: &str) -> String {
+    format!("colony-{}.desktop", repo_name.to_lowercase())
+}
+
 /// Remove doc/icon caches for repos that are NO LONGER in the catalog, so a
 /// deleted or renamed repo does not leave its caches behind forever. Runs
 /// after each successful catalog fetch (never on a cache fallback, where a

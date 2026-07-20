@@ -654,6 +654,7 @@ impl App {
                 // belong to the CATALOG entry, which is still listed - orphan
                 // cleanup happens on catalog refresh instead.)
                 self.release_notes.remove(&repo_name);
+                crate::persistence::remove_desktop_entry(&repo_name);
                 match github::colony_apps_dir() {
                     Ok(apps_dir) => {
                         let app_dir = apps_dir.join(&repo_name);
@@ -1145,7 +1146,11 @@ impl App {
             Message::PickLanguage(v) => {
                 self.language = v;
                 self.save_preferences();
-                self.push_notification(i18n::t("language_restart_notice"), NotificationLevel::Info)
+                // Live swap: every view calls t() per render, so the whole UI
+                // re-labels on the next frame - the restart notice is history.
+                i18n::set_language(&self.language);
+                self.status_message = i18n::t("language_changed");
+                Task::none()
             }
             Message::ToggleAutoCheckUpdates => {
                 self.auto_check_updates = !self.auto_check_updates;
