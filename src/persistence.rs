@@ -243,6 +243,16 @@ pub struct CachedApp {
     pub origin: String,
 }
 
+/// Load the cached application scan (`None` if absent or unreadable). Read at
+/// boot when the startup scan is disabled, so the local-apps grid restores the
+/// last known state instead of showing "0 apps" at every launch.
+pub fn load_scan_cache() -> Option<Vec<CachedApp>> {
+    let path = scan_cache_path().ok()?;
+    let json = std::fs::read_to_string(path).ok()?;
+    let cached: CachedScanResult = serde_json::from_str(&json).ok()?;
+    Some(cached.apps)
+}
+
 /// Save scanned applications to cache.
 pub fn save_scan_cache(apps: &[CachedApp]) -> Result<()> {
     let timestamp = std::time::SystemTime::now()

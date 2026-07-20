@@ -64,10 +64,7 @@ impl App {
     /// Rebuild `detail_blocks` for the currently-viewed (repo, tab) if that
     /// key differs from the last parse. Cheap no-op when the cache is valid.
     pub fn refresh_detail_markdown(&mut self) {
-        let Some(repo) = self
-            .active_colony_repo
-            .and_then(|idx| self.colony_repos().get(idx).cloned())
-        else {
+        let Some(repo) = self.active_repo().cloned() else {
             self.detail_blocks.clear();
             self.detail_md_source = None;
             self.detail_is_placeholder = false;
@@ -259,8 +256,8 @@ impl App {
                     }
                 }
             }
-            Message::ColonyRepoSelected(index) => {
-                self.active_colony_repo = Some(index);
+            Message::ColonyRepoSelected(name) => {
+                self.active_colony_repo = Some(name);
                 self.refresh_detail_markdown();
                 Task::none()
             }
@@ -532,6 +529,10 @@ impl App {
                         if let Err(e) = github::save_installed_version(&repo_name, &tag) {
                             tracing::warn!("Failed to save version info: {e}");
                         }
+                        // The just-installed version IS the one the badge was
+                        // advertising: clear it, or the card keeps showing
+                        // "Update vX -> vX" until the next global check.
+                        self.available_updates.remove(&repo_name);
                         let display_name = path
                             .file_name()
                             .map(|n| n.to_string_lossy().to_string())
@@ -601,6 +602,8 @@ impl App {
             }
             Message::UninstallColonyApp(repo_name) => {
                 self.confirm_uninstall = None;
+                // An uninstalled app has no meaningful "update available".
+                self.available_updates.remove(&repo_name);
                 match github::colony_apps_dir() {
                     Ok(apps_dir) => {
                         let app_dir = apps_dir.join(&repo_name);
@@ -788,9 +791,12 @@ impl App {
                                 && !self.show_first_launch
                                 && self.active_colony_repo.is_none() =>
                         {
-                            let first = self.filtered_colony_repos().first().map(|(idx, _)| *idx);
-                            if let Some(idx) = first {
-                                self.active_colony_repo = Some(idx);
+                            let first = self
+                                .filtered_colony_repos()
+                                .first()
+                                .map(|r| r.name.clone());
+                            if let Some(name) = first {
+                                self.active_colony_repo = Some(name);
                                 // Refresh the (repo, tab) markdown cache — the
                                 // detail view reads only cached blocks/placeholder
                                 // now, so opening a repo must recompute them.
@@ -833,7 +839,7 @@ impl App {
                         "apps_found",
                         &[("count", &self.applications.len().to_string())],
                     );
-                    return Task::done(Message::CheckLauncherUpdate);
+                    return Task::done(Message::CheckLauncherUpdate { manual: false });
                 }
 
                 let token = if let GitHubState::Connected { session, .. } = &self.github_state {
@@ -893,7 +899,7 @@ impl App {
                     self.push_notification(msg, NotificationLevel::Info)
                 };
                 // Also check for launcher self-update
-                Task::batch([notif_task, Task::done(Message::CheckLauncherUpdate)])
+                Task::batch([notif_task, Task::done(Message::CheckLauncherUpdate { manual: false })])
             }
             Message::ToggleFavorite(name) => {
                 if let Some(pos) = self.favorites.iter().position(|f| f == &name) {
@@ -1050,7 +1056,7 @@ impl App {
                 Task::none()
             }
             // --- Launcher self-update ---
-            Message::CheckLauncherUpdate => {
+            Message::CheckLauncherUpdate { manual } => {
                 if self.is_checking_launcher_update {
                     return Task::none();
                 }
@@ -1064,27 +1070,52 @@ impl App {
 
                 Task::perform(
                     async move {
-                        let client = github::build_update_client(token.as_deref()).ok()?;
-                        github::check_launcher_update(&client).await
+                        let client =
+                            github::build_update_client(token.as_deref()).map_err(|e| e.to_string())?;
+                        github::check_launcher_update(&client)
+                            .await
+                            .map_err(|e| e.to_string())
                     },
-                    Message::LauncherUpdateChecked,
+                    move |result| Message::LauncherUpdateChecked(manual, result),
                 )
             }
-            Message::LauncherUpdateChecked(result) => {
+            Message::LauncherUpdateChecked(manual, result) => {
                 self.is_checking_launcher_update = false;
                 match result {
-                    Some((ref tag, _)) => {
+                    Ok(Some((tag, asset))) => {
                         let tag_display = tag.clone();
-                        self.launcher_update_available = result;
+                        self.launcher_update_available = Some((tag, asset));
                         self.push_notification(
                             i18n::t_fmt("launcher_update_available", &[("version", &tag_display)]),
                             NotificationLevel::Info,
                         )
                     }
-                    // Give explicit feedback that the check ran and Colony is
-                    // current, instead of silently doing nothing.
-                    None => self
-                        .push_notification(i18n::t("launcher_up_to_date"), NotificationLevel::Info),
+                    Ok(None) => {
+                        self.launcher_update_available = None;
+                        self.status_message = i18n::t("launcher_up_to_date");
+                        if manual {
+                            // Explicit feedback for an explicit click; the
+                            // automatic boot check stays quiet when current.
+                            self.push_notification(
+                                i18n::t("launcher_up_to_date"),
+                                NotificationLevel::Info,
+                            )
+                        } else {
+                            Task::none()
+                        }
+                    }
+                    Err(e) => {
+                        // The check DID NOT run: never claim "up to date".
+                        self.status_message = i18n::t_fmt("github_api_error", &[("error", &e)]);
+                        if manual {
+                            self.push_notification(
+                                i18n::t_fmt("github_api_error", &[("error", &e)]),
+                                NotificationLevel::Error,
+                            )
+                        } else {
+                            Task::none()
+                        }
+                    }
                 }
             }
             Message::DownloadLauncherUpdate => {

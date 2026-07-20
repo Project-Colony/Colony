@@ -273,12 +273,11 @@ impl App {
     }
 
     pub(crate) fn view_content(&self) -> Element<'_, Message> {
-        // Show Colony repo detail view if one is selected
-        if let Some(index) = self.active_colony_repo {
-            let repos = self.colony_repos();
-            if let Some(repo) = repos.get(index) {
-                return self.view_colony_detail(repo);
-            }
+        // Show Colony repo detail view if one is selected (resolved by name,
+        // so a catalog refresh landing mid-view cannot swap the page to a
+        // different app; a repo that vanished falls back to the grid).
+        if let Some(repo) = self.active_repo() {
+            return self.view_colony_detail(repo);
         }
 
         let search_input = text_input(&crate::i18n::t("search_placeholder"), &self.search_query)
@@ -399,8 +398,8 @@ impl App {
         iced::widget::responsive(move |size| {
             let cols = App::grid_columns(size.width);
             let mut all_cards: Vec<Element<'_, Message>> = Vec::new();
-            for (index, repo) in &colony_repos {
-                all_cards.push(self.view_colony_card(*index, repo));
+            for repo in &colony_repos {
+                all_cards.push(self.view_colony_card(repo));
             }
             for app in &filtered {
                 all_cards.push(self.view_app_card(app));
@@ -410,7 +409,7 @@ impl App {
         .into()
     }
 
-    pub(crate) fn view_colony_grid<'a>(&'a self, repos: &[(usize, &'a ColonyRepo)]) -> Element<'a, Message> {
+    pub(crate) fn view_colony_grid<'a>(&'a self, repos: &[&'a ColonyRepo]) -> Element<'a, Message> {
         if repos.is_empty() {
             return container(
                 text(crate::i18n::t("no_apps_found"))
@@ -424,19 +423,19 @@ impl App {
             .into();
         }
 
-        let repos: Vec<(usize, &'a ColonyRepo)> = repos.to_vec();
+        let repos: Vec<&'a ColonyRepo> = repos.to_vec();
         iced::widget::responsive(move |size| {
             let cols = App::grid_columns(size.width);
             let mut cards: Vec<Element<'_, Message>> = Vec::new();
-            for (index, repo) in &repos {
-                cards.push(self.view_colony_card(*index, repo));
+            for repo in &repos {
+                cards.push(self.view_colony_card(repo));
             }
             scrollable(build_card_grid(cards, cols)).height(Fill).into()
         })
         .into()
     }
 
-    pub(crate) fn view_colony_card<'a>(&'a self, index: usize, repo: &'a ColonyRepo) -> Element<'a, Message> {
+    pub(crate) fn view_colony_card<'a>(&'a self, repo: &'a ColonyRepo) -> Element<'a, Message> {
         let category = AppCategory::from_name(&repo.manifest.category);
         let tint = theme::app_tint(&repo.name);
         let tile = self.icon_tile(&repo.name, tint, category.glyph());
@@ -483,8 +482,13 @@ impl App {
             .align_y(iced::Alignment::Center)
             .width(Fill);
 
-        let selected = self.active_colony_repo == Some(index);
-        self.cell_shell(content.into(), Message::ColonyRepoSelected(index), selected, tint)
+        let selected = self.active_colony_repo.as_deref() == Some(repo.name.as_str());
+        self.cell_shell(
+            content.into(),
+            Message::ColonyRepoSelected(repo.name.clone()),
+            selected,
+            tint,
+        )
     }
 
     pub(crate) fn view_app_card(&self, app: &Application) -> Element<'_, Message> {

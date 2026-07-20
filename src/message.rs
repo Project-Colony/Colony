@@ -16,7 +16,9 @@ pub enum Message {
     Rescan,
     RescanCompleted(Result<Vec<Application>, String>),
     LaunchApp(String),
-    ColonyRepoSelected(usize),
+    /// Open a repo's detail page, keyed by repo NAME (indexes go stale when a
+    /// catalog refresh reorders the vector).
+    ColonyRepoSelected(String),
     ColonyRepoBack,
     ClearStatus,
     FontLoaded(Result<(), font::Error>),
@@ -78,8 +80,14 @@ pub enum Message {
     DetailTabSelected(DetailTab),
     OpenUrl(String),
     // Launcher self-update
-    CheckLauncherUpdate,
-    LauncherUpdateChecked(Option<(String, String)>),           // Option<(tag, asset_filename)>
+    /// `manual` is true when the user clicked "Check for updates": only a
+    /// manual check gets an "up to date" toast (an automatic one would toast
+    /// on every boot) and network failures surface as errors instead of the
+    /// check lying that Colony is current.
+    CheckLauncherUpdate { manual: bool },
+    /// (manual, result of the check). Ok(None) = genuinely up to date;
+    /// Err = the check could not run (network/rate limit/bad tag).
+    LauncherUpdateChecked(bool, Result<Option<(String, String)>, String>),
     DownloadLauncherUpdate,
     LauncherDownloadProgress(f32),
     LauncherDownloadCompleted(Result<std::path::PathBuf, String>),

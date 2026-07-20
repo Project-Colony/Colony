@@ -140,7 +140,10 @@ pub struct App {
     pub sections: Vec<Section>,
     pub selected_section: usize,
     pub status_message: String,
-    pub active_colony_repo: Option<usize>,
+    /// The repo whose detail page is open, tracked by NAME: the catalog vector
+    /// is replaced and reordered by every refresh (GitHub sorts by last push),
+    /// so an index here would silently swap the open page to a different app.
+    pub active_colony_repo: Option<String>,
     pub font: Font,
     // GitHub / OAuth
     pub github_state: GitHubState,
@@ -236,6 +239,13 @@ impl App {
         &self.colony_repo_list
     }
 
+    /// Resolve the repo whose detail page is open, surviving catalog refreshes
+    /// (`None` if the repo disappeared from the catalog).
+    pub fn active_repo(&self) -> Option<&ColonyRepo> {
+        let name = self.active_colony_repo.as_deref()?;
+        self.colony_repo_list.iter().find(|r| r.name == name)
+    }
+
     /// Filter local applications by the currently selected section.
     pub fn filtered_applications(&self) -> Vec<&Application> {
         let query = self.search_query.to_lowercase();
@@ -262,15 +272,14 @@ impl App {
     }
 
     /// Filter Colony repos by the currently selected section's category.
-    pub fn filtered_colony_repos(&self) -> Vec<(usize, &ColonyRepo)> {
+    pub fn filtered_colony_repos(&self) -> Vec<&ColonyRepo> {
         let query = self.search_query.to_lowercase();
         let selected_section = self.sections.get(self.selected_section);
         let is_favorites = selected_section.map(|s| s.is_favorites).unwrap_or(false);
 
         self.colony_repos()
             .iter()
-            .enumerate()
-            .filter(|(_, repo)| {
+            .filter(|repo| {
                 if is_favorites {
                     if !self.is_favorite(&repo.name) {
                         return false;

@@ -27,9 +27,9 @@ const MAX_CONCURRENT_REPO_FETCHES: usize = 8;
 pub use crate::download::{apply_launcher_update, download_launcher_asset, download_release_asset};
 pub use crate::persistence::{
     colony_apps_dir, colony_data_dir, installed_app_path, load_favorites,
-    load_installed_version, load_preferences, load_repos_cache, read_repo_doc, save_favorites,
-    save_installed_asset, save_installed_version, save_preferences, save_repos_cache, save_scan_cache,
-    CachedApp, UserPreferences,
+    load_installed_version, load_preferences, load_repos_cache, load_scan_cache, read_repo_doc,
+    save_favorites, save_installed_asset, save_installed_version, save_preferences,
+    save_repos_cache, save_scan_cache, CachedApp, UserPreferences,
 };
 use crate::persistence::save_repo_doc;
 use crate::persistence::save_repo_icon;
@@ -832,21 +832,21 @@ pub fn launcher_asset_name() -> String {
 
 /// Check if a newer version of the Colony launcher itself is available.
 /// Returns Some((latest_tag, asset_filename)) if an update exists, None otherwise.
+/// `Ok(None)` means the check RAN and Colony is current; failures propagate so
+/// the UI never reports "up to date" when the check could not run at all
+/// (offline, rate limited, or an unparseable release tag).
 pub async fn check_launcher_update(
     client: &reqwest::Client,
-) -> Option<(String, String)> {
-    let latest_tag = fetch_latest_release_tag_for(client, LAUNCHER_OWNER, LAUNCHER_REPO)
-        .await
-        .ok()?;
+) -> Result<Option<(String, String)>> {
+    let latest_tag =
+        fetch_latest_release_tag_for(client, LAUNCHER_OWNER, LAUNCHER_REPO).await?;
 
-    let current = parse_version_tag(APP_VERSION)?;
-    let latest = parse_version_tag(&latest_tag)?;
+    let current = parse_version_tag(APP_VERSION)
+        .ok_or_else(|| anyhow::anyhow!("unparseable app version '{APP_VERSION}'"))?;
+    let latest = parse_version_tag(&latest_tag)
+        .ok_or_else(|| anyhow::anyhow!("unrecognized release tag '{latest_tag}'"))?;
 
-    if latest > current {
-        Some((latest_tag, launcher_asset_name()))
-    } else {
-        None
-    }
+    Ok((latest > current).then(|| (latest_tag, launcher_asset_name())))
 }
 
 // --- Offline cache ---
