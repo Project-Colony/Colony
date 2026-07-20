@@ -21,7 +21,7 @@ semver = "1"
 sha2 = "0.10"
 # Pure-Rust ed25519 verification for signed launcher self-updates (no openssl).
 ed25519-dalek = { version = "3", default-features = false }
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 tar = "0.4"
 flate2 = "1"
 # PNG-only decoder for per-app icons (no other codecs); pairs with iced's
