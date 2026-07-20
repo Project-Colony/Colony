@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1](https://github.com/Project-Colony/Colony/compare/v0.7.0...v0.7.1) (2026-07-20)
+
+
+### Bug Fixes
+
+* browse and install from the catalog without GitHub sign-in ([#28](https://github.com/Project-Colony/Colony/issues/28)) ([8d9f691](https://github.com/Project-Colony/Colony/commit/8d9f691b62d789375360c41fe952a978f93575e6))
+* **ci:** sign release assets in CI and chain the AUR bump after the build ([#27](https://github.com/Project-Colony/Colony/issues/27)) ([fa803e2](https://github.com/Project-Colony/Colony/commit/fa803e2de1293b21ecb43faa0f7d313623fa4bdd))
+
 ## [0.7.0](https://github.com/Project-Colony/Colony/compare/v0.6.0...v0.7.0) (2026-07-16)
 
 
