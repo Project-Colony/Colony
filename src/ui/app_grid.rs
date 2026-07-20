@@ -180,7 +180,11 @@ impl App {
     /// Informational (the action lives on the detail page) so the whole card can
     /// stay a single button that opens the detail view.
     fn repo_status<'a>(&self, repo: &'a ColonyRepo) -> Element<'a, Message> {
-        let installed = crate::github::installed_app_path(repo).is_some();
+        let (installed, cached_version) = self
+            .install_status
+            .get(&repo.name)
+            .cloned()
+            .unwrap_or((false, None));
         if !installed {
             return text(crate::i18n::t("status_get"))
                 .size(self.sz(12))
@@ -188,7 +192,7 @@ impl App {
                 .color(Palette::ACCENT())
                 .into();
         }
-        let version = crate::github::load_installed_version(&repo.name);
+        let version = cached_version;
         if let Some(new_tag) = self.available_updates.get(&repo.name) {
             let head = row![
                 text(HEX_FILLED)

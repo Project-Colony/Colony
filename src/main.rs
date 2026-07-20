@@ -240,6 +240,7 @@ impl App {
             update_queue: Vec::new(),
             release_notes: std::collections::HashMap::new(),
             fetching_notes: std::collections::HashSet::new(),
+            install_status: std::collections::HashMap::new(),
             keyboard_cursor: None,
             window_size: (
                 prefs.window_width.unwrap_or(1000.0).clamp(640.0, 7680.0),
@@ -256,6 +257,7 @@ impl App {
         // Cached catalog repos may have icons already on disk: decode them now
         // so the offline/pre-fetch grid is not a wall of fallback hexagons.
         app.reload_app_icons();
+        app.refresh_install_status();
 
         set_active_theme(&app.selected_theme, &app.selected_variant);
         set_high_contrast(app.high_contrast);

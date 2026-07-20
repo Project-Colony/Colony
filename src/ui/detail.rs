@@ -181,7 +181,11 @@ impl App {
         let mut footer_items: Vec<Element<'_, Message>> = Vec::new();
         // Store-basics metadata: the installed version was recorded at install
         // time but never shown anywhere on the detail page.
-        if let Some(installed) = github::load_installed_version(&repo.name) {
+        if let Some(installed) = self
+            .install_status
+            .get(&repo.name)
+            .and_then(|(_, v)| v.clone())
+        {
             footer_items.push(
                 text(crate::i18n::t_fmt(
                     "installed_version",

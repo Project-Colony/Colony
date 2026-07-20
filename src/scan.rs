@@ -606,10 +606,8 @@ fn parse_desktop_file(path: &Path) -> Result<Application> {
                 // desktop launchers should show them, but Colony's own scan
                 // must skip them - the app is already represented by its
                 // store card, a local duplicate would appear twice.
-                "X-Colony-Managed" => {
-                    if value.eq_ignore_ascii_case("true") {
-                        anyhow::bail!("Colony-managed entry (represented by its store card)");
-                    }
+                "X-Colony-Managed" if value.eq_ignore_ascii_case("true") => {
+                    anyhow::bail!("Colony-managed entry (represented by its store card)");
                 }
                 _ => {}
             }
