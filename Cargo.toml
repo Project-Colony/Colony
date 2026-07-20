@@ -18,7 +18,7 @@ base64 = "0.22"
 dirs = "6"
 keyring = { version = "3", features = ["sync-secret-service", "vendored"] }
 semver = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 # Pure-Rust ed25519 verification for signed launcher self-updates (no openssl).
 ed25519-dalek = { version = "3", default-features = false }
 zip = { version = "2", default-features = false, features = ["deflate"] }
