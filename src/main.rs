@@ -3,8 +3,8 @@
 mod config;
 mod download;
 mod github;
-mod icons;
 mod i18n;
+mod icons;
 mod message;
 mod oauth;
 mod persistence;
@@ -16,19 +16,17 @@ mod ui;
 mod update;
 
 use iced::font;
-use iced::widget::{
-    button, column, container, mouse_area, opaque, row, stack, text, Column,
-};
 use iced::keyboard;
+use iced::widget::{button, column, container, mouse_area, opaque, row, stack, text, Column};
 use iced::{Element, Fill, Subscription, Task, Theme};
-use ui::theme::{Palette, set_active_theme, set_active_accent, set_high_contrast, accent_key_to_color};
 use std::collections::HashSet;
+use ui::theme::{
+    accent_key_to_color, set_active_accent, set_active_theme, set_high_contrast, Palette,
+};
 
 use message::Message;
 use state::{
-    App, DetailTab, GitHubState,
-    APP_FONT_BYTES, DYSLEXIA_FONT_BYTES, FA_FONT_BYTES,
-    default_font,
+    default_font, App, DetailTab, GitHubState, APP_FONT_BYTES, DYSLEXIA_FONT_BYTES, FA_FONT_BYTES,
 };
 
 pub fn main() -> iced::Result {
@@ -42,26 +40,21 @@ pub fn main() -> iced::Result {
     // Honor the saved language preference over environment locale detection.
     i18n::init(github::load_preferences().language);
 
-    iced::application(
-        App::boot,
-        App::update,
-        App::view,
-    )
-    .title(App::title)
-    .theme(App::theme)
-    .subscription(App::subscription)
-    .default_font(default_font())
-    .window_size((1000.0, 700.0))
-    .run()
+    iced::application(App::boot, App::update, App::view)
+        .title(App::title)
+        .theme(App::theme)
+        .subscription(App::subscription)
+        .default_font(default_font())
+        .window_size((1000.0, 700.0))
+        .run()
 }
 
 fn load_fonts() -> Task<Message> {
     let main_fonts = APP_FONT_BYTES
         .iter()
         .map(|data| font::load(data.to_vec()).map(Message::FontLoaded));
-    let dyslexia_font = std::iter::once(
-        font::load(DYSLEXIA_FONT_BYTES.to_vec()).map(Message::FontLoaded),
-    );
+    let dyslexia_font =
+        std::iter::once(font::load(DYSLEXIA_FONT_BYTES.to_vec()).map(Message::FontLoaded));
     let fa_fonts = FA_FONT_BYTES
         .iter()
         .map(|data| font::load(data.to_vec()).map(Message::FontLoaded));
@@ -97,9 +90,7 @@ impl App {
             prefs.selected_section.unwrap_or(0)
         } else {
             match default_view.as_str() {
-                "favorites" => {
-                    sections.iter().position(|s| s.is_favorites).unwrap_or(0)
-                }
+                "favorites" => sections.iter().position(|s| s.is_favorites).unwrap_or(0),
                 _ => 0,
             }
         };
@@ -107,36 +98,34 @@ impl App {
 
         // Try to restore a saved OAuth session (load the token exactly once).
         let saved_token = oauth::load_saved_token();
-        let has_token = saved_token.is_some();
         let github_state = match saved_token {
             Some(session) => {
                 tracing::info!("Restored GitHub session for {:?}", session.username);
-                GitHubState::Connected {
-                    session,
-                    repos: Vec::new(),
-                }
+                GitHubState::Connected { session }
             }
             None => GitHubState::Disconnected,
         };
 
-        // If we have a saved token, kick off a repo fetch
-        let startup_task = match &github_state {
-            GitHubState::Connected { session, .. } => {
-                let token = session.access_token.clone();
-                Task::perform(
-                    async move {
-                        github::fetch_colony_repos(Some(&token)).await
-                    },
-                    |result| match result {
-                        Ok(repos) => Message::GitHubReposFetched(repos),
-                        Err(e) => Message::GitHubError(e.to_string()),
-                    },
-                )
-            }
-            _ => Task::none(),
+        // The catalog is public data: show the on-disk cache instantly, then
+        // refresh over the network - anonymously when no token is saved (the
+        // unauthenticated GitHub API allows 60 req/h, plenty for one boot
+        // fetch). Signing in is optional, exactly as the welcome flow promises.
+        let colony_repo_list = github::load_repos_cache().unwrap_or_default();
+        let startup_task = {
+            let token = match &github_state {
+                GitHubState::Connected { session } => Some(session.access_token.clone()),
+                _ => None,
+            };
+            Task::perform(
+                async move { github::fetch_colony_repos(token.as_deref()).await },
+                |result| match result {
+                    Ok(repos) => Message::GitHubReposFetched(repos),
+                    Err(e) => Message::GitHubError(e.to_string()),
+                },
+            )
         };
 
-        let app = Self {
+        let mut app = Self {
             applications,
             search_query: String::new(),
             sections,
@@ -146,6 +135,7 @@ impl App {
             font,
             github_state,
             show_github_menu: false,
+            colony_repo_list,
             notifications: Vec::new(),
             next_notification_id: 0,
             app_icons: std::collections::HashMap::new(),
@@ -158,21 +148,36 @@ impl App {
             tutorial_bounds: Default::default(),
             show_settings: false,
             settings_category: 0,
-            selected_theme: prefs.selected_theme.clone().unwrap_or_else(|| "gruvbox".into()),
-            selected_variant: prefs.selected_variant.clone().unwrap_or_else(|| "dark".into()),
-            selected_accent: prefs.selected_accent.clone().unwrap_or_else(|| "blue".into()),
+            selected_theme: prefs
+                .selected_theme
+                .clone()
+                .unwrap_or_else(|| "gruvbox".into()),
+            selected_variant: prefs
+                .selected_variant
+                .clone()
+                .unwrap_or_else(|| "dark".into()),
+            selected_accent: prefs
+                .selected_accent
+                .clone()
+                .unwrap_or_else(|| "blue".into()),
             auto_accent: false,
             // General
             restore_session: prefs.restore_session.unwrap_or(true),
             default_view: prefs.default_view.clone().unwrap_or_else(|| "all".into()),
-            language: prefs.language.clone().unwrap_or_else(|| i18n::current_lang().to_string()),
+            language: prefs
+                .language
+                .clone()
+                .unwrap_or_else(|| i18n::current_lang().to_string()),
             auto_check_updates: prefs.auto_check_updates.unwrap_or(false),
             // Appearance extras
             font_size: prefs.font_size.clone().unwrap_or_else(|| "default".into()),
             animations: prefs.animations.unwrap_or(true),
             // Accessibility
             high_contrast: prefs.high_contrast.unwrap_or(false),
-            text_size_a11y: prefs.text_size_a11y.clone().unwrap_or_else(|| "default".into()),
+            text_size_a11y: prefs
+                .text_size_a11y
+                .clone()
+                .unwrap_or_else(|| "default".into()),
             reduce_motion: prefs.reduce_motion.unwrap_or(false),
             keyboard_nav: prefs.keyboard_nav.unwrap_or(true),
             dyslexia_font: prefs.dyslexia_font.unwrap_or(false),
@@ -182,7 +187,8 @@ impl App {
             is_scanning: false,
             is_downloading: false,
             is_checking_updates: false,
-            is_fetching_repos: has_token,
+            // A catalog fetch (token'd or anonymous) always starts at boot.
+            is_fetching_repos: true,
             // Settings section state persistence
             settings_expanded_sections: HashSet::new(),
             // Detail tabs
@@ -201,6 +207,10 @@ impl App {
             is_checking_launcher_update: false,
             launcher_update_staged: None,
         };
+
+        // Cached catalog repos may have icons already on disk: decode them now
+        // so the offline/pre-fetch grid is not a wall of fallback hexagons.
+        app.reload_app_icons();
 
         set_active_theme(&app.selected_theme, &app.selected_variant);
         set_high_contrast(app.high_contrast);
@@ -227,7 +237,16 @@ impl App {
             Task::none()
         };
 
-        (app, Task::batch([load_fonts(), startup_task, launcher_check_task, tutorial_task, scan_task]))
+        (
+            app,
+            Task::batch([
+                load_fonts(),
+                startup_task,
+                launcher_check_task,
+                tutorial_task,
+                scan_task,
+            ]),
+        )
     }
 
     fn title(&self) -> String {
@@ -247,9 +266,7 @@ impl App {
 
         let main_layout = row![sidebar, content].spacing(0);
 
-        let page = container(main_layout)
-            .width(Fill)
-            .height(Fill);
+        let page = container(main_layout).width(Fill).height(Fill);
 
         // Build overlay toasts (download progress + notifications) anchored to bottom-left
         let mut overlay_items: Vec<Element<'_, Message>> = Vec::new();
@@ -259,7 +276,10 @@ impl App {
             let pct = (progress * 100.0) as u32;
             let bar_label = format!("\u{f019}  {} — {}%", filename, pct);
             let cancel_btn = button(
-                text("\u{f00d}").size(self.sz(12)).font(self.app_font()).color(Palette::TEXT_DIMMER())
+                text("\u{f00d}")
+                    .size(self.sz(12))
+                    .font(self.app_font())
+                    .color(Palette::TEXT_DIMMER()),
             )
             .on_press(Message::CancelDownload)
             .padding([4, 8])
@@ -346,13 +366,11 @@ impl App {
             )
             .on_press(Message::DismissNotification(dismiss_id))
             .padding([8, 16])
-            .style(move |_theme, _status| {
-                button::Style {
-                    background: Some(bg_color.into()),
-                    text_color: primary_color,
-                    border: iced::Border::default().rounded(8),
-                    ..Default::default()
-                }
+            .style(move |_theme, _status| button::Style {
+                background: Some(bg_color.into()),
+                text_color: primary_color,
+                border: iced::Border::default().rounded(8),
+                ..Default::default()
             });
             overlay_items.push(toast.into());
         }
@@ -361,15 +379,17 @@ impl App {
         let base: Element<'_, Message> = if overlay_items.is_empty() {
             page.into()
         } else {
-            let overlay = container(
-                Column::with_children(overlay_items)
-                    .spacing(6)
-            )
-            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 12.0, left: 216.0 })
-            .width(Fill)
-            .height(Fill)
-            .align_y(iced::alignment::Vertical::Bottom)
-            .align_x(iced::alignment::Horizontal::Left);
+            let overlay = container(Column::with_children(overlay_items).spacing(6))
+                .padding(iced::Padding {
+                    top: 0.0,
+                    right: 0.0,
+                    bottom: 12.0,
+                    left: 216.0,
+                })
+                .width(Fill)
+                .height(Fill)
+                .align_y(iced::alignment::Vertical::Bottom)
+                .align_x(iced::alignment::Horizontal::Left);
 
             stack![page, overlay].width(Fill).height(Fill).into()
         };
@@ -387,7 +407,9 @@ impl App {
                     container(text("")).height(16),
                     row![
                         button(
-                            text(i18n::t("cancel")).size(self.sz(13)).font(self.app_font())
+                            text(i18n::t("cancel"))
+                                .size(self.sz(13))
+                                .font(self.app_font())
                         )
                         .on_press(Message::CancelUninstall)
                         .padding([10, 20])
@@ -404,7 +426,9 @@ impl App {
                             }
                         }),
                         button(
-                            text(i18n::t("confirm_delete")).size(self.sz(13)).font(self.app_font())
+                            text(i18n::t("confirm_delete"))
+                                .size(self.sz(13))
+                                .font(self.app_font())
                         )
                         .on_press(Message::UninstallColonyApp(repo_clone))
                         .padding([10, 20])
@@ -441,16 +465,22 @@ impl App {
             .width(Fill)
             .height(Fill)
             .style(|_theme| container::Style {
-                background: Some(iced::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.5 }.into()),
+                background: Some(
+                    iced::Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.5,
+                    }
+                    .into(),
+                ),
                 ..Default::default()
             });
 
             // Make the overlay modal: `opaque` stops clicks from reaching the
             // page underneath, and a click on the dimmed backdrop dismisses the
             // dialog (standard click-outside-to-cancel).
-            let modal = opaque(
-                mouse_area(backdrop).on_press(Message::CancelUninstall),
-            );
+            let modal = opaque(mouse_area(backdrop).on_press(Message::CancelUninstall));
             return stack![base, modal].width(Fill).height(Fill).into();
         }
 
@@ -481,6 +511,10 @@ impl App {
         use ui::theme::active_palette;
         let bg = active_palette().bg_primary;
         let luma = bg.r * 0.299 + bg.g * 0.587 + bg.b * 0.114;
-        if luma > 0.5 { Theme::Light } else { Theme::Dark }
+        if luma > 0.5 {
+            Theme::Light
+        } else {
+            Theme::Dark
+        }
     }
 }
