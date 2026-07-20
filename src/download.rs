@@ -100,6 +100,29 @@ async fn download_to_file(
     Ok(())
 }
 
+/// Fetch a small OPTIONAL resource: `Ok(None)` on HTTP 404 (the resource
+/// genuinely is not published), `Err` on any other failure - so a transient
+/// network error can never be mistaken for "not published" (an attacker able
+/// to induce errors must not be able to make a signed app look unsigned).
+async fn fetch_optional_bytes(
+    client: &reqwest::Client,
+    url: &str,
+    token: Option<&str>,
+) -> Result<Option<Vec<u8>>> {
+    let mut request = client.get(url);
+    if let Some(t) = token {
+        request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {t}"));
+    }
+    let resp = request.send().await?;
+    if resp.status().as_u16() == 404 {
+        return Ok(None);
+    }
+    if !resp.status().is_success() {
+        anyhow::bail!("HTTP {} for {url}", resp.status());
+    }
+    Ok(Some(resp.bytes().await?.to_vec()))
+}
+
 /// Fetch a small resource (e.g. a detached signature) fully into memory.
 async fn fetch_bytes(client: &reqwest::Client, url: &str, token: Option<&str>) -> Result<Vec<u8>> {
     let mut request = client.get(url);
@@ -315,6 +338,21 @@ pub async fn download_release_asset(
     let client = download_client()?;
     download_to_file(&client, &url, token.as_deref(), &temp_path, progress_tx).await?;
 
+    // Opportunistic app-signature verification: when the release publishes
+    // `<asset>.sig`, it MUST verify against the org release key (the same
+    // ed25519 key that signs the launcher, embedded in src/signing.rs). A
+    // missing signature is a legacy unsigned app and stays allowed; any
+    // OTHER failure fetching it aborts - a transient error must never make a
+    // signed app look unsigned.
+    let signature =
+        match fetch_optional_bytes(&client, &format!("{url}.sig"), token.as_deref()).await {
+            Ok(sig) => sig,
+            Err(e) => {
+                let _ = std::fs::remove_file(&temp_path);
+                anyhow::bail!("Could not check for a release signature of {filename}: {e}");
+            }
+        };
+
     // Integrity check, archive extraction and the atomic promotion are
     // CPU/IO-bound — run them on a blocking thread. Any failure removes the
     // temp file and leaves the previous install untouched.
@@ -327,6 +365,16 @@ pub async fn download_release_asset(
         let filename = filename.clone();
 
         tokio::task::spawn_blocking(move || -> Result<PathBuf> {
+            if let Some(sig) = signature {
+                let bytes = std::fs::read(&temp_path)?;
+                if let Err(e) = crate::signing::verify_release_signature(&bytes, &sig) {
+                    let _ = std::fs::remove_file(&temp_path);
+                    anyhow::bail!(
+                        "Signature verification FAILED for {filename} - refusing to install: {e}"
+                    );
+                }
+                tracing::info!("ed25519 signature verified for {filename}");
+            }
             if let Some(ref expected) = expected_sha256 {
                 if let Err(e) = verify_sha256(&temp_path, expected) {
                     let _ = std::fs::remove_file(&temp_path);

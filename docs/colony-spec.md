@@ -97,6 +97,14 @@ This is the **recommended format** for new Colony apps using the standard releas
 
 With `filePattern`, Colony fetches the release asset list and finds the one whose name contains the pattern (case-insensitive). If the asset name changes between releases (e.g. `lilypad-v1-windows.zip` → `lilypad-v2-windows.zip`), the pattern `"windows"` still works.
 
+Three matching modes are supported (an exact asset-name match always wins and is never ambiguous):
+
+- **Substring** (legacy): a pattern without `*` matches any asset whose name *contains* it.
+- **Anchored glob**: a pattern containing `*` must match the *whole* asset name (`*` spans any characters). Example: `"colony-*.tar.gz"`.
+- **Glob with exclusions**: comma-separated terms where a leading `!` excludes. Example for an electron-builder layout that publishes both architectures: `"SphereCord-*.AppImage, !*-arm64*"`.
+
+Signature and checksum siblings (`.sig`, `.sha256`, `.yml`, ...) are never matched, so adding release signing to an app cannot break its pattern.
+
 ### Manifest fields
 
 | Field | Type | Required | Description |
@@ -113,7 +121,7 @@ With `filePattern`, Colony fetches the release asset list and finds the one whos
 |-------|------|----------|-------------|
 | `tag` | `string` | yes | GitHub release tag. Can be a versioned tag (`"v1.0.0"`) or `"latest"` for automatic resolution via `GET /releases/latest`. |
 | `file` | `string` | no* | Exact filename to download from the release. Can be a raw binary or an archive (.zip, .tar.gz). |
-| `filePattern` | `string` | no* | Substring to match against release asset names (case-insensitive). Colony selects the matching asset. Error if 0 or >1 assets match. |
+| `filePattern` | `string` | no* | Pattern matched against release asset names (case-insensitive): substring, anchored glob (`*`), or comma-separated glob terms with `!` exclusions. Error if 0 or >1 assets match. |
 | `binary` | `string` | no | Binary name to extract from the archive. If absent, the downloaded file is the final binary. If present, Colony extracts the binary from the archive. |
 | `sha256` | `string` | no | SHA256 hash of the downloaded file for integrity verification. |
 
@@ -196,3 +204,24 @@ Colony offers a **"Connect"** button that initiates a GitHub Device Flow OAuth.
 
 - Without a token, Colony uses the public GitHub API.
 - Public rate limits apply (60 req/h). A message is displayed when the quota is reached.
+
+## Release signatures (optional, recommended)
+
+When a release publishes a detached signature named `<asset>.sig` next to an
+asset, Colony **requires** it to verify: the raw 64-byte ed25519 signature over
+the asset bytes, made with the Project-Colony release key (the same key that
+signs the launcher itself - see `docs/release-signing.md` and the embedded
+public key in `src/signing.rs`). An invalid signature aborts the install.
+
+An asset without a `.sig` sibling installs as before (legacy unsigned app) -
+signing is adopted per-app, no flag day. Sign with:
+
+```sh
+COLONY_SIGNING_KEY=/path/to/colony-release.pem ./scripts/sign-release.sh <asset>
+```
+
+Note the trust boundary: signatures protect against tampered release assets
+(e.g. an asset swapped after publication), because forging one requires the
+org's private signing key, which never lives in any repository. They do not
+yet protect against a fully compromised repository *omitting* signatures;
+enforcement ("this app must be signed") is a planned follow-up.

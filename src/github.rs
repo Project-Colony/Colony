@@ -727,20 +727,67 @@ const NON_INSTALLABLE_SUFFIXES: &[&str] = &[
     ".json",
 ];
 
+/// Anchored glob match: `*` matches any run of characters, everything else is
+/// literal (case-insensitive - both inputs must already be lowercase). The
+/// pattern must cover the WHOLE name, unlike the legacy substring mode.
+fn glob_matches(pattern: &str, name: &str) -> bool {
+    fn inner(p: &[u8], n: &[u8]) -> bool {
+        match (p.first(), n.first()) {
+            (None, None) => true,
+            (Some(b'*'), _) => {
+                // Star: match zero characters, or consume one and retry.
+                inner(&p[1..], n) || (!n.is_empty() && inner(p, &n[1..]))
+            }
+            (Some(pc), Some(nc)) if pc == nc => inner(&p[1..], &n[1..]),
+            _ => false,
+        }
+    }
+    inner(pattern.as_bytes(), name.as_bytes())
+}
+
+/// Resolve a `filePattern` against release asset names.
+///
+/// Three matching modes, so real-world release layouts (e.g. electron-builder
+/// publishing `App-1.2.3.AppImage` AND `App-1.2.3-arm64.AppImage`) stay
+/// expressible:
+/// - exact name match always wins (never ambiguous);
+/// - a pattern containing `*` is an ANCHORED glob; comma-separated terms are
+///   supported, where `!term` excludes: `"*.AppImage, !*-arm64*"`;
+/// - otherwise the legacy case-insensitive substring match applies.
+///
+/// Signature/checksum siblings (`.sig`, `.sha256`, ...) are never candidates.
 pub fn find_asset_by_pattern(assets: &[String], pattern: &str) -> Result<String> {
     let pattern_lower = pattern.to_lowercase();
-    // An exact (case-insensitive) name match always wins: it cannot be
-    // ambiguous, and it lets a manifest pin `app-macos` even though
-    // `app-macos-x86` also contains that pattern as a substring.
     if let Some(exact) = assets.iter().find(|n| n.to_lowercase() == pattern_lower) {
         return Ok(exact.clone());
     }
+
+    let terms: Vec<&str> = pattern_lower
+        .split(',')
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .collect();
+    let has_glob = terms.iter().any(|t| t.contains('*') || t.starts_with('!'));
+    let positives: Vec<&str> = terms
+        .iter()
+        .filter(|t| !t.starts_with('!'))
+        .copied()
+        .collect();
+    let negatives: Vec<&str> = terms.iter().filter_map(|t| t.strip_prefix('!')).collect();
+
     let matches: Vec<&String> = assets
         .iter()
         .filter(|name| {
             let lower = name.to_lowercase();
-            lower.contains(&pattern_lower)
-                && !NON_INSTALLABLE_SUFFIXES.iter().any(|s| lower.ends_with(s))
+            if NON_INSTALLABLE_SUFFIXES.iter().any(|s| lower.ends_with(s)) {
+                return false;
+            }
+            if has_glob {
+                positives.iter().any(|p| glob_matches(p, &lower))
+                    && !negatives.iter().any(|n| glob_matches(n, &lower))
+            } else {
+                lower.contains(&pattern_lower)
+            }
         })
         .collect();
     match matches.len() {
@@ -1137,6 +1184,38 @@ mod tests {
         assert_eq!(
             find_asset_by_pattern(&assets, "app-macos-x86").unwrap(),
             "app-macos-x86"
+        );
+    }
+
+    #[test]
+    fn find_asset_by_pattern_glob_with_exclusion_resolves_electron_builder_layout() {
+        // SphereCord's real release layout: electron-builder publishes both
+        // architectures plus updater metadata. Substring matching could never
+        // express this; an anchored glob with an exclusion can.
+        let assets = vec![
+            "SphereCord-3.2.7.AppImage".to_string(),
+            "SphereCord-3.2.7-arm64.AppImage".to_string(),
+            "SphereCord-Setup-3.2.7.exe".to_string(),
+            "latest-linux.yml".to_string(),
+            "spherecord-3.2.7.tar.gz".to_string(),
+        ];
+        assert_eq!(
+            find_asset_by_pattern(&assets, "spherecord-*.appimage, !*-arm64*").unwrap(),
+            "SphereCord-3.2.7.AppImage"
+        );
+        assert_eq!(
+            find_asset_by_pattern(&assets, "*-arm64.appimage").unwrap(),
+            "SphereCord-3.2.7-arm64.AppImage"
+        );
+    }
+
+    #[test]
+    fn find_asset_by_pattern_glob_is_anchored() {
+        let assets = vec!["app-linux".to_string(), "app-linux-musl".to_string()];
+        // Anchored: "*-linux" must NOT match "app-linux-musl".
+        assert_eq!(
+            find_asset_by_pattern(&assets, "*-linux").unwrap(),
+            "app-linux"
         );
     }
 
