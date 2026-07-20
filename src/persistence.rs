@@ -79,6 +79,18 @@ pub fn installed_app_path(repo: &ColonyRepo) -> Option<PathBuf> {
         // filePattern was used — check saved resolved asset name
         load_installed_asset(&repo.name)?
     };
+    // The filename comes straight from the repo's own manifest: the same
+    // traversal guard as the install path applies, or a hostile manifest
+    // could point the Launch button at an arbitrary executable on disk
+    // (e.g. `binary: "../../somewhere/else"`).
+    if crate::download::ensure_safe_component(&filename).is_err() {
+        tracing::warn!(
+            repo = %repo.name,
+            %filename,
+            "refusing manifest launch path outside the app's install dir"
+        );
+        return None;
+    }
     let path = colony_apps_dir().ok()?.join(&repo.name).join(&filename);
     if path.exists() {
         Some(path)
