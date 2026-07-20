@@ -56,6 +56,8 @@ pub enum Message {
     FetchReleaseNotes(String),
     /// (repo, Ok((tag, body_markdown))) - notes fetched (or failed).
     ReleaseNotesFetched(String, Result<(String, String), String>),
+    /// Manual "clear store caches" from Settings > Storage.
+    ClearStoreCaches,
     WindowResized(f32, f32),
     /// Debounced save of the window size (fires 1s after the LAST resize).
     PersistWindowSize(u64),

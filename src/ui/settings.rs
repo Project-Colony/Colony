@@ -556,6 +556,30 @@ impl App {
 
         sections = sections.push(container(text("")).height(6));
 
+        // Section: Caches
+        sections = sections.push(
+            self.view_collapsible_section(
+                "caches",
+                &i18n::t("clear_caches"),
+                column![
+                    text(i18n::t("clear_caches_desc"))
+                        .size(self.sz(12))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_MUTED()),
+                    container(text("")).height(12),
+                    self.action_button(
+                        "\u{f1f8}",
+                        i18n::t("clear_caches"),
+                        Message::ClearStoreCaches,
+                    ),
+                ]
+                .spacing(0)
+                .into(),
+            ),
+        );
+
+        sections = sections.push(container(text("")).height(6));
+
         // Section: Installation
         let apps_count = self.applications.len().to_string();
         let repos_count = self.colony_repos().len().to_string();

@@ -39,7 +39,7 @@ pub fn main() -> iced::Result {
 
     // Honor the saved language preference over environment locale detection,
     // and reopen at the last persisted window size (clamped to sanity).
-    let prefs = github::load_preferences();
+    let prefs = crate::persistence::load_preferences();
     i18n::init(prefs.language.clone());
     let width = prefs.window_width.unwrap_or(1000.0).clamp(640.0, 7680.0);
     let height = prefs.window_height.unwrap_or(700.0).clamp(480.0, 4320.0);
@@ -67,7 +67,7 @@ fn load_fonts() -> Task<Message> {
 
 impl App {
     fn boot() -> (Self, Task<Message>) {
-        let prefs = github::load_preferences();
+        let prefs = crate::persistence::load_preferences();
 
         // The filesystem application scan and its cache write are deferred off
         // the boot path (dispatched as a Rescan task below) so the window
@@ -79,7 +79,7 @@ impl App {
             // The startup scan is disabled: restore the last scan from cache
             // (which was written on every scan but never read back) instead of
             // greeting the user with a permanently empty local-apps grid.
-            github::load_scan_cache()
+            crate::persistence::load_scan_cache()
                 .unwrap_or_default()
                 .into_iter()
                 .map(|c| scan::Application {
@@ -106,7 +106,7 @@ impl App {
 
         let font = default_font();
 
-        let favorites = github::load_favorites();
+        let favorites = crate::persistence::load_favorites();
 
         // Determine initial section: if restore_session is on use last section,
         // otherwise use default_view to pick "favorites" section if configured.
@@ -141,7 +141,7 @@ impl App {
         // refresh over the network - anonymously when no token is saved (the
         // unauthenticated GitHub API allows 60 req/h, plenty for one boot
         // fetch). Signing in is optional, exactly as the welcome flow promises.
-        let colony_repo_list = github::load_repos_cache().unwrap_or_default();
+        let colony_repo_list = crate::persistence::load_repos_cache().unwrap_or_default();
         let startup_task = {
             let token = match &github_state {
                 GitHubState::Connected { session } => Some(session.access_token.clone()),

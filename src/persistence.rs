@@ -312,6 +312,27 @@ fn desktop_entry_filename(repo_name: &str) -> String {
     format!("colony-{}.desktop", repo_name.to_lowercase())
 }
 
+/// Remove ALL store caches (docs + icons for every repo). Manual cache
+/// management from Settings > Storage; installs and preferences are NOT
+/// touched. Returns the number of cache directories removed.
+pub fn clear_store_caches() -> usize {
+    let Ok(base) = colony_data_dir() else {
+        return 0;
+    };
+    let mut removed = 0;
+    for parent in ["repo-docs", "repo-icons"] {
+        let Ok(entries) = std::fs::read_dir(base.join(parent)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            if std::fs::remove_dir_all(entry.path()).is_ok() {
+                removed += 1;
+            }
+        }
+    }
+    removed
+}
+
 /// Remove doc/icon caches for repos that are NO LONGER in the catalog, so a
 /// deleted or renamed repo does not leave its caches behind forever. Runs
 /// after each successful catalog fetch (never on a cache fallback, where a
