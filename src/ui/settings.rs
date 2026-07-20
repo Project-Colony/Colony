@@ -654,7 +654,7 @@ impl App {
             if is_checking {
                 btn.into()
             } else {
-                btn.on_press(Message::CheckLauncherUpdate).into()
+                btn.on_press(Message::CheckLauncherUpdate { manual: true }).into()
             }
         };
 

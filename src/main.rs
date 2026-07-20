@@ -69,11 +69,33 @@ impl App {
         // the boot path (dispatched as a Rescan task below) so the window
         // appears immediately instead of after a recursive directory walk.
         let should_scan = prefs.scan_on_startup.unwrap_or(true);
-        let applications: Vec<scan::Application> = Vec::new();
+        let applications: Vec<scan::Application> = if should_scan {
+            Vec::new()
+        } else {
+            // The startup scan is disabled: restore the last scan from cache
+            // (which was written on every scan but never read back) instead of
+            // greeting the user with a permanently empty local-apps grid.
+            github::load_scan_cache()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|c| scan::Application {
+                    name: c.name,
+                    exec: c.exec,
+                    icon: c.icon,
+                    category: scan::AppCategory::from_name(&c.category),
+                    origin: match c.origin.as_str() {
+                        "Windows" => scan::AppOrigin::Windows,
+                        "Colony" => scan::AppOrigin::Colony,
+                        "Linux" => scan::AppOrigin::Linux,
+                        _ => scan::AppOrigin::External,
+                    },
+                })
+                .collect()
+        };
         let status_message = if should_scan {
             i18n::t("scanning")
         } else {
-            i18n::t_fmt("apps_found", &[("count", "0")])
+            i18n::t_fmt("apps_found", &[("count", &applications.len().to_string())])
         };
 
         let sections = sections::load_sections();
@@ -168,7 +190,10 @@ impl App {
                 .language
                 .clone()
                 .unwrap_or_else(|| i18n::current_lang().to_string()),
-            auto_check_updates: prefs.auto_check_updates.unwrap_or(false),
+            // ON by default: a store that never checks for updates leaves its
+            // badges permanently invisible. The check is cheap (batched; zero
+            // API calls for apps pinned to a fixed tag).
+            auto_check_updates: prefs.auto_check_updates.unwrap_or(true),
             // Appearance extras
             font_size: prefs.font_size.clone().unwrap_or_else(|| "default".into()),
             animations: prefs.animations.unwrap_or(true),
@@ -218,11 +243,11 @@ impl App {
             set_active_accent(accent_key_to_color(&app.selected_accent));
         }
 
-        let launcher_check_task = if app.auto_check_updates {
-            Task::done(Message::CheckLauncherUpdate)
-        } else {
-            Task::none()
-        };
+        // No direct launcher-update check here: with auto-check on, the boot
+        // catalog fetch chains GitHubReposFetched -> CheckUpdates ->
+        // CheckLauncherUpdate already - a second dispatch meant every boot ran
+        // the check twice.
+        let launcher_check_task = Task::none();
 
         let tutorial_task = if app.show_first_launch {
             ui::fetch_bounds_task()
