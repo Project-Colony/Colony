@@ -1188,6 +1188,71 @@ mod tests {
     }
 
     #[test]
+    fn spec_conformant_manifest_parses_field_for_field() {
+        // Locks docs/colony-spec.md <-> code parity: this sample uses every
+        // documented manifest field with the spec's exact camelCase names.
+        // If a rename or removal breaks the spec, this test fails first.
+        let json = r#"{
+            "name": "Lilypad",
+            "category": "Security",
+            "platforms": ["windows", "linux", "macos", "macos-x86"],
+            "icon": "assets/icons/icon.png",
+            "signed": true,
+            "releaseFiles": {
+                "linux": {
+                    "tag": "latest",
+                    "filePattern": "lilypad-*-linux.tar.gz, !*-arm64*",
+                    "binary": "lilypad-cli",
+                    "sha256": "abc123"
+                },
+                "windows": {
+                    "tag": "v1.0.0",
+                    "file": "lilypad-windows.zip",
+                    "binary": "lilypad-cli.exe"
+                }
+            }
+        }"#;
+        let m: ColonyManifest = serde_json::from_str(json).expect("spec sample must parse");
+        assert_eq!(m.name, "Lilypad");
+        assert_eq!(m.category, "Security");
+        assert_eq!(m.platforms.len(), 4);
+        assert_eq!(m.icon.as_deref(), Some("assets/icons/icon.png"));
+        assert!(m.signed);
+        let linux = &m.release_files["linux"];
+        assert_eq!(linux.tag, "latest");
+        assert_eq!(
+            linux.file_pattern.as_deref(),
+            Some("lilypad-*-linux.tar.gz, !*-arm64*")
+        );
+        assert_eq!(linux.binary.as_deref(), Some("lilypad-cli"));
+        assert_eq!(linux.sha256.as_deref(), Some("abc123"));
+        let windows = &m.release_files["windows"];
+        assert_eq!(windows.tag, "v1.0.0");
+        assert_eq!(windows.file.as_deref(), Some("lilypad-windows.zip"));
+        // Every spec category value (and its documented aliases) maps to a
+        // real category - never silently to Other (except Other itself).
+        for cat in [
+            "Development",
+            "Graphics",
+            "Network",
+            "Office",
+            "Multimedia",
+            "System",
+            "Utility",
+            "Utilities",
+            "Security",
+            "Game",
+            "Games",
+        ] {
+            assert_ne!(
+                crate::scan::AppCategory::from_name(cat),
+                crate::scan::AppCategory::Other,
+                "spec category '{cat}' must not fall back to Other"
+            );
+        }
+    }
+
+    #[test]
     fn manifest_signed_flag_parses_and_defaults_off() {
         let json = r#"{ "name": "App", "category": "Utility", "signed": true }"#;
         let m: ColonyManifest = serde_json::from_str(json).unwrap();

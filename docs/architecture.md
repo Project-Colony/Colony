@@ -30,9 +30,12 @@ src/
 ├── update.rs        — Handlers for each Message variant
 ├── github.rs        — GitHub API, ETag cache, manifests, release
 │                      asset resolution, platform auto-detection
-├── download.rs      — Asset/archive downloads, extraction, self-update
-├── signing.rs       — ed25519 verification of signed launcher updates
-├── persistence.rs   — Data dirs, install state, on-disk caches, favorites
+├── download.rs      — Asset/archive downloads, extraction, app-signature
+│                      verification, self-update
+├── signing.rs       — ed25519 verification (launcher AND app releases)
+├── icons.rs         — PNG decoding for per-app grid icons
+├── persistence.rs   — Data dirs, install state, on-disk caches, favorites,
+│                      desktop entries (Linux)
 ├── config.rs        — Locating external config (categories.json, colony.toml)
 ├── oauth.rs         — Device Flow OAuth (login, token, keychain)
 ├── scan.rs          — System application scanning (Linux/Windows/macOS)
@@ -45,7 +48,9 @@ src/
     ├── app_grid.rs  — Application card grid with search
     ├── detail.rs    — Detail view (README, changelog, license, actions)
     ├── settings.rs  — Settings panel (theme, language, about, updates)
-    └── github_panel.rs — GitHub connect/disconnect, Device Flow UI
+    ├── github_panel.rs — GitHub connect/disconnect, Device Flow UI
+    ├── markdown_blocks.rs — Cached-block Markdown rendering
+    └── tutorial.rs  — First-launch guided tour (spotlight overlay)
 ```
 
 ## Data flow (Elm architecture)
@@ -94,13 +99,14 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
 
 1. Compares `CARGO_PKG_VERSION` vs latest release from `Project-Colony/Colony`
 2. Downloads the platform-specific binary to `update-staging/`
-3. Replacement sequence: backup to `.old` → copy new binary → chmod 755
+3. Replacement sequence: backup to `.old` → write the signature-verified
+   bytes (never a re-read of the staged file) → chmod 755
 4. Automatic rollback if copy fails
 5. Spawns the new binary → exits the old one
 
 ## Tests
 
-62 unit tests covering:
+105 unit tests covering:
 - `colony.json` manifest parsing (full, minimal, with pattern, with archives)
 - Platform auto-detection from release assets
 - `release_files` construction from assets
@@ -109,5 +115,9 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
 - Environment variable expansion
 - Application categorization
 - Section filters
-- Localization (EN/FR)
+- Localization (EN/FR, key parity between languages)
 - Preferences serialization
+- Update-loop state transitions (catalog refresh, update queue, badges,
+  launcher-check outcomes, cancel semantics) via a hermetic test App
+- filePattern globs with exclusions, signature parsing (strict ed25519),
+  typed HTTP-status classification
