@@ -33,21 +33,16 @@ COLONY_SIGNING_KEY=/path/to/colony-release.pem \
 This writes `colony-linux.sig`, `colony-windows.exe.sig`, … each self-verified
 before it is written. Upload every `.sig` as a release asset.
 
-### GitHub Actions sketch
+### In CI (the normal path)
 
-```yaml
-- name: Sign release assets
-  env:
-    KEY: ${{ secrets.COLONY_SIGNING_KEY_PEM }}   # the PEM contents
-  run: |
-    printf '%s' "$KEY" > /tmp/colony-release.pem
-    chmod 600 /tmp/colony-release.pem
-    COLONY_SIGNING_KEY=/tmp/colony-release.pem \
-      ./scripts/sign-release.sh dist/colony-*
-    rm -f /tmp/colony-release.pem
-- name: Upload signatures
-  run: gh release upload "$TAG" dist/colony-*.sig
-```
+Since the v0.7.0 incident (a release shipped unsigned because signing was a
+manual step, bricking self-update for every existing install), signing is a
+mandatory job in the release workflow: `.github/workflows/release-please.yml`
+(`sign` job) downloads the four built binaries, signs them with the
+`COLONY_SIGNING_KEY_PEM` secret (the PEM contents), and uploads the `.sig`
+assets. The job **fails the release** if the secret is missing, so an unsigned
+release can no longer ship silently. The manual procedure above remains for
+re-signing an old release by hand.
 
 ## Key custody
 

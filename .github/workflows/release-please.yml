@@ -79,3 +79,63 @@ jobs:
         with:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: ${{ matrix.asset }}
+
+  # Self-update verification is fail-closed: a release without .sig assets
+  # bricks "Download update" for every existing install (this happened on
+  # v0.7.0, which shipped unsigned because signing was a manual step). This job
+  # makes the signatures part of the release itself and FAILS the release if
+  # the signing secret is missing, so an unsigned release can never ship
+  # silently again.
+  sign:
+    name: Sign release assets
+    needs: [release-please, build]
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          mkdir dist
+          gh release download "$TAG" --dir dist \
+            --pattern colony-linux \
+            --pattern colony-windows.exe \
+            --pattern colony-macos \
+            --pattern colony-macos-x86
+
+      - name: Sign
+        env:
+          KEY: ${{ secrets.COLONY_SIGNING_KEY_PEM }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::COLONY_SIGNING_KEY_PEM secret is not set - the release would ship unsigned and self-update is fail-closed. See docs/release-signing.md."
+            exit 1
+          fi
+          printf '%s' "$KEY" > /tmp/colony-release.pem
+          chmod 600 /tmp/colony-release.pem
+          COLONY_SIGNING_KEY=/tmp/colony-release.pem \
+            ./scripts/sign-release.sh dist/colony-linux dist/colony-windows.exe dist/colony-macos dist/colony-macos-x86
+          rm -f /tmp/colony-release.pem
+
+      - name: Upload signatures
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh release upload "$TAG" dist/*.sig --clobber
+
+  # Chained here (not on `release: published`) because release-please creates
+  # the release with the default GITHUB_TOKEN, whose events do not trigger
+  # other workflows - the standalone trigger never fired once in nine
+  # releases. Running after `sign` also guarantees the assets exist before
+  # the AUR job hashes them.
+  aur:
+    name: Publish colony-bin to AUR
+    needs: [release-please, sign]
+    if: ${{ needs.release-please.outputs.release_created }}
+    uses: ./.github/workflows/aur-publish.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit

@@ -1,18 +1,28 @@
-# Auto-bump the colony-bin AUR package whenever a new GitHub Release is
-# published on this repo. Uses a dedicated SSH key (AUR_SSH_PRIVATE_KEY secret)
-# registered as a secondary key on the MotherSphere AUR account — scope is
-# limited to AUR push access, revocable by removing that key from the AUR
-# profile if ever compromised.
+# Bump the colony-bin AUR package to a given release tag. Uses a dedicated SSH
+# key (AUR_SSH_PRIVATE_KEY secret) registered as a secondary key on the
+# MotherSphere AUR account — scope is limited to AUR push access, revocable by
+# removing that key from the AUR profile if ever compromised.
+#
+# Invoked as a reusable workflow from release-please.yml after the release
+# assets are built, uploaded and signed. It deliberately does NOT trigger on
+# `release: published`: our releases are created by release-please with the
+# default GITHUB_TOKEN, and GitHub suppresses workflow triggers for events
+# created by that token — the old trigger never fired once (colony-bin sat at
+# 0.1.4 for nine releases). workflow_dispatch remains as a manual fallback.
 
 name: Publish colony-bin to AUR
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag to publish to AUR (e.g. v0.7.0)'
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to republish to AUR (e.g. v0.1.4)'
+        description: 'Release tag to republish to AUR (e.g. v0.7.0)'
         required: true
         type: string
 
@@ -25,12 +35,9 @@ jobs:
     steps:
       - name: Resolve release tag
         id: tag
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "pkgver=${TAG#v}" >> "$GITHUB_OUTPUT"
           echo "Publishing AUR bump for ${TAG} (pkgver=${TAG#v})"
@@ -38,10 +45,14 @@ jobs:
       - name: Download colony-linux asset + compute sha256
         id: sha
         env:
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
+        # gh fails hard when the asset is missing — unlike the old bare curl,
+        # which would happily save GitHub's 404 page and push its sha256 to
+        # AUR, breaking installs for every colony-bin user.
         run: |
-          curl -sSL -o colony-linux \
-            "https://github.com/${{ github.repository }}/releases/download/${TAG}/colony-linux"
+          gh release download "$TAG" -R "${{ github.repository }}" \
+            --pattern colony-linux
           SHA256=$(sha256sum colony-linux | awk '{print $1}')
           echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
           echo "SHA256: ${SHA256}"
