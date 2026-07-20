@@ -25,6 +25,7 @@ pub enum AppCategory {
     Multimedia,
     System,
     Utility,
+    Security,
     Game,
     Other,
 }
@@ -40,6 +41,7 @@ impl AppCategory {
             "multimedia" => Self::Multimedia,
             "system" => Self::System,
             "utility" | "utilities" => Self::Utility,
+            "security" => Self::Security,
             "game" | "games" => Self::Game,
             _ => Self::Other,
         }
@@ -56,6 +58,7 @@ impl AppCategory {
             Self::Multimedia => "\u{f001}",  // music
             Self::System => "\u{f085}",      // cogs
             Self::Utility => "\u{f0ad}",     // wrench
+            Self::Security => "\u{f132}",    // shield
             Self::Game => "\u{f11b}",        // gamepad
             Self::Other => "\u{f187}",       // archive-box
         }
