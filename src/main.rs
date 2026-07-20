@@ -171,6 +171,9 @@ impl App {
             next_notification_id: 0,
             app_icons: std::collections::HashMap::new(),
             download_progress: None,
+            download_bytes: None,
+            download_speed: 0.0,
+            last_progress_sample: None,
             download_abort: None,
             downloading_repo: None,
             favorites,
@@ -237,6 +240,7 @@ impl App {
             update_queue: Vec::new(),
             release_notes: std::collections::HashMap::new(),
             fetching_notes: std::collections::HashSet::new(),
+            keyboard_cursor: None,
             window_size: (
                 prefs.window_width.unwrap_or(1000.0).clamp(640.0, 7680.0),
                 prefs.window_height.unwrap_or(700.0).clamp(480.0, 4320.0),
@@ -315,7 +319,38 @@ impl App {
         // Download progress bar with graphical bar and cancel button
         if let Some((ref filename, progress)) = self.download_progress {
             let pct = (progress * 100.0) as u32;
-            let bar_label = format!("\u{f019}  {} — {}%", filename, pct);
+            // Size and speed when we have byte counters, plain % otherwise.
+            let bar_label = match self.download_bytes {
+                Some((done, Some(total))) if total > 0 => {
+                    let speed = if self.download_speed > 1.0 {
+                        format!(" · {}/s", state::human_bytes(self.download_speed as u64))
+                    } else {
+                        String::new()
+                    };
+                    format!(
+                        "\u{f019}  {} — {} / {} ({}%){}",
+                        filename,
+                        state::human_bytes(done),
+                        state::human_bytes(total),
+                        pct,
+                        speed
+                    )
+                }
+                Some((done, _)) => {
+                    let speed = if self.download_speed > 1.0 {
+                        format!(" · {}/s", state::human_bytes(self.download_speed as u64))
+                    } else {
+                        String::new()
+                    };
+                    format!(
+                        "\u{f019}  {} — {}{}",
+                        filename,
+                        state::human_bytes(done),
+                        speed
+                    )
+                }
+                None => format!("\u{f019}  {} — {}%", filename, pct),
+            };
             let cancel_btn = button(
                 text("\u{f00d}")
                     .size(self.sz(12))

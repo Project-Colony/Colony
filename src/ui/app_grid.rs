@@ -546,7 +546,8 @@ impl App {
             .align_y(iced::Alignment::Center)
             .width(Fill);
 
-        let selected = self.active_colony_repo.as_deref() == Some(repo.name.as_str());
+        let selected = self.active_colony_repo.as_deref() == Some(repo.name.as_str())
+            || self.keyboard_cursor.as_deref() == Some(&format!("repo:{}", repo.name));
         self.cell_shell(
             content.into(),
             Message::ColonyRepoSelected(repo.name.clone()),
@@ -562,6 +563,7 @@ impl App {
         &self,
         content: Element<'a, Message>,
         accent: Color,
+        selected: bool,
     ) -> Element<'a, Message> {
         let bar = container(text(""))
             .width(4)
@@ -586,10 +588,21 @@ impl App {
         container(inner)
             .width(Fill)
             .height(Length::Fixed(self.sz(96)))
-            .style(|_theme| container::Style {
-                background: Some(Palette::BG_CARD().into()),
+            .style(move |_theme| container::Style {
+                background: Some(
+                    if selected {
+                        Palette::BG_SELECTED()
+                    } else {
+                        Palette::BG_CARD()
+                    }
+                    .into(),
+                ),
                 border: iced::Border {
-                    color: Palette::BORDER_SUBTLE(),
+                    color: if selected {
+                        Palette::ACCENT()
+                    } else {
+                        Palette::BORDER_SUBTLE()
+                    },
                     width: 1.0,
                     radius: 12.0.into(),
                 },
@@ -679,6 +692,7 @@ impl App {
             .align_y(iced::Alignment::Center)
             .width(Fill);
 
-        self.cell_shell_static(content.into(), tint)
+        let selected = self.keyboard_cursor.as_deref() == Some(&format!("app:{}", app.name));
+        self.cell_shell_static(content.into(), tint, selected)
     }
 }
