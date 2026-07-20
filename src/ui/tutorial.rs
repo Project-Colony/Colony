@@ -30,10 +30,7 @@ struct CollectBounds {
 }
 
 impl Operation<TutorialBounds> for CollectBounds {
-    fn traverse(
-        &mut self,
-        operate: &mut dyn FnMut(&mut dyn Operation<TutorialBounds>),
-    ) {
+    fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation<TutorialBounds>)) {
         operate(self);
     }
 
@@ -129,7 +126,12 @@ fn steps() -> [Step; 6] {
             title_key: "tut_sidebar_title",
             desc_key: "tut_sidebar_desc",
             zone: Zone::SidebarCats,
-            fallback: Some(SpotRect { x: 0, y: 56, w: 200, h: 380 }),
+            fallback: Some(SpotRect {
+                x: 0,
+                y: 56,
+                w: 200,
+                h: 380,
+            }),
             placement: Placement::Right,
             show_github_btn: false,
             pad: 8,
@@ -138,7 +140,12 @@ fn steps() -> [Step; 6] {
             title_key: "tut_search_title",
             desc_key: "tut_search_desc",
             zone: Zone::Search,
-            fallback: Some(SpotRect { x: 216, y: 16, w: 760, h: 68 }),
+            fallback: Some(SpotRect {
+                x: 216,
+                y: 16,
+                w: 760,
+                h: 68,
+            }),
             placement: Placement::Below,
             show_github_btn: false,
             pad: 10,
@@ -147,7 +154,12 @@ fn steps() -> [Step; 6] {
             title_key: "tut_grid_title",
             desc_key: "tut_grid_desc",
             zone: Zone::Grid,
-            fallback: Some(SpotRect { x: 216, y: 92, w: 760, h: 560 }),
+            fallback: Some(SpotRect {
+                x: 216,
+                y: 92,
+                w: 760,
+                h: 560,
+            }),
             placement: Placement::Left,
             show_github_btn: false,
             pad: 10,
@@ -156,7 +168,12 @@ fn steps() -> [Step; 6] {
             title_key: "tut_github_title",
             desc_key: "tut_github_desc",
             zone: Zone::GithubArea,
-            fallback: Some(SpotRect { x: 0, y: 540, w: 200, h: 130 }),
+            fallback: Some(SpotRect {
+                x: 0,
+                y: 540,
+                w: 200,
+                h: 130,
+            }),
             placement: Placement::Above,
             show_github_btn: true,
             pad: 8,
@@ -181,7 +198,8 @@ fn resolve_rect(step: &Step, bounds: &TutorialBounds) -> Option<SpotRect> {
         Zone::Grid => bounds.grid,
         Zone::GithubArea => bounds.github_area,
     };
-    live.map(|r| SpotRect::from_rect(r, step.pad)).or(step.fallback)
+    live.map(|r| SpotRect::from_rect(r, step.pad))
+        .or(step.fallback)
 }
 
 impl App {
@@ -206,7 +224,15 @@ impl App {
             .center_x(Fill)
             .center_y(Fill)
             .style(|_| container::Style {
-                background: Some(Color { r: 0.0, g: 0.0, b: 0.0, a: 0.65 }.into()),
+                background: Some(
+                    Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.65,
+                    }
+                    .into(),
+                ),
                 ..Default::default()
             })
             .into()
@@ -218,7 +244,12 @@ impl App {
         placement: Placement,
         bubble: Element<'a, Message>,
     ) -> Element<'a, Message> {
-        let bg = Color { r: 0.0, g: 0.0, b: 0.0, a: 0.7 };
+        let bg = Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.7,
+        };
         let band_style = move |_: &iced::Theme| container::Style {
             background: Some(bg.into()),
             ..Default::default()
@@ -239,7 +270,12 @@ impl App {
                     .align_y(iced::alignment::Vertical::Bottom)
                     .width(Fill)
                     .height(Fill)
-                    .padding(iced::Padding { top: 0.0, right: 16.0, bottom: 16.0, left: 16.0 }),
+                    .padding(iced::Padding {
+                        top: 0.0,
+                        right: 16.0,
+                        bottom: 16.0,
+                        left: 16.0,
+                    }),
             )
             .width(Fill)
             .height(Length::Fixed(rect.y as f32))
@@ -267,7 +303,12 @@ impl App {
                     .center_y(Fill)
                     .width(Fill)
                     .height(Fill)
-                    .padding(iced::Padding { top: 0.0, right: 12.0, bottom: 0.0, left: 12.0 }),
+                    .padding(iced::Padding {
+                        top: 0.0,
+                        right: 12.0,
+                        bottom: 0.0,
+                        left: 12.0,
+                    }),
             )
             .width(Length::Fixed(rect.x as f32))
             .height(Length::Fixed(rect.h as f32))
@@ -288,7 +329,12 @@ impl App {
                     .center_y(Fill)
                     .width(Fill)
                     .height(Fill)
-                    .padding(iced::Padding { top: 0.0, right: 16.0, bottom: 0.0, left: 16.0 }),
+                    .padding(iced::Padding {
+                        top: 0.0,
+                        right: 16.0,
+                        bottom: 0.0,
+                        left: 16.0,
+                    }),
             )
             .width(Fill)
             .height(Length::Fixed(rect.h as f32))
@@ -313,7 +359,12 @@ impl App {
                     .align_y(iced::alignment::Vertical::Top)
                     .width(Fill)
                     .height(Fill)
-                    .padding(iced::Padding { top: 16.0, right: 16.0, bottom: 0.0, left: 16.0 }),
+                    .padding(iced::Padding {
+                        top: 16.0,
+                        right: 16.0,
+                        bottom: 0.0,
+                        left: 16.0,
+                    }),
             )
             .width(Fill)
             .height(Fill)
@@ -337,51 +388,59 @@ impl App {
         let is_last = idx as u8 >= TUTORIAL_LAST_STEP;
         let is_first = idx == 0;
 
-        let primary_btn = |label_key: &'static str, msg: Message| -> iced::widget::Button<'a, Message> {
-            button(
-                text(i18n::t(label_key)).size(self.sz(13)).font(self.app_font()),
-            )
-            .on_press(msg)
-            .padding([9, 18])
-            .style(|_theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => Palette::BTN_SUCCESS_HOVER(),
-                    _ => Palette::BTN_SUCCESS(),
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: Palette::TEXT_PRIMARY(),
-                    border: iced::Border::default().rounded(8),
-                    ..Default::default()
-                }
-            })
-        };
+        let primary_btn =
+            |label_key: &'static str, msg: Message| -> iced::widget::Button<'a, Message> {
+                button(
+                    text(i18n::t(label_key))
+                        .size(self.sz(13))
+                        .font(self.app_font()),
+                )
+                .on_press(msg)
+                .padding([9, 18])
+                .style(|_theme, status| {
+                    let bg = match status {
+                        button::Status::Hovered => Palette::BTN_SUCCESS_HOVER(),
+                        _ => Palette::BTN_SUCCESS(),
+                    };
+                    button::Style {
+                        background: Some(bg.into()),
+                        text_color: Palette::TEXT_PRIMARY(),
+                        border: iced::Border::default().rounded(8),
+                        ..Default::default()
+                    }
+                })
+            };
 
-        let ghost_btn = |label_key: &'static str, msg: Message| -> iced::widget::Button<'a, Message> {
-            button(
-                text(i18n::t(label_key))
-                    .size(self.sz(12))
-                    .font(self.app_font())
-                    .color(Palette::TEXT_SECONDARY()),
-            )
-            .on_press(msg)
-            .padding([8, 14])
-            .style(|_theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => Palette::BTN_HOVER(),
-                    _ => Color::TRANSPARENT,
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: Palette::TEXT_SECONDARY(),
-                    border: iced::Border::default().rounded(8),
-                    ..Default::default()
-                }
-            })
-        };
+        let ghost_btn =
+            |label_key: &'static str, msg: Message| -> iced::widget::Button<'a, Message> {
+                button(
+                    text(i18n::t(label_key))
+                        .size(self.sz(12))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_SECONDARY()),
+                )
+                .on_press(msg)
+                .padding([8, 14])
+                .style(|_theme, status| {
+                    let bg = match status {
+                        button::Status::Hovered => Palette::BTN_HOVER(),
+                        _ => Color::TRANSPARENT,
+                    };
+                    button::Style {
+                        background: Some(bg.into()),
+                        text_color: Palette::TEXT_SECONDARY(),
+                        border: iced::Border::default().rounded(8),
+                        ..Default::default()
+                    }
+                })
+            };
 
         let dot = |active: bool| -> iced::widget::Container<'a, Message> {
-            let c = if active { Palette::ACCENT() } else { Palette::BTN_HOVER() };
+            let c = if active {
+                Palette::ACCENT()
+            } else {
+                Palette::BTN_HOVER()
+            };
             container(text(""))
                 .width(7)
                 .height(7)
@@ -407,7 +466,11 @@ impl App {
         } else {
             ghost_btn("welcome_back", Message::WelcomeBack).into()
         };
-        let right_label = if is_last { "welcome_start" } else { "welcome_next" };
+        let right_label = if is_last {
+            "welcome_start"
+        } else {
+            "welcome_next"
+        };
         let right_btn: Element<'a, Message> = primary_btn(right_label, Message::WelcomeNext).into();
 
         let nav = row![
@@ -419,7 +482,11 @@ impl App {
         ]
         .align_y(iced::Alignment::Center);
 
-        let title_size = if matches!(step.zone, Zone::None) { self.sz(24) } else { self.sz(18) };
+        let title_size = if matches!(step.zone, Zone::None) {
+            self.sz(24)
+        } else {
+            self.sz(18)
+        };
 
         let mut body: Column<'a, Message> = column![
             text(i18n::t(step.title_key))
@@ -462,4 +529,3 @@ impl App {
             .into()
     }
 }
-

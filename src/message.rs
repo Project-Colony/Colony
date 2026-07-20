@@ -4,10 +4,10 @@ use std::path::PathBuf;
 
 use crate::ui::TutorialBounds;
 
+use crate::github::ColonyRepo;
 use crate::oauth::OAuthSession;
 use crate::scan::Application;
 use crate::state::DetailTab;
-use crate::github::ColonyRepo;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -31,9 +31,9 @@ pub enum Message {
     GitHubReposFetched(Vec<ColonyRepo>),
     GitHubError(String),
     GitHubRefreshRepos,
-    DownloadRelease(String, String),               // (repo_name, platform_key)
+    DownloadRelease(String, String), // (repo_name, platform_key)
     #[allow(dead_code)]
-    DownloadProgress(String, f32),                  // (filename, progress 0.0..1.0)
+    DownloadProgress(String, f32), // (filename, progress 0.0..1.0)
     DownloadCompleted(Result<(PathBuf, String, String), String>), // (path, repo_name, tag)
     CancelDownload,
     LaunchColonyApp(PathBuf),
@@ -84,7 +84,9 @@ pub enum Message {
     /// manual check gets an "up to date" toast (an automatic one would toast
     /// on every boot) and network failures surface as errors instead of the
     /// check lying that Colony is current.
-    CheckLauncherUpdate { manual: bool },
+    CheckLauncherUpdate {
+        manual: bool,
+    },
     /// (manual, result of the check). Ok(None) = genuinely up to date;
     /// Err = the check could not run (network/rate limit/bad tag).
     LauncherUpdateChecked(bool, Result<Option<(String, String)>, String>),

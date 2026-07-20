@@ -1,12 +1,14 @@
 use iced::font::Weight;
-use iced::widget::{button, column, container, row, scrollable, stack, text, text_input, Column, Row};
+use iced::widget::{
+    button, column, container, row, scrollable, stack, text, text_input, Column, Row,
+};
 use iced::{Color, Element, Fill, Length};
 
 use crate::github::ColonyRepo;
-use crate::scan::{AppCategory, Application};
-use crate::ui::theme::{self, Palette};
-use crate::state::App;
 use crate::message::Message;
+use crate::scan::{AppCategory, Application};
+use crate::state::App;
+use crate::ui::theme::{self, Palette};
 
 /// Filled Material-Design hexagon glyph from the embedded Nerd Font — the
 /// Colony "cell" that is the app tile, the brand mark, and the status badge.
@@ -71,7 +73,11 @@ fn build_card_grid<'a>(cards: Vec<Element<'a, Message>>, cols: usize) -> Column<
     for card in cards {
         current.push(card);
         if current.len() == cols {
-            rows.push(Row::with_children(std::mem::take(&mut current)).spacing(12).into());
+            rows.push(
+                Row::with_children(std::mem::take(&mut current))
+                    .spacing(12)
+                    .into(),
+            );
         }
     }
     if !current.is_empty() {
@@ -137,7 +143,12 @@ impl App {
     /// The 54x54 card tile: the app's real decoded icon when we have one,
     /// otherwise the tinted category hexagon. Clones a cheap (Arc-backed) handle
     /// out of state — never decodes in `view()`.
-    fn icon_tile<'a>(&self, repo_name: &str, tint: Color, glyph: &'static str) -> Element<'a, Message> {
+    fn icon_tile<'a>(
+        &self,
+        repo_name: &str,
+        tint: Color,
+        glyph: &'static str,
+    ) -> Element<'a, Message> {
         if let Some(handle) = self.app_icons.get(repo_name) {
             return container(
                 iced::widget::image(handle.clone())
@@ -188,27 +199,49 @@ impl App {
         let version = crate::github::load_installed_version(&repo.name);
         if let Some(new_tag) = self.available_updates.get(&repo.name) {
             let head = row![
-                text(HEX_FILLED).size(self.sz(11)).font(self.app_font()).color(Palette::WARNING()),
-                text(crate::i18n::t("status_update")).size(self.sz(12)).font(self.app_font()).color(Palette::WARNING()),
+                text(HEX_FILLED)
+                    .size(self.sz(11))
+                    .font(self.app_font())
+                    .color(Palette::WARNING()),
+                text(crate::i18n::t("status_update"))
+                    .size(self.sz(12))
+                    .font(self.app_font())
+                    .color(Palette::WARNING()),
             ]
             .spacing(6)
             .align_y(iced::Alignment::Center);
-            let delta = text(format!("{} → {}", version.as_deref().unwrap_or("?"), new_tag))
-                .size(self.sz(11))
-                .font(self.app_font())
-                .color(Palette::TEXT_DIMMER());
-            column![head, delta].spacing(3).align_x(iced::Alignment::End).into()
+            let delta = text(format!(
+                "{} → {}",
+                version.as_deref().unwrap_or("?"),
+                new_tag
+            ))
+            .size(self.sz(11))
+            .font(self.app_font())
+            .color(Palette::TEXT_DIMMER());
+            column![head, delta]
+                .spacing(3)
+                .align_x(iced::Alignment::End)
+                .into()
         } else {
             let head = row![
-                text(HEX_FILLED).size(self.sz(11)).font(self.app_font()).color(Palette::SUCCESS()),
-                text(crate::i18n::t("status_installed")).size(self.sz(12)).font(self.app_font()).color(Palette::SUCCESS()),
+                text(HEX_FILLED)
+                    .size(self.sz(11))
+                    .font(self.app_font())
+                    .color(Palette::SUCCESS()),
+                text(crate::i18n::t("status_installed"))
+                    .size(self.sz(12))
+                    .font(self.app_font())
+                    .color(Palette::SUCCESS()),
             ]
             .spacing(6)
             .align_y(iced::Alignment::Center);
             let mut col = column![head].spacing(3).align_x(iced::Alignment::End);
             if let Some(v) = version {
                 col = col.push(
-                    text(v).size(self.sz(11)).font(self.app_font()).color(Palette::TEXT_DIMMER()),
+                    text(v)
+                        .size(self.sz(11))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_DIMMER()),
                 );
             }
             col.into()
@@ -291,18 +324,25 @@ impl App {
 
         // Show search result count when query is active
         let status_text = if !self.search_query.is_empty() {
-            let filtered_count = self.filtered_applications().len() + self.filtered_colony_repos().len();
-            crate::i18n::t_fmt("n_results_found", &[
-                ("count", &filtered_count.to_string()),
-                ("query", &self.search_query),
-            ])
+            let filtered_count =
+                self.filtered_applications().len() + self.filtered_colony_repos().len();
+            crate::i18n::t_fmt(
+                "n_results_found",
+                &[
+                    ("count", &filtered_count.to_string()),
+                    ("query", &self.search_query),
+                ],
+            )
         } else {
             self.status_message.clone()
         };
 
         // Show spinner indicator for async operations
         let spinner = if self.is_scanning || self.is_checking_updates || self.is_fetching_repos {
-            text("\u{f110} ").size(self.sz(12)).font(self.app_font()).color(Palette::ACCENT())
+            text("\u{f110} ")
+                .size(self.sz(12))
+                .font(self.app_font())
+                .color(Palette::ACCENT())
         } else {
             text("").size(self.sz(12))
         };
@@ -321,14 +361,10 @@ impl App {
             .width(Fill)
             .height(Fill);
 
-        let content = column![
-            header,
-            container(text("")).height(16),
-            app_grid
-        ]
-        .spacing(8)
-        .padding(24)
-        .width(Fill);
+        let content = column![header, container(text("")).height(16), app_grid]
+            .spacing(8)
+            .padding(24)
+            .width(Fill);
 
         container(content)
             .style(|_theme| container::Style {
@@ -343,9 +379,7 @@ impl App {
     pub(crate) fn view_app_grid(&self) -> Element<'_, Message> {
         let selected_section = self.sections.get(self.selected_section);
         let is_favorites = selected_section.map(|s| s.is_favorites).unwrap_or(false);
-        let has_category_filter = selected_section
-            .and_then(|s| s.category())
-            .is_some();
+        let has_category_filter = selected_section.and_then(|s| s.category()).is_some();
 
         // If a category section is selected (not All/Favorites), show Colony repos for that category
         if has_category_filter && !is_favorites {
@@ -377,7 +411,10 @@ impl App {
             };
             return container(
                 column![
-                    text("\u{f002}").size(self.sz(32)).font(self.app_font()).color(Palette::TEXT_DIMMEST()),
+                    text("\u{f002}")
+                        .size(self.sz(32))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_DIMMEST()),
                     container(text("")).height(12),
                     text(empty_msg)
                         .size(self.sz(16))
@@ -404,7 +441,9 @@ impl App {
             for app in &filtered {
                 all_cards.push(self.view_app_card(app));
             }
-            scrollable(build_card_grid(all_cards, cols)).height(Fill).into()
+            scrollable(build_card_grid(all_cards, cols))
+                .height(Fill)
+                .into()
         })
         .into()
     }
@@ -517,6 +556,11 @@ impl App {
             .align_y(iced::Alignment::Center)
             .width(Fill);
 
-        self.cell_shell(content.into(), Message::LaunchApp(app.exec.clone()), false, tint)
+        self.cell_shell(
+            content.into(),
+            Message::LaunchApp(app.exec.clone()),
+            false,
+            tint,
+        )
     }
 }

@@ -3,10 +3,10 @@ use iced::widget::{button, column, container, row, scrollable, text, Column};
 
 use iced::{Element, Fill, Length};
 
-use crate::sections::Section;
-use crate::ui::theme::Palette;
-use crate::state::{App, GitHubState};
 use crate::message::Message;
+use crate::sections::Section;
+use crate::state::{App, GitHubState};
+use crate::ui::theme::Palette;
 
 impl App {
     pub(crate) fn view_sidebar(&self) -> Element<'_, Message> {
@@ -17,7 +17,11 @@ impl App {
             text("\u{f013}")
                 .size(self.sz(14))
                 .font(self.app_font())
-                .color(if self.show_settings { Palette::TEXT_PRIMARY() } else { Palette::TEXT_DIMMER() }),
+                .color(if self.show_settings {
+                    Palette::TEXT_PRIMARY()
+                } else {
+                    Palette::TEXT_DIMMER()
+                }),
         ]
         .spacing(10)
         .align_y(iced::Alignment::Center);
@@ -79,8 +83,14 @@ impl App {
         };
 
         let github_btn_content = row![
-            text("\u{f09b}").size(self.sz(18)).font(self.app_font()).color(github_icon_color),
-            text(github_label).size(self.sz(13)).font(self.app_font()).color(github_icon_color),
+            text("\u{f09b}")
+                .size(self.sz(18))
+                .font(self.app_font())
+                .color(github_icon_color),
+            text(github_label)
+                .size(self.sz(13))
+                .font(self.app_font())
+                .color(github_icon_color),
         ]
         .spacing(10)
         .align_y(iced::Alignment::Center);
@@ -90,17 +100,18 @@ impl App {
             .on_press(Message::ToggleGitHubMenu)
             .padding([10, 14])
             .width(Fill)
-            .style(move |_theme, _status| {
-                button::Style {
-                    background: Some(if show_menu {
+            .style(move |_theme, _status| button::Style {
+                background: Some(
+                    if show_menu {
                         Palette::BG_SELECTED()
                     } else {
                         iced::Color::TRANSPARENT
-                    }.into()),
-                    text_color: Palette::TEXT_PRIMARY(),
-                    border: iced::Border::default().rounded(6),
-                    ..Default::default()
-                }
+                    }
+                    .into(),
+                ),
+                text_color: Palette::TEXT_PRIMARY(),
+                border: iced::Border::default().rounded(6),
+                ..Default::default()
             });
 
         let rescan_label = if self.is_scanning {
@@ -118,19 +129,22 @@ impl App {
         };
 
         // Launcher update badge
-        let update_badge: Element<'_, Message> = if let Some(ref update_info) = self.launcher_update_available {
-            let (label, msg): (String, Message) = if let Some(ref path) = self.launcher_update_staged {
-                (
-                    crate::i18n::t("launcher_restart_to_update"),
-                    Message::ApplyLauncherUpdate(path.clone()),
-                )
-            } else {
-                let tag = &update_info.0;
-                (
-                    crate::i18n::t_fmt("launcher_update_available_short", &[("version", tag)]),
-                    Message::DownloadLauncherUpdate,
-                )
-            };
+        let update_badge: Element<'_, Message> = if let Some(ref update_info) =
+            self.launcher_update_available
+        {
+            let (label, msg): (String, Message) =
+                if let Some(ref path) = self.launcher_update_staged {
+                    (
+                        crate::i18n::t("launcher_restart_to_update"),
+                        Message::ApplyLauncherUpdate(path.clone()),
+                    )
+                } else {
+                    let tag = &update_info.0;
+                    (
+                        crate::i18n::t_fmt("launcher_update_available_short", &[("version", tag)]),
+                        Message::DownloadLauncherUpdate,
+                    )
+                };
 
             let is_downloading = self.is_downloading;
             button(
@@ -159,16 +173,10 @@ impl App {
             container(text("")).height(0).into()
         };
 
-        let github_group = container(
-            column![
-                github_btn,
-                container(text("")).height(4),
-                rescan_btn,
-            ]
-            .spacing(0),
-        )
-        .id(crate::ui::tutorial::ID_GITHUB)
-        .width(Fill);
+        let github_group =
+            container(column![github_btn, container(text("")).height(4), rescan_btn,].spacing(0))
+                .id(crate::ui::tutorial::ID_GITHUB)
+                .width(Fill);
 
         let sidebar_content = column![
             title,
@@ -193,7 +201,11 @@ impl App {
             .into()
     }
 
-    pub(crate) fn view_section_button(&self, index: usize, section: &Section) -> Element<'_, Message> {
+    pub(crate) fn view_section_button(
+        &self,
+        index: usize,
+        section: &Section,
+    ) -> Element<'_, Message> {
         let is_selected = self.selected_section == index && !self.show_github_menu;
 
         let text_color = if is_selected {
@@ -213,7 +225,10 @@ impl App {
             0.0
         };
         let accent = Palette::ACCENT();
-        let indicator_color = iced::Color { a: accent.a * indicator_alpha, ..accent };
+        let indicator_color = iced::Color {
+            a: accent.a * indicator_alpha,
+            ..accent
+        };
 
         let indicator = container(text(""))
             .width(4)

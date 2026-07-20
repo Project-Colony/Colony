@@ -65,13 +65,14 @@ pub async fn request_device_code() -> Result<DeviceCode> {
 
     let device: DeviceCodeResponse = resp.json().await?;
 
-    tracing::info!("Enter code {} at {}", device.user_code, device.verification_uri);
+    tracing::info!(
+        "Enter code {} at {}",
+        device.user_code,
+        device.verification_uri
+    );
 
     // Open browser with pre-filled user code
-    let url = format!(
-        "{}?user_code={}",
-        device.verification_uri, device.user_code
-    );
+    let url = format!("{}?user_code={}", device.verification_uri, device.user_code);
     let _ = open::that(&url);
 
     Ok(DeviceCode {
@@ -93,8 +94,7 @@ pub async fn poll_for_token(device: DeviceCode) -> Result<OAuthSession> {
         .unwrap_or_else(|_| reqwest::Client::new());
 
     let poll_interval = Duration::from_secs(device.interval.max(5));
-    let deadline =
-        std::time::Instant::now() + Duration::from_secs(device.expires_in);
+    let deadline = std::time::Instant::now() + Duration::from_secs(device.expires_in);
 
     let access_token = loop {
         tokio::time::sleep(poll_interval).await;
@@ -188,7 +188,10 @@ fn token_path() -> PathBuf {
         }
         Err(_) => {
             let base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-            base.join("Colony").join("Colony").join("auth").join("github_token.json")
+            base.join("Colony")
+                .join("Colony")
+                .join("auth")
+                .join("github_token.json")
         }
     }
 }

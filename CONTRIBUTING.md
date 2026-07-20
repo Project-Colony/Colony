@@ -117,7 +117,7 @@ See [docs/architecture.md](docs/architecture.md) for the full layout. Short vers
 
 ### Style
 
-- Rust edition 2021, `cargo fmt` before commit (`rustfmt.toml` is committed).
+- Rust edition 2021, `cargo fmt` before commit (default rustfmt config; CI enforces `cargo fmt --check`).
 - Prefer small focused commits with [Conventional Commits](https://www.conventionalcommits.org) prefixes (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `ci:`) so release-please can detect release-worthy changes and bump versions automatically.
 - Keep platform-specific code behind `#[cfg(target_os = "...")]` so every platform still compiles.
 - If you touch the public `colony.json` schema, also update [docs/colony-spec.md](docs/colony-spec.md) in the same PR.
