@@ -108,8 +108,8 @@ impl App {
     pub fn save_preferences(&self) {
         let prefs = github::UserPreferences {
             selected_section: Some(self.selected_section),
-            window_width: None,
-            window_height: None,
+            window_width: Some(self.window_size.0),
+            window_height: Some(self.window_size.1),
             first_launch_done: Some(!self.show_first_launch),
             selected_theme: Some(self.selected_theme.clone()),
             selected_variant: Some(self.selected_variant.clone()),
@@ -906,6 +906,26 @@ impl App {
                     },
                     Message::UpdatesChecked,
                 )
+            }
+            Message::WindowResized(w, h) => {
+                self.window_size = (w, h);
+                self.window_save_gen += 1;
+                let gen = self.window_save_gen;
+                // Debounce: resize events flood during an interactive drag;
+                // only the delayed save matching the LAST generation writes.
+                Task::perform(
+                    async move {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        gen
+                    },
+                    Message::PersistWindowSize,
+                )
+            }
+            Message::PersistWindowSize(gen) => {
+                if gen == self.window_save_gen {
+                    self.save_preferences();
+                }
+                Task::none()
             }
             Message::UpdateAll => {
                 if self.is_downloading {

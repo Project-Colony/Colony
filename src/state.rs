@@ -233,6 +233,12 @@ pub struct App {
         std::collections::HashMap<String, (String, Vec<crate::ui::markdown_blocks::DetailBlock>)>,
     /// Repos whose release notes are currently being fetched.
     pub fetching_notes: std::collections::HashSet<String>,
+    /// Live window size, persisted (debounced) so the next boot reopens at
+    /// the same dimensions. The pref fields existed but were never written.
+    pub window_size: (f32, f32),
+    /// Debounce generation for window-size persistence: only the latest
+    /// resize's delayed save actually writes.
+    pub window_save_gen: u64,
     // Launcher self-update
     pub launcher_update_available: Option<(String, String)>, // (tag, asset_filename)
     pub is_checking_launcher_update: bool,
