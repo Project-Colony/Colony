@@ -221,6 +221,7 @@ fn parse_category(category: Option<&str>) -> Option<AppCategory> {
             "multimedia" => Some(AppCategory::Multimedia),
             "system" => Some(AppCategory::System),
             "utility" | "utilities" => Some(AppCategory::Utility),
+            "security" => Some(AppCategory::Security),
             "game" | "games" => Some(AppCategory::Game),
             "other" => Some(AppCategory::Other),
             _ => {
@@ -321,6 +322,15 @@ fn default_sections() -> Vec<Section> {
             filter: SectionFilter {
                 origin: OriginFilter::ColonyOnly,
                 category: Some(AppCategory::Utility),
+            },
+            is_favorites: false,
+        },
+        Section {
+            name: "Security".to_string(),
+            icon: "\u{f132}".to_string(),
+            filter: SectionFilter {
+                origin: OriginFilter::ColonyOnly,
+                category: Some(AppCategory::Security),
             },
             is_favorites: false,
         },

@@ -19,7 +19,7 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       upload_url: ${{ steps.release.outputs.upload_url }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
         id: release
         with:
           release-type: rust
@@ -47,13 +47,13 @@ jobs:
             asset: colony-macos-x86
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch
         with:
           targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           key: ${{ matrix.target }}
 
@@ -75,7 +75,7 @@ jobs:
         run: copy target\${{ matrix.target }}\release\colony.exe ${{ matrix.asset }}
 
       - name: Upload binary to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: ${{ matrix.asset }}
@@ -92,7 +92,7 @@ jobs:
     if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Download release binaries
         env:

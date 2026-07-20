@@ -102,7 +102,7 @@ With `filePattern`, Colony fetches the release asset list and finds the one whos
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | `string` | yes | Display name in Colony. Should match the repository name. |
-| `category` | `string` | yes | Colony category, as shown in the sidebar. Values: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Games`, `Other`. |
+| `category` | `string` | yes | Colony category, as shown in the sidebar (case-insensitive). Values: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utility` (alias `Utilities`), `Security`, `Game` (alias `Games`), `Other`. Unknown values fall back to `Other`. |
 | `platforms` | `string[]` | no | Supported platforms. Values: `"windows"`, `"linux"`, `"macos"` (Apple Silicon), `"macos-x86"` (Intel). Auto-detected if omitted. |
 | `releaseFiles` | `object` | no | Map of platform → release entry. Each key is a platform. Auto-detected if omitted. |
 | `icon` | `string` | no | Path (relative to the repo root) to a square **PNG** app icon shown in the Colony grid. See [App icon](#app-icon). |

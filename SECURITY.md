@@ -1,21 +1,47 @@
 # Security Policy
 
-## Supported Versions
+Colony is an application launcher and store: it downloads and executes
+binaries. Security reports are taken seriously and handled with priority.
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+## Supported versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+Only the **latest release** receives security fixes. Colony self-updates (and
+the `colony-bin` AUR package tracks releases automatically), so staying current
+is one update away.
 
-## Reporting a Vulnerability
+| Version        | Supported |
+| -------------- | --------- |
+| latest release | ✅        |
+| anything older | ❌        |
 
-Use this section to tell people how to report a vulnerability.
+## Reporting a vulnerability
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+Please report vulnerabilities **privately** via
+[GitHub Security Advisories](https://github.com/Project-Colony/Colony/security/advisories/new)
+("Report a vulnerability"). Do not open a public issue for exploitable bugs.
+
+What to expect:
+
+- **Acknowledgement** within a few days.
+- A fix (or a mitigation plan) before any public disclosure, coordinated with
+  you. Given the project's release automation, a patched release usually ships
+  as soon as the fix lands.
+- Credit in the release notes if you want it.
+
+## Scope and trust model
+
+Reports of particular interest:
+
+- **Self-update chain**: the launcher only applies updates carrying a valid
+  ed25519 detached signature (`<asset>.sig`) verified against the public key
+  embedded in the binary (`src/signing.rs`). Verification is fail-closed.
+  Anything that bypasses or weakens this is critical.
+- **App installs**: archive extraction (zip-slip, symlink escapes), path
+  traversal via manifest fields, and launch-path redirection are guarded -
+  holes in those guards are high severity.
+- **Manifest trust**: `colony.json` files come from third-party repositories
+  and are treated as untrusted input.
+
+Out of scope: vulnerabilities in the applications Colony installs (report
+those to the respective projects), and denial-of-service against the GitHub
+API rate limit.
