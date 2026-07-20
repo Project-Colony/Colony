@@ -293,7 +293,8 @@ pub async fn fetch_colony_repos(token: Option<&str>) -> Result<Vec<ColonyRepo>> 
     // rate-limit) as opposed to genuinely lacking a colony.json (404). A
     // transient failure must not silently drop an installed app from the store
     // nor clobber the offline cache with a shortened list.
-    let had_transient = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let transient_failures: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
 
     // 2. Fetch manifest + README concurrently for all repos
     let futures: Vec<_> = repos
@@ -304,7 +305,7 @@ pub async fn fetch_colony_repos(token: Option<&str>) -> Result<Vec<ColonyRepo>> 
             let fallback_desc = repo.description.clone().unwrap_or_default();
             let html_url = repo.html_url.clone();
             let language = repo.language.clone().unwrap_or_else(|| "Unknown".into());
-            let had_transient = had_transient.clone();
+            let transient_failures = transient_failures.clone();
 
             async move {
                 let mut manifest = match fetch_colony_manifest(&client, &name).await {
@@ -314,7 +315,9 @@ pub async fn fetch_colony_repos(token: Option<&str>) -> Result<Vec<ColonyRepo>> 
                         // fetch_colony_manifest already maps 404 to Ok(None),
                         // so an Err here is transient, not "no manifest".
                         tracing::warn!("Error checking colony.json for {}: {e}", name);
-                        had_transient.store(true, std::sync::atomic::Ordering::Relaxed);
+                        if let Ok(mut failed) = transient_failures.lock() {
+                            failed.insert(name.clone());
+                        }
                         return None;
                     }
                 };
@@ -373,12 +376,17 @@ pub async fn fetch_colony_repos(token: Option<&str>) -> Result<Vec<ColonyRepo>> 
         .await;
     let mut repos_out: Vec<ColonyRepo> = results.into_iter().flatten().collect();
 
-    // On a partially failed refresh, merge back any cached repos that are now
-    // missing rather than returning (and later caching) a truncated list.
-    if had_transient.load(std::sync::atomic::Ordering::Relaxed) {
+    // On a partially failed refresh, merge back ONLY the specific repos whose
+    // fetch failed transiently. The old any-failure flag resurrected EVERY
+    // cached repo, including ones genuinely deleted from the catalog.
+    let failed = transient_failures
+        .lock()
+        .map(|s| s.clone())
+        .unwrap_or_default();
+    if !failed.is_empty() {
         if let Some(cached) = load_repos_cache() {
             for repo in cached {
-                if !repos_out.iter().any(|r| r.name == repo.name) {
+                if failed.contains(&repo.name) && !repos_out.iter().any(|r| r.name == repo.name) {
                     repos_out.push(repo);
                 }
             }
