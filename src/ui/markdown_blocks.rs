@@ -13,7 +13,7 @@
 //! Everything else flows through iced's `markdown::view_with` using a
 //! caller-supplied `Viewer`.
 use iced::font::Weight;
-use iced::widget::{column, container, markdown, row, text, table as tbl, Row};
+use iced::widget::{column, container, markdown, row, table as tbl, text, Row};
 use iced::{alignment, Color, Element, Length};
 
 use crate::message::Message;
@@ -115,10 +115,7 @@ fn is_pipe_separator(line: &str) -> bool {
 
 fn split_pipe_row(line: &str) -> Vec<String> {
     let trimmed = line.trim_start_matches('|').trim_end_matches('|');
-    trimmed
-        .split('|')
-        .map(|s| s.trim().to_string())
-        .collect()
+    trimmed.split('|').map(|s| s.trim().to_string()).collect()
 }
 
 /// Detect a contiguous block of lines that are each exclusively a
@@ -155,30 +152,33 @@ fn try_parse_badges(lines: &[&str]) -> Option<(Vec<Badge>, usize)> {
 /// when the image URL is a shields.io `/badge/{label}-{value}-{color}`.
 fn parse_badge_line(line: &str) -> Option<Badge> {
     // Find the `![` of the image.
-    let (img_start, link): (usize, Option<String>) = if let Some(_stripped) =
-        line.strip_prefix("[![")
-    {
-        // Wrapped form: [![alt](img)](link)
-        // Locate the closing `)` of the image, then the opening `(` of link.
-        let after = &line[3..]; // after [![
-        // Find the first `](` which ends the alt text.
-        let alt_end = after.find("](")?;
-        let rest = &after[alt_end + 2..]; // after ](
-        let img_end = find_matching_paren(rest)?;
-        let img_url = &rest[..img_end];
-        let after_img = &rest[img_end + 1..]; // after )
-        let after_img = after_img.strip_prefix("](")?;
-        let link_end = find_matching_paren(after_img)?;
-        let link = after_img[..link_end].to_string();
-        // Compute img_start for the unwrapped-image path (unused here, but keeps symmetry).
-        let _ = img_start_placeholder();
-        return parse_shields_url(img_url)
-            .map(|(label, value, color)| Badge { label, value, color_hex: color, link: Some(link) });
-    } else if line.starts_with("![") {
-        (0, None)
-    } else {
-        return None;
-    };
+    let (img_start, link): (usize, Option<String>) =
+        if let Some(_stripped) = line.strip_prefix("[![") {
+            // Wrapped form: [![alt](img)](link)
+            // Locate the closing `)` of the image, then the opening `(` of link.
+            let after = &line[3..]; // after [![
+                                    // Find the first `](` which ends the alt text.
+            let alt_end = after.find("](")?;
+            let rest = &after[alt_end + 2..]; // after ](
+            let img_end = find_matching_paren(rest)?;
+            let img_url = &rest[..img_end];
+            let after_img = &rest[img_end + 1..]; // after )
+            let after_img = after_img.strip_prefix("](")?;
+            let link_end = find_matching_paren(after_img)?;
+            let link = after_img[..link_end].to_string();
+            // Compute img_start for the unwrapped-image path (unused here, but keeps symmetry).
+            let _ = img_start_placeholder();
+            return parse_shields_url(img_url).map(|(label, value, color)| Badge {
+                label,
+                value,
+                color_hex: color,
+                link: Some(link),
+            });
+        } else if line.starts_with("![") {
+            (0, None)
+        } else {
+            return None;
+        };
     let _ = img_start;
     // Unwrapped image form: ![alt](img)
     let after = line.strip_prefix("![")?;
@@ -194,7 +194,9 @@ fn parse_badge_line(line: &str) -> Option<Badge> {
     })
 }
 
-fn img_start_placeholder() -> usize { 0 }
+fn img_start_placeholder() -> usize {
+    0
+}
 
 fn find_matching_paren(s: &str) -> Option<usize> {
     let mut depth = 1i32;
@@ -310,14 +312,8 @@ where
 }
 
 fn view_badges(badges: &[Badge]) -> Element<'_, Message> {
-    let children: Vec<Element<'_, Message>> = badges
-        .iter()
-        .map(badge_pill)
-        .collect();
-    Row::with_children(children)
-        .spacing(6)
-        .wrap()
-        .into()
+    let children: Vec<Element<'_, Message>> = badges.iter().map(badge_pill).collect();
+    Row::with_children(children).spacing(6).wrap().into()
 }
 
 fn badge_pill(b: &Badge) -> Element<'_, Message> {
@@ -332,9 +328,7 @@ fn badge_pill(b: &Badge) -> Element<'_, Message> {
         .style(move |_theme| container::Style {
             background: Some(Palette::BG_CARD().into()),
             border: iced::Border {
-                radius: iced::border::Radius::new(0)
-                    .top_left(4)
-                    .bottom_left(4),
+                radius: iced::border::Radius::new(0).top_left(4).bottom_left(4),
                 ..Default::default()
             },
             ..Default::default()
@@ -344,15 +338,12 @@ fn badge_pill(b: &Badge) -> Element<'_, Message> {
         .style(move |_theme| container::Style {
             background: Some(color.into()),
             border: iced::Border {
-                radius: iced::border::Radius::new(0)
-                    .top_right(4)
-                    .bottom_right(4),
+                radius: iced::border::Radius::new(0).top_right(4).bottom_right(4),
                 ..Default::default()
             },
             ..Default::default()
         });
-    let pill: Element<'_, Message> =
-        row![label_box, value_box].spacing(0).into();
+    let pill: Element<'_, Message> = row![label_box, value_box].spacing(0).into();
 
     if let Some(link) = &b.link {
         let url = link.clone();
@@ -395,10 +386,7 @@ fn view_table(data: &TableData) -> Element<'_, Message> {
                 .color(Palette::TEXT_PRIMARY()),
             move |row: Vec<String>| -> Element<'_, Message> {
                 let cell = row.get(h_idx).cloned().unwrap_or_default();
-                text(cell)
-                    .size(13)
-                    .color(Palette::TEXT_SECONDARY())
-                    .into()
+                text(cell).size(13).color(Palette::TEXT_SECONDARY()).into()
             },
         )
         .align_x(alignment::Horizontal::Left)
@@ -468,7 +456,8 @@ mod tests {
     #[test]
     fn parse_shields_url_label_value_color() {
         let (label, value, color) =
-            parse_shields_url("https://img.shields.io/badge/build-passing-brightgreen.svg").unwrap();
+            parse_shields_url("https://img.shields.io/badge/build-passing-brightgreen.svg")
+                .unwrap();
         assert_eq!(label, "build");
         assert_eq!(value, "passing");
         assert_eq!(color, [0x4c, 0xc1, 0x40]);

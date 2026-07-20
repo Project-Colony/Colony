@@ -117,10 +117,16 @@ fn load_sections_from_source() -> Option<Vec<Section>> {
                     tracing::info!("Loaded {} sections from {}", sections.len(), path.display());
                     return Some(sections);
                 }
-                tracing::warn!("No usable sections in {}; using embedded config.", path.display());
+                tracing::warn!(
+                    "No usable sections in {}; using embedded config.",
+                    path.display()
+                );
             }
             Err(error) => {
-                tracing::warn!("Failed to read {}: {error}; using embedded config.", path.display());
+                tracing::warn!(
+                    "Failed to read {}: {error}; using embedded config.",
+                    path.display()
+                );
             }
         }
     }
@@ -140,8 +146,10 @@ fn load_sections_from_source() -> Option<Vec<Section>> {
 fn parse_sections(contents: &str) -> Option<Vec<Section>> {
     match serde_json::from_str::<Vec<SectionConfig>>(contents) {
         Ok(configs) => {
-            let sections: Vec<Section> =
-                configs.into_iter().map(SectionConfig::into_section).collect();
+            let sections: Vec<Section> = configs
+                .into_iter()
+                .map(SectionConfig::into_section)
+                .collect();
             if sections.is_empty() {
                 None
             } else {
@@ -188,9 +196,7 @@ fn ensure_favorites(mut sections: Vec<Section>) -> Vec<Section> {
 fn parse_origin(origin: Option<&str>) -> OriginFilter {
     match origin.map(|value| value.trim().to_lowercase()) {
         Some(value) if value == "windows" || value == "windows_only" => OriginFilter::WindowsOnly,
-        Some(value) if value == "non_windows" || value == "nonwindows" => {
-            OriginFilter::NonWindows
-        }
+        Some(value) if value == "non_windows" || value == "nonwindows" => OriginFilter::NonWindows,
         Some(value) if value == "linux" || value == "linux_only" => OriginFilter::ExternalOnly,
         Some(value) if value == "colony" => OriginFilter::ColonyOnly,
         Some(value) if value == "external" => OriginFilter::ExternalOnly,
@@ -345,17 +351,50 @@ mod tests {
 
     #[test]
     fn parse_category_known() {
-        assert!(matches!(parse_category(Some("development")), Some(AppCategory::Development)));
-        assert!(matches!(parse_category(Some("graphics")), Some(AppCategory::Graphics)));
-        assert!(matches!(parse_category(Some("network")), Some(AppCategory::Network)));
-        assert!(matches!(parse_category(Some("office")), Some(AppCategory::Office)));
-        assert!(matches!(parse_category(Some("multimedia")), Some(AppCategory::Multimedia)));
-        assert!(matches!(parse_category(Some("system")), Some(AppCategory::System)));
-        assert!(matches!(parse_category(Some("utility")), Some(AppCategory::Utility)));
-        assert!(matches!(parse_category(Some("utilities")), Some(AppCategory::Utility)));
-        assert!(matches!(parse_category(Some("game")), Some(AppCategory::Game)));
-        assert!(matches!(parse_category(Some("games")), Some(AppCategory::Game)));
-        assert!(matches!(parse_category(Some("other")), Some(AppCategory::Other)));
+        assert!(matches!(
+            parse_category(Some("development")),
+            Some(AppCategory::Development)
+        ));
+        assert!(matches!(
+            parse_category(Some("graphics")),
+            Some(AppCategory::Graphics)
+        ));
+        assert!(matches!(
+            parse_category(Some("network")),
+            Some(AppCategory::Network)
+        ));
+        assert!(matches!(
+            parse_category(Some("office")),
+            Some(AppCategory::Office)
+        ));
+        assert!(matches!(
+            parse_category(Some("multimedia")),
+            Some(AppCategory::Multimedia)
+        ));
+        assert!(matches!(
+            parse_category(Some("system")),
+            Some(AppCategory::System)
+        ));
+        assert!(matches!(
+            parse_category(Some("utility")),
+            Some(AppCategory::Utility)
+        ));
+        assert!(matches!(
+            parse_category(Some("utilities")),
+            Some(AppCategory::Utility)
+        ));
+        assert!(matches!(
+            parse_category(Some("game")),
+            Some(AppCategory::Game)
+        ));
+        assert!(matches!(
+            parse_category(Some("games")),
+            Some(AppCategory::Game)
+        ));
+        assert!(matches!(
+            parse_category(Some("other")),
+            Some(AppCategory::Other)
+        ));
     }
 
     #[test]
@@ -372,8 +411,14 @@ mod tests {
 
     #[test]
     fn parse_origin_known() {
-        assert!(matches!(parse_origin(Some("windows")), OriginFilter::WindowsOnly));
-        assert!(matches!(parse_origin(Some("colony")), OriginFilter::ColonyOnly));
+        assert!(matches!(
+            parse_origin(Some("windows")),
+            OriginFilter::WindowsOnly
+        ));
+        assert!(matches!(
+            parse_origin(Some("colony")),
+            OriginFilter::ColonyOnly
+        ));
         assert!(matches!(parse_origin(Some("any")), OriginFilter::Any));
         assert!(matches!(parse_origin(Some("all")), OriginFilter::Any));
         assert!(matches!(parse_origin(None), OriginFilter::Any));

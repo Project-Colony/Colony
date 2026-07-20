@@ -115,7 +115,9 @@ pub fn save_installed_version(repo_name: &str, tag: &str) -> Result<()> {
 /// Load the installed version tag for a repo.
 pub fn load_installed_version(repo_name: &str) -> Option<String> {
     let path = colony_apps_dir().ok()?.join(repo_name).join(VERSION_FILE);
-    std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| s.trim().to_string())
 }
 
 /// Save the resolved asset name for a repo (when using filePattern).
@@ -128,7 +130,9 @@ pub fn save_installed_asset(repo_name: &str, filename: &str) -> Result<()> {
 /// Load the saved resolved asset name for a repo.
 pub fn load_installed_asset(repo_name: &str) -> Option<String> {
     let path = colony_apps_dir().ok()?.join(repo_name).join(ASSET_FILE);
-    std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| s.trim().to_string())
 }
 
 fn repos_cache_path() -> Result<PathBuf> {
@@ -285,7 +289,7 @@ pub fn save_scan_cache(apps: &[CachedApp]) -> Result<()> {
 mod tests {
     use super::*;
 
-#[test]
+    #[test]
     fn colony_apps_dir_returns_path() {
         let dir = colony_apps_dir();
         assert!(dir.is_ok());

@@ -284,7 +284,10 @@ fn default_colony_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
 
     if let Ok(home) = std::env::var("HOME") {
-        dirs.push(PathBuf::from(format!("{}/.local/share/colony/applications", home)));
+        dirs.push(PathBuf::from(format!(
+            "{}/.local/share/colony/applications",
+            home
+        )));
     }
 
     dirs
@@ -467,48 +470,75 @@ fn categorize_windows_app(name: &str, exec: &str) -> AppCategory {
     let lower_name = name.to_lowercase();
     let lower_exec = exec.to_lowercase();
 
-    if lower_name.contains("code") || lower_name.contains("studio")
-        || lower_name.contains("developer") || lower_exec.contains("ide")
-        || lower_name.contains("python") || lower_name.contains("node")
-        || lower_name.contains("git") || lower_name.contains("terminal")
+    if lower_name.contains("code")
+        || lower_name.contains("studio")
+        || lower_name.contains("developer")
+        || lower_exec.contains("ide")
+        || lower_name.contains("python")
+        || lower_name.contains("node")
+        || lower_name.contains("git")
+        || lower_name.contains("terminal")
     {
         AppCategory::Development
-    } else if lower_name.contains("photoshop") || lower_name.contains("gimp")
-        || lower_name.contains("paint") || lower_name.contains("photo")
-        || lower_name.contains("image") || lower_name.contains("draw")
+    } else if lower_name.contains("photoshop")
+        || lower_name.contains("gimp")
+        || lower_name.contains("paint")
+        || lower_name.contains("photo")
+        || lower_name.contains("image")
+        || lower_name.contains("draw")
     {
         AppCategory::Graphics
-    } else if lower_name.contains("chrome") || lower_name.contains("firefox")
-        || lower_name.contains("edge") || lower_name.contains("browser")
-        || lower_name.contains("mail") || lower_name.contains("outlook")
-        || lower_name.contains("teams") || lower_name.contains("slack")
-        || lower_name.contains("discord") || lower_name.contains("zoom")
+    } else if lower_name.contains("chrome")
+        || lower_name.contains("firefox")
+        || lower_name.contains("edge")
+        || lower_name.contains("browser")
+        || lower_name.contains("mail")
+        || lower_name.contains("outlook")
+        || lower_name.contains("teams")
+        || lower_name.contains("slack")
+        || lower_name.contains("discord")
+        || lower_name.contains("zoom")
     {
         AppCategory::Network
-    } else if lower_name.contains("word") || lower_name.contains("excel")
-        || lower_name.contains("powerpoint") || lower_name.contains("office")
-        || lower_name.contains("libre") || lower_name.contains("calc")
-        || lower_name.contains("writer") || lower_name.contains("document")
+    } else if lower_name.contains("word")
+        || lower_name.contains("excel")
+        || lower_name.contains("powerpoint")
+        || lower_name.contains("office")
+        || lower_name.contains("libre")
+        || lower_name.contains("calc")
+        || lower_name.contains("writer")
+        || lower_name.contains("document")
     {
         AppCategory::Office
-    } else if lower_name.contains("spotify") || lower_name.contains("vlc")
-        || lower_name.contains("media") || lower_name.contains("player")
-        || lower_name.contains("music") || lower_name.contains("video")
+    } else if lower_name.contains("spotify")
+        || lower_name.contains("vlc")
+        || lower_name.contains("media")
+        || lower_name.contains("player")
+        || lower_name.contains("music")
+        || lower_name.contains("video")
         || lower_name.contains("audio")
     {
         AppCategory::Multimedia
-    } else if lower_name.contains("settings") || lower_name.contains("control")
-        || lower_name.contains("system") || lower_name.contains("config")
-        || lower_name.contains("manager") || lower_name.contains("monitor")
+    } else if lower_name.contains("settings")
+        || lower_name.contains("control")
+        || lower_name.contains("system")
+        || lower_name.contains("config")
+        || lower_name.contains("manager")
+        || lower_name.contains("monitor")
     {
         AppCategory::System
-    } else if lower_name.contains("notepad") || lower_name.contains("calculator")
-        || lower_name.contains("util") || lower_name.contains("tool")
-        || lower_name.contains("7-zip") || lower_name.contains("winrar")
+    } else if lower_name.contains("notepad")
+        || lower_name.contains("calculator")
+        || lower_name.contains("util")
+        || lower_name.contains("tool")
+        || lower_name.contains("7-zip")
+        || lower_name.contains("winrar")
     {
         AppCategory::Utility
-    } else if lower_name.contains("game") || lower_name.contains("steam")
-        || lower_name.contains("epic") || lower_name.contains("play")
+    } else if lower_name.contains("game")
+        || lower_name.contains("steam")
+        || lower_name.contains("epic")
+        || lower_name.contains("play")
         || lower_exec.contains("game")
     {
         AppCategory::Game
@@ -597,17 +627,35 @@ fn categorize_linux_app(categories: &str) -> AppCategory {
 
     if cats.iter().any(|c| matches!(*c, "Development" | "IDE")) {
         AppCategory::Development
-    } else if cats.iter().any(|c| matches!(*c, "Graphics" | "Photography" | "2DGraphics" | "3DGraphics")) {
+    } else if cats
+        .iter()
+        .any(|c| matches!(*c, "Graphics" | "Photography" | "2DGraphics" | "3DGraphics"))
+    {
         AppCategory::Graphics
-    } else if cats.iter().any(|c| matches!(*c, "Network" | "WebBrowser" | "Email" | "Chat")) {
+    } else if cats
+        .iter()
+        .any(|c| matches!(*c, "Network" | "WebBrowser" | "Email" | "Chat"))
+    {
         AppCategory::Network
-    } else if cats.iter().any(|c| matches!(*c, "Office" | "WordProcessor" | "Spreadsheet")) {
+    } else if cats
+        .iter()
+        .any(|c| matches!(*c, "Office" | "WordProcessor" | "Spreadsheet"))
+    {
         AppCategory::Office
-    } else if cats.iter().any(|c| matches!(*c, "AudioVideo" | "Audio" | "Video" | "Player")) {
+    } else if cats
+        .iter()
+        .any(|c| matches!(*c, "AudioVideo" | "Audio" | "Video" | "Player"))
+    {
         AppCategory::Multimedia
-    } else if cats.iter().any(|c| matches!(*c, "System" | "Settings" | "Monitor")) {
+    } else if cats
+        .iter()
+        .any(|c| matches!(*c, "System" | "Settings" | "Monitor"))
+    {
         AppCategory::System
-    } else if cats.iter().any(|c| matches!(*c, "Utility" | "FileManager" | "Archiving")) {
+    } else if cats
+        .iter()
+        .any(|c| matches!(*c, "Utility" | "FileManager" | "Archiving"))
+    {
         AppCategory::Utility
     } else if cats.iter().any(|c| matches!(*c, "Game")) {
         AppCategory::Game
@@ -679,33 +727,55 @@ fn parse_macos_app(path: &Path) -> Option<Application> {
 #[cfg(target_os = "macos")]
 fn categorize_macos_app(name: &str) -> AppCategory {
     let lower = name.to_lowercase();
-    if lower.contains("xcode") || lower.contains("terminal") || lower.contains("code")
-        || lower.contains("developer") || lower.contains("git")
+    if lower.contains("xcode")
+        || lower.contains("terminal")
+        || lower.contains("code")
+        || lower.contains("developer")
+        || lower.contains("git")
     {
         AppCategory::Development
-    } else if lower.contains("preview") || lower.contains("photo")
-        || lower.contains("image") || lower.contains("sketch") || lower.contains("pixelmator")
+    } else if lower.contains("preview")
+        || lower.contains("photo")
+        || lower.contains("image")
+        || lower.contains("sketch")
+        || lower.contains("pixelmator")
     {
         AppCategory::Graphics
-    } else if lower.contains("safari") || lower.contains("chrome") || lower.contains("firefox")
-        || lower.contains("mail") || lower.contains("messages") || lower.contains("slack")
-        || lower.contains("discord") || lower.contains("zoom")
+    } else if lower.contains("safari")
+        || lower.contains("chrome")
+        || lower.contains("firefox")
+        || lower.contains("mail")
+        || lower.contains("messages")
+        || lower.contains("slack")
+        || lower.contains("discord")
+        || lower.contains("zoom")
     {
         AppCategory::Network
-    } else if lower.contains("pages") || lower.contains("numbers") || lower.contains("keynote")
-        || lower.contains("word") || lower.contains("excel")
+    } else if lower.contains("pages")
+        || lower.contains("numbers")
+        || lower.contains("keynote")
+        || lower.contains("word")
+        || lower.contains("excel")
     {
         AppCategory::Office
-    } else if lower.contains("music") || lower.contains("quicktime") || lower.contains("vlc")
-        || lower.contains("spotify") || lower.contains("garageband")
+    } else if lower.contains("music")
+        || lower.contains("quicktime")
+        || lower.contains("vlc")
+        || lower.contains("spotify")
+        || lower.contains("garageband")
     {
         AppCategory::Multimedia
-    } else if lower.contains("system") || lower.contains("settings") || lower.contains("preferences")
-        || lower.contains("monitor") || lower.contains("disk utility")
+    } else if lower.contains("system")
+        || lower.contains("settings")
+        || lower.contains("preferences")
+        || lower.contains("monitor")
+        || lower.contains("disk utility")
     {
         AppCategory::System
-    } else if lower.contains("calculator") || lower.contains("archive")
-        || lower.contains("utility") || lower.contains("finder")
+    } else if lower.contains("calculator")
+        || lower.contains("archive")
+        || lower.contains("utility")
+        || lower.contains("finder")
     {
         AppCategory::Utility
     } else if lower.contains("game") || lower.contains("chess") || lower.contains("steam") {
@@ -731,19 +801,28 @@ mod tests {
     #[test]
     fn expand_env_vars_with_unset_var() {
         std::env::remove_var("COLONY_UNSET_VAR");
-        assert_eq!(expand_env_vars("${COLONY_UNSET_VAR}/bin"), "${COLONY_UNSET_VAR}/bin");
+        assert_eq!(
+            expand_env_vars("${COLONY_UNSET_VAR}/bin"),
+            "${COLONY_UNSET_VAR}/bin"
+        );
     }
 
     #[test]
     fn expand_env_vars_windows_style() {
         std::env::set_var("COLONY_TEST_WIN", "C:\\Users");
-        assert_eq!(expand_env_vars("%COLONY_TEST_WIN%\\test"), "C:\\Users\\test");
+        assert_eq!(
+            expand_env_vars("%COLONY_TEST_WIN%\\test"),
+            "C:\\Users\\test"
+        );
         std::env::remove_var("COLONY_TEST_WIN");
     }
 
     #[test]
     fn expand_env_vars_no_vars() {
-        assert_eq!(expand_env_vars("/usr/share/applications"), "/usr/share/applications");
+        assert_eq!(
+            expand_env_vars("/usr/share/applications"),
+            "/usr/share/applications"
+        );
     }
 
     #[test]
@@ -770,25 +849,37 @@ mod tests {
     #[cfg(not(windows))]
     #[test]
     fn categorize_development() {
-        assert_eq!(categorize_linux_app("Development;IDE;"), AppCategory::Development);
+        assert_eq!(
+            categorize_linux_app("Development;IDE;"),
+            AppCategory::Development
+        );
     }
 
     #[cfg(not(windows))]
     #[test]
     fn categorize_graphics() {
-        assert_eq!(categorize_linux_app("Graphics;Photography;"), AppCategory::Graphics);
+        assert_eq!(
+            categorize_linux_app("Graphics;Photography;"),
+            AppCategory::Graphics
+        );
     }
 
     #[cfg(not(windows))]
     #[test]
     fn categorize_network() {
-        assert_eq!(categorize_linux_app("Network;WebBrowser;"), AppCategory::Network);
+        assert_eq!(
+            categorize_linux_app("Network;WebBrowser;"),
+            AppCategory::Network
+        );
     }
 
     #[cfg(not(windows))]
     #[test]
     fn categorize_multimedia() {
-        assert_eq!(categorize_linux_app("AudioVideo;Player;"), AppCategory::Multimedia);
+        assert_eq!(
+            categorize_linux_app("AudioVideo;Player;"),
+            AppCategory::Multimedia
+        );
     }
 
     #[cfg(not(windows))]
@@ -814,7 +905,10 @@ mod tests {
     #[cfg(not(windows))]
     #[test]
     fn clean_exec_preserves_args() {
-        assert_eq!(clean_exec("/usr/bin/app --flag value"), "/usr/bin/app --flag value");
+        assert_eq!(
+            clean_exec("/usr/bin/app --flag value"),
+            "/usr/bin/app --flag value"
+        );
     }
 
     #[cfg(not(windows))]

@@ -1,13 +1,11 @@
 use iced::font::Weight;
-use iced::widget::{
-    button, column, container, markdown, rich_text, row, scrollable, text, Row,
-};
+use iced::widget::{button, column, container, markdown, rich_text, row, scrollable, text, Row};
 use iced::{Element, Fill, Length};
 
 use crate::github::{self, ColonyRepo};
-use crate::ui::theme::Palette;
-use crate::state::{App, DetailTab, capitalize_platform};
 use crate::message::Message;
+use crate::state::{capitalize_platform, App, DetailTab};
+use crate::ui::theme::Palette;
 
 /// Custom markdown viewer: same defaults as iced, minus the internal
 /// horizontal `scrollable` that iced wraps around code blocks. That inner
@@ -50,9 +48,13 @@ impl<'a> markdown::Viewer<'a, Message> for ColonyMdViewer {
 
 impl App {
     pub(crate) fn view_colony_detail<'a>(&'a self, repo: &'a ColonyRepo) -> Element<'a, Message> {
-        let back_button = button(text(crate::i18n::t("back")).size(self.sz(13)).font(self.app_font()))
-            .on_press(Message::ColonyRepoBack)
-            .padding([8, 16]);
+        let back_button = button(
+            text(crate::i18n::t("back"))
+                .size(self.sz(13))
+                .font(self.app_font()),
+        )
+        .on_press(Message::ColonyRepoBack)
+        .padding([8, 16]);
 
         let title = text(&repo.name)
             .size(self.sz(24))
@@ -69,27 +71,27 @@ impl App {
         for (tab_val, label) in tabs {
             let is_selected = self.detail_tab == tab_val;
             tab_buttons.push(
-                button(
-                    text(label)
-                        .size(self.sz(13))
-                        .font(self.app_font())
-                )
-                .on_press(Message::DetailTabSelected(tab_val))
-                .padding([6, 14])
-                .style(move |_theme, status| {
-                    let bg = match status {
-                        _ if is_selected => Palette::ACCENT(),
-                        button::Status::Hovered => Palette::BG_CARD_HOVER(),
-                        _ => iced::Color::TRANSPARENT,
-                    };
-                    button::Style {
-                        background: Some(bg.into()),
-                        text_color: if is_selected { Palette::TEXT_PRIMARY() } else { Palette::TEXT_MUTED() },
-                        border: iced::Border::default().rounded(6),
-                        ..Default::default()
-                    }
-                })
-                .into(),
+                button(text(label).size(self.sz(13)).font(self.app_font()))
+                    .on_press(Message::DetailTabSelected(tab_val))
+                    .padding([6, 14])
+                    .style(move |_theme, status| {
+                        let bg = match status {
+                            _ if is_selected => Palette::ACCENT(),
+                            button::Status::Hovered => Palette::BG_CARD_HOVER(),
+                            _ => iced::Color::TRANSPARENT,
+                        };
+                        button::Style {
+                            background: Some(bg.into()),
+                            text_color: if is_selected {
+                                Palette::TEXT_PRIMARY()
+                            } else {
+                                Palette::TEXT_MUTED()
+                            },
+                            border: iced::Border::default().rounded(6),
+                            ..Default::default()
+                        }
+                    })
+                    .into(),
             );
         }
         let tab_bar = Row::with_children(tab_buttons)
@@ -114,24 +116,31 @@ impl App {
                 .color(Palette::TEXT_MUTED())
                 .into()
         } else {
-            crate::ui::markdown_blocks::view(
-                &self.detail_blocks,
-                md_settings,
-                &ColonyMdViewer,
-            )
+            crate::ui::markdown_blocks::view(&self.detail_blocks, md_settings, &ColonyMdViewer)
         };
 
-        let language = text(crate::i18n::t_fmt("language_label", &[("lang", &repo.language)]))
-            .size(self.sz(12))
-            .font(self.app_font())
-            .color(Palette::TEXT_MUTED());
+        let language = text(crate::i18n::t_fmt(
+            "language_label",
+            &[("lang", &repo.language)],
+        ))
+        .size(self.sz(12))
+        .font(self.app_font())
+        .color(Palette::TEXT_MUTED());
 
         // Favorite button — FontAwesome 6 Free, solid/regular variant for filled/empty.
         // Same codepoint \u{f005} in both variants; the weight picks the glyph.
         let is_fav = self.is_favorite(&repo.name);
-        let fav_color = if is_fav { Palette::WARNING() } else { Palette::TEXT_DIM() };
+        let fav_color = if is_fav {
+            Palette::WARNING()
+        } else {
+            Palette::TEXT_DIM()
+        };
         let fav_font = iced::Font {
-            weight: if is_fav { Weight::Black } else { Weight::Normal },
+            weight: if is_fav {
+                Weight::Black
+            } else {
+                Weight::Normal
+            },
             ..iced::Font::with_name(crate::state::FA_FONT_NAME)
         };
         let fav_btn = button(
@@ -169,9 +178,8 @@ impl App {
             })
             .collect();
 
-        let mut footer_items: Vec<Element<'_, Message>> = vec![
-            container(text("")).width(Fill).into(),
-        ];
+        let mut footer_items: Vec<Element<'_, Message>> =
+            vec![container(text("")).width(Fill).into()];
         for pt in platform_labels {
             footer_items.push(pt);
         }
@@ -187,13 +195,20 @@ impl App {
 
         let action_row = if let Some(app_path) = installed_path {
             // App is installed — show Launch + Update buttons, and uninstall trash button
-            let launch_label = format!("\u{f04b}  {}", crate::i18n::t_fmt("launch", &[("name", &repo.manifest.name)]));
+            let launch_label = format!(
+                "\u{f04b}  {}",
+                crate::i18n::t_fmt("launch", &[("name", &repo.manifest.name)])
+            );
             let launch_btn = button(
                 text(launch_label)
                     .size(self.sz(14))
                     .font(self.app_font_with_weight(Weight::Medium)),
             )
-            .on_press_maybe(if self.is_downloading { None } else { Some(Message::LaunchColonyApp(app_path)) })
+            .on_press_maybe(if self.is_downloading {
+                None
+            } else {
+                Some(Message::LaunchColonyApp(app_path))
+            })
             .padding([12, 24])
             .style(|_theme, status| {
                 let bg = match status {
@@ -216,7 +231,11 @@ impl App {
                     .size(self.sz(13))
                     .font(self.app_font()),
             )
-            .on_press_maybe(if self.is_downloading { None } else { Some(Message::DownloadRelease(repo_name, platform_key)) })
+            .on_press_maybe(if self.is_downloading {
+                None
+            } else {
+                Some(Message::DownloadRelease(repo_name, platform_key))
+            })
             .padding([10, 20])
             .style(|_theme, status| {
                 let bg = match status {
@@ -241,7 +260,12 @@ impl App {
                     .center(),
             )
             .on_press(Message::ConfirmUninstall(uninstall_repo_name))
-            .padding(iced::Padding { top: 10.0, right: 14.0, bottom: 10.0, left: 12.0 })
+            .padding(iced::Padding {
+                top: 10.0,
+                right: 14.0,
+                bottom: 10.0,
+                left: 12.0,
+            })
             .style(|_theme, status| {
                 let bg = match status {
                     button::Status::Hovered => Palette::BTN_TRASH_HOVER(),
@@ -276,7 +300,11 @@ impl App {
                         .size(self.sz(14))
                         .font(self.app_font_with_weight(Weight::Medium)),
                 )
-                .on_press_maybe(if is_dl { None } else { Some(Message::DownloadRelease(repo_name, platform_key)) })
+                .on_press_maybe(if is_dl {
+                    None
+                } else {
+                    Some(Message::DownloadRelease(repo_name, platform_key))
+                })
                 .padding([12, 24])
                 .style(|_theme, status| {
                     let bg = match status {
@@ -291,7 +319,11 @@ impl App {
                         ..Default::default()
                     }
                 });
-                Row::new().push(spacer).push(dl_btn).spacing(12).align_y(iced::Alignment::Center)
+                Row::new()
+                    .push(spacer)
+                    .push(dl_btn)
+                    .spacing(12)
+                    .align_y(iced::Alignment::Center)
             } else {
                 let no_release = text(crate::i18n::t("no_release_platform"))
                     .size(self.sz(12))
@@ -314,9 +346,7 @@ impl App {
             .height(Length::Shrink)
             .padding([16, 24]);
 
-        let body = scrollable(desc_container)
-            .width(Fill)
-            .height(Fill);
+        let body = scrollable(desc_container).width(Fill).height(Fill);
 
         let detail = column![
             header,
