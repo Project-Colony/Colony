@@ -37,15 +37,19 @@ pub fn main() -> iced::Result {
         )
         .init();
 
-    // Honor the saved language preference over environment locale detection.
-    i18n::init(github::load_preferences().language);
+    // Honor the saved language preference over environment locale detection,
+    // and reopen at the last persisted window size (clamped to sanity).
+    let prefs = github::load_preferences();
+    i18n::init(prefs.language.clone());
+    let width = prefs.window_width.unwrap_or(1000.0).clamp(640.0, 7680.0);
+    let height = prefs.window_height.unwrap_or(700.0).clamp(480.0, 4320.0);
 
     iced::application(App::boot, App::update, App::view)
         .title(App::title)
         .theme(App::theme)
         .subscription(App::subscription)
         .default_font(default_font())
-        .window_size((1000.0, 700.0))
+        .window_size((width, height))
         .run()
 }
 
@@ -230,6 +234,11 @@ impl App {
             update_queue: Vec::new(),
             release_notes: std::collections::HashMap::new(),
             fetching_notes: std::collections::HashSet::new(),
+            window_size: (
+                prefs.window_width.unwrap_or(1000.0).clamp(640.0, 7680.0),
+                prefs.window_height.unwrap_or(700.0).clamp(480.0, 4320.0),
+            ),
+            window_save_gen: 0,
             // Launcher self-update
             launcher_update_available: None,
             is_checking_launcher_update: false,
@@ -527,12 +536,20 @@ impl App {
 
     fn subscription(&self) -> Subscription<Message> {
         let keyboard = keyboard::listen().map(Message::KeyboardEvent);
+        // Track live window size so it can be persisted (debounced) and the
+        // next boot reopens at the same dimensions.
+        let resizes = iced::event::listen_with(|event, _status, _id| match event {
+            iced::Event::Window(iced::window::Event::Resized(size)) => {
+                Some(Message::WindowResized(size.width, size.height))
+            }
+            _ => None,
+        });
         if self.has_active_animations() {
             let tick = iced::time::every(std::time::Duration::from_millis(16))
                 .map(|_| Message::AnimationTick);
-            Subscription::batch([keyboard, tick])
+            Subscription::batch([keyboard, resizes, tick])
         } else {
-            keyboard
+            Subscription::batch([keyboard, resizes])
         }
     }
 
