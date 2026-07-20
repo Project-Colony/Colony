@@ -97,14 +97,6 @@ impl App {
         1
     }
 
-    /// FontAwesome solid font (weight 900) for category / status glyphs.
-    fn fa_solid(&self) -> iced::Font {
-        iced::Font {
-            weight: Weight::Black,
-            ..iced::Font::with_name(crate::state::FA_FONT_NAME)
-        }
-    }
-
     /// The 54px hexagon "cell": a filled hexagon in the app's stable tint, with
     /// the category glyph centered on top. Both glyphs are centered via the text
     /// widget's own alignment (width/height Fill + centered) so they co-register
@@ -563,6 +555,49 @@ impl App {
         )
     }
 
+    /// The same card visuals as `cell_shell`, WITHOUT being one giant button:
+    /// local app rows carry explicit controls instead, so a stray click on
+    /// the row cannot launch a program.
+    fn cell_shell_static<'a>(
+        &self,
+        content: Element<'a, Message>,
+        accent: Color,
+    ) -> Element<'a, Message> {
+        let bar = container(text(""))
+            .width(4)
+            .height(Fill)
+            .style(move |_theme| container::Style {
+                background: Some(accent.into()),
+                border: iced::Border {
+                    radius: iced::border::left(12.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+        let inner = row![
+            bar,
+            container(content)
+                .padding([0, 15])
+                .width(Fill)
+                .height(Fill)
+                .center_y(Fill)
+        ]
+        .height(Fill);
+        container(inner)
+            .width(Fill)
+            .height(Length::Fixed(self.sz(96)))
+            .style(|_theme| container::Style {
+                background: Some(Palette::BG_CARD().into()),
+                border: iced::Border {
+                    color: Palette::BORDER_SUBTLE(),
+                    width: 1.0,
+                    radius: 12.0.into(),
+                },
+                ..Default::default()
+            })
+            .into()
+    }
+
     pub(crate) fn view_app_card(&self, app: &Application) -> Element<'_, Message> {
         let tint = theme::app_tint(&app.name);
         let tile = self.hex_tile(tint, app.category.glyph());
@@ -575,25 +610,75 @@ impl App {
         let chips = row![self.chip(format!("{:?}", app.category))].spacing(7);
         let mid = column![name, chips].spacing(6).width(Fill);
 
-        // Locally-detected apps are launchable; a quiet play glyph is the cue.
-        let launch = text("\u{f04b}")
-            .size(self.sz(13))
-            .font(self.fa_solid())
-            .color(Palette::TEXT_DIMMER());
-        let status = container(launch)
-            .width(Length::Fixed(136.0))
-            .align_x(iced::alignment::Horizontal::Right);
+        // Favorites were a dead feature for local apps: the section filtered
+        // on them but nothing could ever star one.
+        let is_fav = self.is_favorite(&app.name);
+        let star_font = iced::Font {
+            weight: if is_fav {
+                Weight::Black
+            } else {
+                Weight::Normal
+            },
+            ..iced::Font::with_name(crate::state::FA_FONT_NAME)
+        };
+        let star_btn = button(text("\u{f005}").size(self.sz(14)).font(star_font).color(
+            if is_fav {
+                Palette::WARNING()
+            } else {
+                Palette::TEXT_DIM()
+            },
+        ))
+        .on_press(Message::ToggleFavorite(app.name.clone()))
+        .padding([8, 10])
+        .style(|_theme, status| {
+            let bg = match status {
+                button::Status::Hovered => Palette::BG_CARD_HOVER(),
+                _ => iced::Color::TRANSPARENT,
+            };
+            button::Style {
+                background: Some(bg.into()),
+                text_color: Palette::TEXT_PRIMARY(),
+                border: iced::Border::default().rounded(8),
+                ..Default::default()
+            }
+        });
+
+        // Launching is an explicit button, not the whole row: an accidental
+        // click on a full-width card used to start the program immediately.
+        let launch_btn = button(
+            text(format!("\u{f04b}  {}", crate::i18n::t("launch_action")))
+                .size(self.sz(13))
+                .font(self.app_font()),
+        )
+        .on_press(Message::LaunchApp(app.exec.clone()))
+        .padding([8, 14])
+        .style(|_theme, status| {
+            let bg = match status {
+                button::Status::Hovered => Palette::BTN_SUCCESS_HOVER(),
+                button::Status::Pressed => Palette::BTN_SUCCESS_PRESSED(),
+                _ => Palette::BG_SELECTED(),
+            };
+            button::Style {
+                background: Some(bg.into()),
+                text_color: Palette::TEXT_PRIMARY(),
+                border: iced::Border::default().rounded(8),
+                ..Default::default()
+            }
+        });
+
+        let status = container(
+            row![star_btn, launch_btn]
+                .spacing(6)
+                .align_y(iced::Alignment::Center),
+        )
+        .width(Length::Fixed(170.0))
+        .align_x(iced::alignment::Horizontal::Right);
 
         let content = row![tile, mid, status]
             .spacing(15)
             .align_y(iced::Alignment::Center)
             .width(Fill);
 
-        self.cell_shell(
-            content.into(),
-            Message::LaunchApp(app.exec.clone()),
-            false,
-            tint,
-        )
+        self.cell_shell_static(content.into(), tint)
     }
 }
