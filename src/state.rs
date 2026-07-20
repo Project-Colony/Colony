@@ -172,6 +172,12 @@ pub struct App {
     pub app_icons: std::collections::HashMap<String, iced::widget::image::Handle>,
     // Download progress
     pub download_progress: Option<(String, f32)>, // (filename, 0.0..1.0)
+    /// Raw transfer counters: (bytes downloaded, total when known).
+    pub download_bytes: Option<(u64, Option<u64>)>,
+    /// Smoothed transfer speed in bytes/second (EMA over progress samples).
+    pub download_speed: f32,
+    /// Last (instant, bytes) sample for the speed computation.
+    pub last_progress_sample: Option<(std::time::Instant, u64)>,
     /// Abort handle for the in-flight download (app asset or launcher self-
     /// update). Cancelling actually aborts the task instead of only clearing UI.
     pub download_abort: Option<iced::task::Handle>,
@@ -244,6 +250,10 @@ pub struct App {
         std::collections::HashMap<String, (String, Vec<crate::ui::markdown_blocks::DetailBlock>)>,
     /// Repos whose release notes are currently being fetched.
     pub fetching_notes: std::collections::HashSet<String>,
+    /// Keyboard-highlighted grid row, as a stable key ("repo:<name>" or
+    /// "app:<name>") so catalog refreshes and re-filters cannot silently move
+    /// the highlight to a different item. Cleared on search/section changes.
+    pub keyboard_cursor: Option<String>,
     /// Live window size, persisted (debounced) so the next boot reopens at
     /// the same dimensions. The pref fields existed but were never written.
     pub window_size: (f32, f32),
@@ -269,6 +279,23 @@ impl App {
     /// Get the store catalog (available signed-in or anonymous).
     pub fn colony_repos(&self) -> &[ColonyRepo] {
         &self.colony_repo_list
+    }
+
+    /// Ordered stable keys of every row the grid currently shows (store repos
+    /// first, then local apps - the combined view's display order), for
+    /// keyboard traversal.
+    pub fn grid_keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = self
+            .filtered_colony_repos()
+            .iter()
+            .map(|r| format!("repo:{}", r.name))
+            .collect();
+        keys.extend(
+            self.filtered_applications()
+                .iter()
+                .map(|a| format!("app:{}", a.name)),
+        );
+        keys
     }
 
     /// Resolve the repo whose detail page is open, surviving catalog refreshes
@@ -427,6 +454,23 @@ impl App {
     }
 }
 
+/// Human-readable byte size (KiB/MiB/GiB with one decimal).
+pub fn human_bytes(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = 1024.0 * 1024.0;
+    const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+    let b = bytes as f64;
+    if b >= GIB {
+        format!("{:.1} GiB", b / GIB)
+    } else if b >= MIB {
+        format!("{:.1} MiB", b / MIB)
+    } else if b >= KIB {
+        format!("{:.0} KiB", b / KIB)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
 pub fn capitalize_platform(p: &str) -> String {
     match p.to_lowercase().as_str() {
         "windows" => "Windows".to_string(),
@@ -459,6 +503,9 @@ impl App {
             next_notification_id: 0,
             app_icons: std::collections::HashMap::new(),
             download_progress: None,
+            download_bytes: None,
+            download_speed: 0.0,
+            last_progress_sample: None,
             download_abort: None,
             downloading_repo: None,
             favorites: Vec::new(),
@@ -497,6 +544,7 @@ impl App {
             update_queue: Vec::new(),
             release_notes: std::collections::HashMap::new(),
             fetching_notes: std::collections::HashSet::new(),
+            keyboard_cursor: None,
             window_size: (1000.0, 700.0),
             window_save_gen: 0,
             launcher_update_available: None,

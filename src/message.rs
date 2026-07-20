@@ -33,7 +33,10 @@ pub enum Message {
     GitHubRefreshRepos,
     DownloadRelease(String, String), // (repo_name, platform_key)
     #[allow(dead_code)]
-    DownloadProgress(String, f32), // (filename, progress 0.0..1.0)
+    /// (filename, downloaded bytes, total bytes when the server sent
+    /// Content-Length) - raw bytes so the UI can show size AND speed, not
+    /// just a bare percentage.
+    DownloadProgress(String, u64, Option<u64>),
     DownloadCompleted(Result<(PathBuf, String, String), String>), // (path, repo_name, tag)
     CancelDownload,
     LaunchColonyApp(PathBuf),

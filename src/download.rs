@@ -31,7 +31,7 @@ async fn download_to_file(
     url: &str,
     token: Option<&str>,
     dest_path: &std::path::Path,
-    progress_tx: Option<futures::channel::mpsc::UnboundedSender<f32>>,
+    progress_tx: Option<futures::channel::mpsc::UnboundedSender<(u64, Option<u64>)>>,
 ) -> Result<()> {
     let mut request = client.get(url);
     if let Some(t) = token {
@@ -65,13 +65,31 @@ async fn download_to_file(
             file.write_all(&chunk)?;
             downloaded += chunk.len() as u64;
 
-            if let (Some(ref tx), Some(total)) = (&progress_tx, total) {
-                if total > 0 {
-                    let pct = ((downloaded as f64 / total as f64) * 100.0) as u32;
-                    if pct != last_pct {
-                        last_pct = pct;
-                        let _ = tx.unbounded_send(downloaded as f32 / total as f32);
+            if let Some(ref tx) = progress_tx {
+                // Throttle: send on whole-percent changes when the total is
+                // known, else every 256 KiB - not per network chunk.
+                let should_send = match total {
+                    Some(total) if total > 0 => {
+                        let pct = ((downloaded as f64 / total as f64) * 100.0) as u32;
+                        if pct != last_pct {
+                            last_pct = pct;
+                            true
+                        } else {
+                            false
+                        }
                     }
+                    _ => {
+                        let bucket = (downloaded / (256 * 1024)) as u32;
+                        if bucket != last_pct {
+                            last_pct = bucket;
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                };
+                if should_send {
+                    let _ = tx.unbounded_send((downloaded, total));
                 }
             }
         }
@@ -309,7 +327,7 @@ pub struct AssetInstall {
 pub async fn download_release_asset(
     token: Option<String>,
     install: AssetInstall,
-    progress_tx: Option<futures::channel::mpsc::UnboundedSender<f32>>,
+    progress_tx: Option<futures::channel::mpsc::UnboundedSender<(u64, Option<u64>)>>,
 ) -> Result<PathBuf> {
     let AssetInstall {
         repo_name,
@@ -444,7 +462,7 @@ pub async fn download_launcher_asset(
     token: Option<String>,
     tag: String,
     filename: String,
-    progress_tx: Option<futures::channel::mpsc::UnboundedSender<f32>>,
+    progress_tx: Option<futures::channel::mpsc::UnboundedSender<(u64, Option<u64>)>>,
 ) -> Result<PathBuf> {
     let temp_dir = colony_data_dir()?.join("update-staging");
     std::fs::create_dir_all(&temp_dir)?;

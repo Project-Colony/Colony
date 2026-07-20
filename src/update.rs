@@ -149,6 +149,9 @@ impl App {
         match message {
             Message::SearchChanged(query) => {
                 self.search_query = query;
+                // The visible rows changed: a stale highlight would point at
+                // a hidden item.
+                self.keyboard_cursor = None;
                 Task::none()
             }
             Message::SectionSelected(index) => {
@@ -159,6 +162,7 @@ impl App {
                     self.sidebar_indicator_start = Some(std::time::Instant::now());
                     self.selected_section = index;
                     self.active_colony_repo = None;
+                    self.keyboard_cursor = None;
                     // Dismiss any open overlay panel so the section change is
                     // actually visible — otherwise users stay stuck on the
                     // GitHub / Settings panel even though the underlying
@@ -456,7 +460,8 @@ impl App {
                         self.is_downloading = true;
                         self.downloading_repo = Some(repo_name.clone());
                         let dl_repo = repo_name.clone();
-                        let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<f32>();
+                        let (progress_tx, progress_rx) =
+                            futures::channel::mpsc::unbounded::<(u64, Option<u64>)>();
                         let progress_name = display_name;
 
                         let download_task = Task::perform(
@@ -519,8 +524,8 @@ impl App {
                             },
                         );
 
-                        let progress_task = Task::run(progress_rx, move |pct| {
-                            Message::DownloadProgress(progress_name.clone(), pct)
+                        let progress_task = Task::run(progress_rx, move |(downloaded, total)| {
+                            Message::DownloadProgress(progress_name.clone(), downloaded, total)
                         });
 
                         // Keep an abort handle so CancelDownload actually stops
@@ -537,16 +542,40 @@ impl App {
                 }
                 Task::none()
             }
-            Message::DownloadProgress(filename, progress) => {
+            Message::DownloadProgress(filename, downloaded, total) => {
                 // Ignore late progress events from a cancelled/finished download
                 // so the toast cannot resurrect after CancelDownload.
                 if self.is_downloading {
-                    self.download_progress = Some((filename, progress));
+                    let fraction = total
+                        .filter(|t| *t > 0)
+                        .map(|t| downloaded as f32 / t as f32)
+                        .unwrap_or(0.0);
+                    self.download_progress = Some((filename, fraction));
+                    self.download_bytes = Some((downloaded, total));
+                    // Transfer speed: exponential moving average over samples.
+                    let now = std::time::Instant::now();
+                    if let Some((t0, b0)) = self.last_progress_sample {
+                        let dt = now.duration_since(t0).as_secs_f32();
+                        if dt > 0.05 && downloaded >= b0 {
+                            let inst = (downloaded - b0) as f32 / dt;
+                            self.download_speed = if self.download_speed > 0.0 {
+                                0.7 * self.download_speed + 0.3 * inst
+                            } else {
+                                inst
+                            };
+                            self.last_progress_sample = Some((now, downloaded));
+                        }
+                    } else {
+                        self.last_progress_sample = Some((now, downloaded));
+                    }
                 }
                 Task::none()
             }
             Message::DownloadCompleted(result) => {
                 self.download_progress = None;
+                self.download_bytes = None;
+                self.download_speed = 0.0;
+                self.last_progress_sample = None;
                 self.is_downloading = false;
                 self.download_abort = None;
                 self.downloading_repo = None;
@@ -607,6 +636,9 @@ impl App {
                     }
                 }
                 self.download_progress = None;
+                self.download_bytes = None;
+                self.download_speed = 0.0;
+                self.last_progress_sample = None;
                 self.is_downloading = false;
                 self.status_message = i18n::t("download_cancelled");
                 self.push_notification(i18n::t("download_cancelled"), NotificationLevel::Warning)
@@ -830,6 +862,48 @@ impl App {
                         {
                             self.settings_category = self.settings_category.saturating_sub(1);
                         }
+                        // Grid traversal: Down/Up move a highlight over the
+                        // visible rows (store repos then local apps); Enter
+                        // activates it. Keys are stable names, not indexes,
+                        // so a catalog refresh cannot shift the highlight.
+                        iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown)
+                            if !self.show_settings
+                                && !self.show_github_menu
+                                && !self.show_first_launch
+                                && self.active_colony_repo.is_none() =>
+                        {
+                            let keys = self.grid_keys();
+                            if !keys.is_empty() {
+                                let next = match &self.keyboard_cursor {
+                                    Some(cur) => keys
+                                        .iter()
+                                        .position(|k| k == cur)
+                                        .map(|i| (i + 1).min(keys.len() - 1))
+                                        .unwrap_or(0),
+                                    None => 0,
+                                };
+                                self.keyboard_cursor = Some(keys[next].clone());
+                            }
+                        }
+                        iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp)
+                            if !self.show_settings
+                                && !self.show_github_menu
+                                && !self.show_first_launch
+                                && self.active_colony_repo.is_none() =>
+                        {
+                            let keys = self.grid_keys();
+                            if !keys.is_empty() {
+                                let next = match &self.keyboard_cursor {
+                                    Some(cur) => keys
+                                        .iter()
+                                        .position(|k| k == cur)
+                                        .map(|i| i.saturating_sub(1))
+                                        .unwrap_or(0),
+                                    None => 0,
+                                };
+                                self.keyboard_cursor = Some(keys[next].clone());
+                            }
+                        }
                         iced::keyboard::Key::Named(iced::keyboard::key::Named::PageDown)
                             if self.show_settings =>
                         {
@@ -846,14 +920,31 @@ impl App {
                                 && !self.show_first_launch
                                 && self.active_colony_repo.is_none() =>
                         {
-                            let first =
-                                self.filtered_colony_repos().first().map(|r| r.name.clone());
-                            if let Some(name) = first {
-                                self.active_colony_repo = Some(name);
-                                // Refresh the (repo, tab) markdown cache — the
-                                // detail view reads only cached blocks/placeholder
-                                // now, so opening a repo must recompute them.
-                                self.refresh_detail_markdown();
+                            // Activate the keyboard highlight when there is
+                            // one, else fall back to the first store row.
+                            let target = self.keyboard_cursor.clone().or_else(|| {
+                                self.filtered_colony_repos()
+                                    .first()
+                                    .map(|r| format!("repo:{}", r.name))
+                            });
+                            match target {
+                                Some(key) if key.starts_with("repo:") => {
+                                    self.active_colony_repo =
+                                        Some(key["repo:".len()..].to_string());
+                                    // Refresh the (repo, tab) markdown cache —
+                                    // the detail view reads cached blocks only.
+                                    self.refresh_detail_markdown();
+                                }
+                                Some(key) if key.starts_with("app:") => {
+                                    let name = &key["app:".len()..];
+                                    if let Some(app) =
+                                        self.applications.iter().find(|a| a.name == name)
+                                    {
+                                        let exec = app.exec.clone();
+                                        return self.update(Message::LaunchApp(exec));
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                         _ => {}
@@ -1303,7 +1394,8 @@ impl App {
                 self.download_progress = Some((asset.clone(), 0.0));
                 self.status_message = i18n::t_fmt("downloading", &[("file", &asset)]);
 
-                let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<f32>();
+                let (progress_tx, progress_rx) =
+                    futures::channel::mpsc::unbounded::<(u64, Option<u64>)>();
 
                 let download_task = Task::perform(
                     async move {
@@ -1314,7 +1406,14 @@ impl App {
                     Message::LauncherDownloadCompleted,
                 );
 
-                let progress_task = Task::run(progress_rx, Message::LauncherDownloadProgress);
+                let progress_task = Task::run(progress_rx, |(downloaded, total)| {
+                    Message::LauncherDownloadProgress(
+                        total
+                            .filter(|t| *t > 0)
+                            .map(|t| downloaded as f32 / t as f32)
+                            .unwrap_or(0.0),
+                    )
+                });
 
                 let (task, handle) = Task::batch([download_task, progress_task]).abortable();
                 self.download_abort = Some(handle);
