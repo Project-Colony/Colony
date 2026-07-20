@@ -214,7 +214,16 @@ signs the launcher itself - see `docs/release-signing.md` and the embedded
 public key in `src/signing.rs`). An invalid signature aborts the install.
 
 An asset without a `.sig` sibling installs as before (legacy unsigned app) -
-signing is adopted per-app, no flag day. Sign with:
+signing is adopted per-app, no flag day - **unless** the manifest declares:
+
+```json
+{ "signed": true }
+```
+
+With `"signed": true`, a missing signature ABORTS the install: this closes the
+remaining hole where a compromised repository could simply omit signatures.
+Declare it once every release of the app ships `.sig` assets (all Project-
+Colony apps have signed releases as of 2026-07-20). Sign with:
 
 ```sh
 COLONY_SIGNING_KEY=/path/to/colony-release.pem ./scripts/sign-release.sh <asset>

@@ -468,7 +468,12 @@ impl App {
                         let file_pattern = entry.file_pattern.clone();
                         let binary = entry.binary.clone();
                         let expected_sha256 = entry.sha256.clone();
+                        let require_signature = repo.manifest.signed;
                         let repo_name = repo.name.clone();
+                        // API calls (release resolution) use the token for
+                        // rate limits; the asset download itself is a public
+                        // endpoint and gets NO token - no reason to present
+                        // credentials where none are needed.
                         let token = self.github_token();
                         let display_name = file
                             .as_deref()
@@ -525,7 +530,7 @@ impl App {
                                 // mid-install detached the blocking task and
                                 // left an installed binary with no metadata.
                                 let path = github::download_release_asset(
-                                    token,
+                                    None,
                                     crate::download::AssetInstall {
                                         repo_name: repo_name.clone(),
                                         tag: resolved_tag.clone(),
@@ -533,6 +538,7 @@ impl App {
                                         binary_name: binary,
                                         expected_sha256,
                                         record_asset: file_pattern.is_some(),
+                                        require_signature,
                                     },
                                     Some(progress_tx),
                                 )
@@ -1522,6 +1528,7 @@ mod tests {
                 platforms: vec!["linux".into()],
                 release_files,
                 icon: None,
+                signed: false,
             },
         }
     }

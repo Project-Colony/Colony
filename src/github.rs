@@ -250,6 +250,11 @@ pub struct ColonyManifest {
     /// at the repo root, then falls back to the tinted category hexagon.
     #[serde(default)]
     pub icon: Option<String>,
+    /// When true, every release asset MUST ship a valid `<asset>.sig`
+    /// (ed25519, Project-Colony org key): a missing signature aborts the
+    /// install instead of falling back to the legacy unsigned path.
+    #[serde(default)]
+    pub signed: bool,
 }
 
 /// Metadata for a Colony-compatible repository (has colony.json).
@@ -1185,6 +1190,16 @@ mod tests {
             find_asset_by_pattern(&assets, "app-macos-x86").unwrap(),
             "app-macos-x86"
         );
+    }
+
+    #[test]
+    fn manifest_signed_flag_parses_and_defaults_off() {
+        let json = r#"{ "name": "App", "category": "Utility", "signed": true }"#;
+        let m: ColonyManifest = serde_json::from_str(json).unwrap();
+        assert!(m.signed);
+        let json = r#"{ "name": "App", "category": "Utility" }"#;
+        let m: ColonyManifest = serde_json::from_str(json).unwrap();
+        assert!(!m.signed, "signed must default to false (legacy manifests)");
     }
 
     #[test]

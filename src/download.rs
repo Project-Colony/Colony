@@ -319,6 +319,10 @@ pub struct AssetInstall {
     /// persisted next to the binary so `installed_app_path` can find the
     /// install again.
     pub record_asset: bool,
+    /// True when the manifest declares `"signed": true`: a missing `.sig`
+    /// then ABORTS the install instead of being treated as a legacy unsigned
+    /// app - closing the "compromised repo simply omits signatures" hole.
+    pub require_signature: bool,
 }
 
 /// Download a release asset to `<colony_apps_dir>/<repo_name>/<filename>`,
@@ -336,6 +340,7 @@ pub async fn download_release_asset(
         binary_name,
         expected_sha256,
         record_asset,
+        require_signature,
     } = install;
     // The manifest-supplied filename becomes a local path — guard it against
     // traversal (`../`, absolute paths) before joining, mirroring the archive
@@ -370,6 +375,12 @@ pub async fn download_release_asset(
                 anyhow::bail!("Could not check for a release signature of {filename}: {e}");
             }
         };
+    if require_signature && signature.is_none() {
+        let _ = std::fs::remove_file(&temp_path);
+        anyhow::bail!(
+            "The manifest requires signed releases, but no {filename}.sig was published - refusing to install"
+        );
+    }
 
     // Integrity check, archive extraction and the atomic promotion are
     // CPU/IO-bound — run them on a blocking thread. Any failure removes the
@@ -564,7 +575,10 @@ pub fn apply_launcher_update(new_binary: &std::path::Path) -> Result<PathBuf> {
     if staged_next.exists() {
         let _ = std::fs::remove_file(&staged_next);
     }
-    std::fs::copy(new_binary, &staged_next)
+    // Write the byte buffer that was just VERIFIED - copying the file again
+    // would re-read from disk and install bytes the signature check never saw
+    // (a swap between read and copy would slip through).
+    std::fs::write(&staged_next, &staged_bytes)
         .map_err(|e| anyhow::anyhow!("Failed to stage new binary: {e}"))?;
     #[cfg(unix)]
     {
