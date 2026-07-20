@@ -379,6 +379,14 @@ impl App {
                 // The catalog is stored regardless of sign-in state: anonymous
                 // fetches land here too.
                 self.colony_repo_list = repos;
+                // A successful fetch is the one moment we KNOW which repos
+                // exist: drop doc/icon caches of repos that left the catalog.
+                let live: Vec<String> = self
+                    .colony_repo_list
+                    .iter()
+                    .map(|r| r.name.clone())
+                    .collect();
+                crate::persistence::prune_orphaned_repo_caches(&live);
                 // Decode any freshly-cached app icons into image handles.
                 self.reload_app_icons();
                 // New docs may have landed for the repo currently viewed.
@@ -624,6 +632,11 @@ impl App {
                 self.confirm_uninstall = None;
                 // An uninstalled app has no meaningful "update available".
                 self.available_updates.remove(&repo_name);
+                // Stale notes describe the version that was just removed.
+                // (Doc/icon caches and the favorite deliberately survive: they
+                // belong to the CATALOG entry, which is still listed - orphan
+                // cleanup happens on catalog refresh instead.)
+                self.release_notes.remove(&repo_name);
                 match github::colony_apps_dir() {
                     Ok(apps_dir) => {
                         let app_dir = apps_dir.join(&repo_name);

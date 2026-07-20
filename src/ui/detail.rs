@@ -178,8 +178,22 @@ impl App {
             })
             .collect();
 
-        let mut footer_items: Vec<Element<'_, Message>> =
-            vec![container(text("")).width(Fill).into()];
+        let mut footer_items: Vec<Element<'_, Message>> = Vec::new();
+        // Store-basics metadata: the installed version was recorded at install
+        // time but never shown anywhere on the detail page.
+        if let Some(installed) = github::load_installed_version(&repo.name) {
+            footer_items.push(
+                text(crate::i18n::t_fmt(
+                    "installed_version",
+                    &[("version", &installed)],
+                ))
+                .size(self.sz(12))
+                .font(self.app_font())
+                .color(Palette::TEXT_DIM())
+                .into(),
+            );
+        }
+        footer_items.push(container(text("")).width(Fill).into());
         for pt in platform_labels {
             footer_items.push(pt);
         }

@@ -310,7 +310,11 @@ impl App {
                 if query.is_empty() {
                     return true;
                 }
+                // Search the description and display name too: "music" must
+                // find Grape ("Lecteur musique..."), not just name matches.
                 repo.name.to_lowercase().contains(&query)
+                    || repo.manifest.name.to_lowercase().contains(&query)
+                    || repo.description.to_lowercase().contains(&query)
             })
             .collect()
     }

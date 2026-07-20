@@ -259,6 +259,32 @@ pub struct CachedApp {
     pub origin: String,
 }
 
+/// Remove doc/icon caches for repos that are NO LONGER in the catalog, so a
+/// deleted or renamed repo does not leave its caches behind forever. Runs
+/// after each successful catalog fetch (never on a cache fallback, where a
+/// transient absence must not purge anything). Uninstalling a still-listed
+/// app deliberately keeps its caches - they render the catalog entry.
+pub fn prune_orphaned_repo_caches(live_repo_names: &[String]) {
+    let Ok(base) = colony_data_dir() else {
+        return;
+    };
+    for parent in ["repo-docs", "repo-icons"] {
+        let Ok(entries) = std::fs::read_dir(base.join(parent)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !live_repo_names.iter().any(|r| r == &name) {
+                let path = entry.path();
+                tracing::info!("pruning orphaned cache {}", path.display());
+                if let Err(e) = std::fs::remove_dir_all(&path) {
+                    tracing::warn!("failed to prune {}: {e}", path.display());
+                }
+            }
+        }
+    }
+}
+
 /// Load the cached application scan (`None` if absent or unreadable). Read at
 /// boot when the startup scan is disabled, so the local-apps grid restores the
 /// last known state instead of showing "0 apps" at every launch.
