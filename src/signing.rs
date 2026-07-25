@@ -28,6 +28,59 @@ const RELEASE_PUBLIC_KEY: [u8; 32] = [
 /// Filename suffix of the detached signature published alongside each asset.
 pub const SIGNATURE_SUFFIX: &str = ".sig";
 
+/// Filename suffix of the signed metadata sidecar published alongside each asset
+/// (itself signed as `<asset>.meta.sig`).
+pub const METADATA_SUFFIX: &str = ".meta";
+
+/// Contents of a signed `<asset>.meta` sidecar.
+///
+/// A raw-bytes signature proves only that bytes came from the release key, not
+/// WHICH artefact or version they are, so an attacker able to control what the
+/// release host serves could replay an older, genuinely signed build. This
+/// sidecar binds the bytes to a version and a filename, and is signed with the
+/// same key; `scripts/sign-release.sh` emits it for every asset.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseMetadata {
+    /// Release tag the asset belongs to, e.g. `v1.2.3`.
+    pub version: String,
+    /// Basename of the asset the digest covers, e.g. `colony-linux`.
+    pub asset: String,
+    /// Lowercase hex SHA-256 of the asset bytes.
+    pub sha256: String,
+}
+
+impl ReleaseMetadata {
+    /// Parse the `key=value` sidecar format. Unknown keys are ignored so future
+    /// fields do not break older launchers; the three known ones are required.
+    pub fn parse(bytes: &[u8]) -> Result<Self> {
+        let text = std::str::from_utf8(bytes)
+            .map_err(|_| anyhow::anyhow!("release metadata is not valid UTF-8"))?;
+        let mut version = None;
+        let mut asset = None;
+        let mut sha256 = None;
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let Some((key, value)) = line.split_once('=') else {
+                anyhow::bail!("malformed release metadata line: {line:?}");
+            };
+            match key.trim() {
+                "version" => version = Some(value.trim().to_string()),
+                "asset" => asset = Some(value.trim().to_string()),
+                "sha256" => sha256 = Some(value.trim().to_ascii_lowercase()),
+                _ => {}
+            }
+        }
+        Ok(Self {
+            version: version.ok_or_else(|| anyhow::anyhow!("release metadata has no version"))?,
+            asset: asset.ok_or_else(|| anyhow::anyhow!("release metadata has no asset"))?,
+            sha256: sha256.ok_or_else(|| anyhow::anyhow!("release metadata has no sha256"))?,
+        })
+    }
+}
+
 /// Verify a detached ed25519 signature over `data` against the embedded Colony
 /// release key. Returns Ok only if the signature is valid.
 pub fn verify_release_signature(data: &[u8], signature_bytes: &[u8]) -> Result<()> {
@@ -114,5 +167,30 @@ mod tests {
     fn malformed_signature_rejected() {
         assert!(verify_with_key(&TEST_PUBKEY, TEST_MSG, &[0u8; 10]).is_err());
         assert!(verify_with_key(&TEST_PUBKEY, TEST_MSG, b"not-base64-!!!").is_err());
+    }
+
+    #[test]
+    fn metadata_parses_sign_release_output() {
+        // Byte-for-byte what scripts/sign-release.sh writes.
+        let raw = b"version=v0.9.1\nasset=colony-linux\nsha256=B1A5AF3D\n";
+        let meta = ReleaseMetadata::parse(raw).unwrap();
+        assert_eq!(meta.version, "v0.9.1");
+        assert_eq!(meta.asset, "colony-linux");
+        assert_eq!(meta.sha256, "b1a5af3d", "digest is normalized to lowercase");
+    }
+
+    #[test]
+    fn metadata_ignores_unknown_keys() {
+        let raw = b"version=v1.0.0\nasset=a\nsha256=ff\nfuture=whatever\n";
+        assert!(ReleaseMetadata::parse(raw).is_ok());
+    }
+
+    #[test]
+    fn metadata_requires_every_known_field() {
+        assert!(ReleaseMetadata::parse(b"asset=a\nsha256=ff\n").is_err());
+        assert!(ReleaseMetadata::parse(b"version=v1\nsha256=ff\n").is_err());
+        assert!(ReleaseMetadata::parse(b"version=v1\nasset=a\n").is_err());
+        assert!(ReleaseMetadata::parse(b"garbage\n").is_err());
+        assert!(ReleaseMetadata::parse(&[0xff, 0xfe]).is_err());
     }
 }

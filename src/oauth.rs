@@ -67,9 +67,16 @@ pub async fn request_device_code() -> Result<DeviceCode> {
         device.verification_uri
     );
 
-    // Open browser with pre-filled user code
+    // Open browser with pre-filled user code. The URI comes from the device-flow
+    // response, so it goes through the same http(s)-only gate as every other
+    // string that reaches the desktop URI opener.
     let url = format!("{}?user_code={}", device.verification_uri, device.user_code);
-    let _ = open::that(&url);
+    match crate::download::web_url(&url) {
+        Some(safe) => {
+            let _ = open::that(&safe);
+        }
+        None => tracing::warn!("refusing to open non-http(s) verification uri {url:?}"),
+    }
 
     Ok(DeviceCode {
         user_code: device.user_code,

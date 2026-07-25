@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::github::{APP_VERSION, CONNECT_TIMEOUT, GITHUB_ACCOUNT, LAUNCHER_OWNER, LAUNCHER_REPO};
-use crate::persistence::{colony_apps_dir, colony_data_dir};
+use crate::persistence::colony_data_dir;
 
 /// Build the HTTP client used for large asset downloads (longer read timeout
 /// than the API client).
@@ -55,7 +55,8 @@ async fn download_to_file(
 
     use futures::StreamExt;
     use std::io::Write;
-    let mut file = std::fs::File::create(dest_path)?;
+    // Staging names are predictable, so never follow whatever sits there.
+    let mut file = create_new_file(dest_path)?;
     let mut stream = resp.bytes_stream();
     let mut last_pct: u32 = 0;
 
@@ -202,6 +203,52 @@ pub(crate) fn ensure_safe_component(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Normalized form of `raw` when it is an absolute `http`/`https` URL with a
+/// host, else `None`.
+///
+/// Gate for everything handed to the desktop's URI opener: link destinations in
+/// remote Markdown (READMEs, release notes) reach it verbatim, and `open::that`
+/// is not a browser call — it execs `xdg-open`/`gio open` on Linux and
+/// `Start-Process` on Windows, both of which dispatch `file://`, UNC paths and
+/// any registered `x-scheme-handler/*`. A `file://` or custom-scheme link in a
+/// hostile README would otherwise be a one-click execution primitive that
+/// bypasses every signature and digest check in this module.
+///
+/// Returns the REPARSED string rather than a bool on purpose: the WHATWG parser
+/// strips tabs, newlines and leading control characters anywhere in the input, so
+/// validating `raw` and then opening `raw` would judge one string and execute a
+/// different one (`"ht\ntps://x"` parses as `https://x`). Callers open what was
+/// actually validated.
+pub(crate) fn web_url(raw: &str) -> Option<String> {
+    // Relative and scheme-less inputs (including protocol-relative
+    // `//host/share/x.exe`) fail to parse, which is the desired answer.
+    let parsed = reqwest::Url::parse(raw).ok()?;
+    // A host is required: `http:evil` and `http:/x` parse but address nothing,
+    // and an opener may fall back to treating them as a local path.
+    if !matches!(parsed.scheme(), "http" | "https") || !parsed.has_host() {
+        return None;
+    }
+    Some(parsed.into())
+}
+
+/// Create `path` fresh, never following an existing file or symlink.
+///
+/// `File::create` truncates whatever it finds, and follows a symlink to write at
+/// its target: a symlink pre-planted at a predictable staging name (`<binary>.new`,
+/// `<asset>.part`) would redirect the write outside the install directory, and the
+/// caller's `set_permissions` then chmods that target. Unlinking first and opening
+/// with `create_new` makes the create fail rather than follow anything that races
+/// in between.
+fn create_new_file(path: &std::path::Path) -> Result<std::fs::File> {
+    // Removing our own leftover staging file is expected; a failure here is not
+    // fatal because create_new below is the actual guard.
+    let _ = std::fs::remove_file(path);
+    Ok(std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?)
+}
+
 /// Extract a single file from a .zip archive.
 fn extract_from_zip(
     archive_path: &std::path::Path,
@@ -230,7 +277,7 @@ fn extract_from_zip(
             // install so a failed extraction never leaves a truncated binary.
             let final_dest = dest_dir.join(binary_name);
             let tmp_dest = dest_dir.join(format!("{binary_name}.new"));
-            let mut out = std::fs::File::create(&tmp_dest)?;
+            let mut out = create_new_file(&tmp_dest)?;
             std::io::copy(&mut entry, &mut out)?;
             drop(out);
             std::fs::rename(&tmp_dest, &final_dest)?;
@@ -288,6 +335,14 @@ fn extract_binary_from_archive(
     binary_name: &str,
     dest_dir: &std::path::Path,
 ) -> Result<PathBuf> {
+    // `binary_name` is a manifest-supplied string that becomes a path component
+    // in EVERY branch below, so the traversal guard is hoisted here, before the
+    // dispatch. It used to live only inside the zip and tar extractors, which
+    // left the raw-binary branch able to write outside `dest_dir` — and, after
+    // the caller's chmod 0755 and desktop entry, to gain execution at next login
+    // — from a hostile manifest. The extractors keep their own call so they stay
+    // safe in isolation.
+    ensure_safe_component(binary_name)?;
     if asset_name.ends_with(".zip") {
         let result = extract_from_zip(archive_path, binary_name, dest_dir);
         let _ = std::fs::remove_file(archive_path);
@@ -347,7 +402,7 @@ pub async fn download_release_asset(
     // `binary` guard.
     ensure_safe_component(&filename)?;
 
-    let dest_dir = colony_apps_dir()?.join(&repo_name);
+    let dest_dir = crate::persistence::colony_app_dir(&repo_name)?;
     std::fs::create_dir_all(&dest_dir)?;
     let dest_path = dest_dir.join(&filename);
     // Download to a temporary sibling so an interrupted or failed transfer
@@ -360,6 +415,14 @@ pub async fn download_release_asset(
 
     let client = download_client()?;
     download_to_file(&client, &url, token.as_deref(), &temp_path, progress_tx).await?;
+
+    // `manifest.signed` lives in the very repo the signature protects, so a
+    // compromised repo could flip it to false and drop the `.sig` to install
+    // unsigned code silently. Pin it: once an install of this app has been
+    // signature-verified, later updates must stay signed whatever the manifest
+    // now claims. The pin only ever raises the bar.
+    let signature_pinned = crate::persistence::load_installed_signed(&repo_name);
+    let require_signature = require_signature || signature_pinned;
 
     // Opportunistic app-signature verification: when the release publishes
     // `<asset>.sig`, it MUST verify against the org release key (the same
@@ -377,6 +440,15 @@ pub async fn download_release_asset(
         };
     if require_signature && signature.is_none() {
         let _ = std::fs::remove_file(&temp_path);
+        // Say WHICH rule refused, because the two have different remedies: the
+        // manifest is the repo's own declaration, whereas the pin is our memory
+        // of a previously verified install and can only be cleared by
+        // uninstalling the app.
+        if signature_pinned {
+            anyhow::bail!(
+                "{repo_name} was previously installed with a verified signature, but this release publishes no {filename}.sig - refusing to install an unsigned downgrade of a signed app (uninstall it first to opt back out)"
+            );
+        }
         anyhow::bail!(
             "The manifest requires signed releases, but no {filename}.sig was published - refusing to install"
         );
@@ -394,6 +466,7 @@ pub async fn download_release_asset(
         let filename = filename.clone();
 
         tokio::task::spawn_blocking(move || -> Result<PathBuf> {
+            let was_signed = signature.is_some();
             if let Some(sig) = signature {
                 let bytes = std::fs::read(&temp_path)?;
                 if let Err(e) = crate::signing::verify_release_signature(&bytes, &sig) {
@@ -445,6 +518,13 @@ pub async fn download_release_asset(
             crate::persistence::save_installed_version(&repo_name, &tag)?;
             if record_asset {
                 crate::persistence::save_installed_asset(&repo_name, &filename)?;
+            }
+            // Pin the signature requirement for future updates: a repo that
+            // ships signatures today must not be able to stop tomorrow. Only
+            // ever raises the bar - the marker is written, never cleared, while
+            // the app stays installed.
+            if was_signed {
+                crate::persistence::save_installed_signed(&repo_name)?;
             }
             // Desktop integration (Linux): index the installed app in the
             // desktop environment. Best-effort - a failure here must not fail
@@ -505,15 +585,58 @@ pub async fn download_launcher_asset(
         let _ = std::fs::remove_file(&dest_path);
         anyhow::bail!("Refusing to self-update: {e}");
     }
+    // The signature above proves the bytes came from the release key, but not
+    // WHICH artefact or version they are: an attacker controlling what the
+    // release host serves could replay an older, genuinely signed build. The
+    // signed metadata sidecar closes that by binding these bytes to a version
+    // and a filename. Fail-closed, exactly like the signature itself.
+    let meta_url = format!("{url}{}", crate::signing::METADATA_SUFFIX);
+    let meta_bytes = match fetch_bytes(&client, &meta_url, token.as_deref()).await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            let _ = std::fs::remove_file(&dest_path);
+            anyhow::bail!(
+                "Refusing to self-update: could not fetch the update metadata ({meta_url}): {e}"
+            );
+        }
+    };
+    let meta_sig = match fetch_bytes(
+        &client,
+        &format!("{meta_url}{}", crate::signing::SIGNATURE_SUFFIX),
+        token.as_deref(),
+    )
+    .await
+    {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            let _ = std::fs::remove_file(&dest_path);
+            anyhow::bail!("Refusing to self-update: could not fetch the metadata signature: {e}");
+        }
+    };
+    if let Err(e) =
+        verify_launcher_metadata(&meta_bytes, &meta_sig, &binary_bytes, &filename, Some(&tag))
+    {
+        let _ = std::fs::remove_file(&dest_path);
+        anyhow::bail!("Refusing to self-update: {e}");
+    }
+
     // Persist the signature next to the staged binary so apply_launcher_update
     // can re-verify at install time — closing any window in which the staged
-    // file could be swapped between download and apply.
+    // file could be swapped between download and apply. The metadata sidecar is
+    // staged for the same reason.
     let sig_path = staged_signature_path(&dest_path);
     if let Err(e) = std::fs::write(&sig_path, &signature) {
         let _ = std::fs::remove_file(&dest_path);
         anyhow::bail!("Could not stage update signature: {e}");
     }
-    tracing::info!("Launcher update signature verified for {filename}");
+    let (meta_path, meta_sig_path) = staged_metadata_paths(&dest_path);
+    if let Err(e) = std::fs::write(&meta_path, &meta_bytes)
+        .and_then(|()| std::fs::write(&meta_sig_path, &meta_sig))
+    {
+        let _ = std::fs::remove_file(&dest_path);
+        anyhow::bail!("Could not stage update metadata: {e}");
+    }
+    tracing::info!("Launcher update signature and metadata verified for {filename} ({tag})");
 
     // Make executable on Unix
     #[cfg(unix)]
@@ -536,6 +659,86 @@ fn staged_signature_path(binary: &std::path::Path) -> PathBuf {
     ))
 }
 
+/// Paths of the metadata sidecar and its signature, staged next to a binary.
+fn staged_metadata_paths(binary: &std::path::Path) -> (PathBuf, PathBuf) {
+    let meta = format!("{}{}", binary.display(), crate::signing::METADATA_SUFFIX);
+    let sig = format!("{meta}{}", crate::signing::SIGNATURE_SUFFIX);
+    (PathBuf::from(meta), PathBuf::from(sig))
+}
+
+/// Verify a signed metadata sidecar and enforce what it binds.
+///
+/// Checks, in order: the sidecar is signed by the release key; it describes the
+/// asset we asked for; its digest matches the bytes in hand; it names the tag the
+/// update check selected (`expected_tag`, unknown at apply time hence optional);
+/// and its version is strictly newer than the running build. That last check is
+/// the anti-rollback - without it, any older org-signed binary is a valid
+/// "update".
+fn verify_launcher_metadata(
+    meta_bytes: &[u8],
+    meta_sig: &[u8],
+    binary_bytes: &[u8],
+    expected_asset: &str,
+    expected_tag: Option<&str>,
+) -> Result<()> {
+    crate::signing::verify_release_signature(meta_bytes, meta_sig)
+        .map_err(|e| anyhow::anyhow!("update metadata signature invalid: {e}"))?;
+    let meta = crate::signing::ReleaseMetadata::parse(meta_bytes)?;
+    check_metadata_bindings(
+        &meta,
+        binary_bytes,
+        expected_asset,
+        expected_tag,
+        APP_VERSION,
+    )
+}
+
+/// The binding rules of [`verify_launcher_metadata`], split out so they can be
+/// tested without the release private key (`running` is injectable for the same
+/// reason). Assumes the metadata signature has already been verified.
+fn check_metadata_bindings(
+    meta: &crate::signing::ReleaseMetadata,
+    binary_bytes: &[u8],
+    expected_asset: &str,
+    expected_tag: Option<&str>,
+    running: &str,
+) -> Result<()> {
+    anyhow::ensure!(
+        meta.asset == expected_asset,
+        "update metadata is for a different asset (signed '{}', expected '{expected_asset}')",
+        meta.asset
+    );
+
+    let digest = format!("{:x}", Sha256::digest(binary_bytes));
+    anyhow::ensure!(
+        digest == meta.sha256,
+        "update metadata digest mismatch (signed {}, downloaded {digest})",
+        meta.sha256
+    );
+
+    if let Some(tag) = expected_tag {
+        anyhow::ensure!(
+            meta.version == tag,
+            "update metadata is for a different release (signed '{}', expected '{tag}')",
+            meta.version
+        );
+    }
+
+    let new = crate::github::parse_version_tag(&meta.version).ok_or_else(|| {
+        anyhow::anyhow!(
+            "unrecognized version in update metadata: '{}'",
+            meta.version
+        )
+    })?;
+    let current = crate::github::parse_version_tag(running)
+        .ok_or_else(|| anyhow::anyhow!("unparseable running version"))?;
+    anyhow::ensure!(
+        new > current,
+        "refusing a downgrade: signed update is {new} but the running build is {current}"
+    );
+    Ok(())
+}
+
 /// Replace the running Colony binary with the downloaded update.
 /// Returns the exe path for relaunch on success. Restores backup on failure.
 pub fn apply_launcher_update(new_binary: &std::path::Path) -> Result<PathBuf> {
@@ -556,6 +759,39 @@ pub fn apply_launcher_update(new_binary: &std::path::Path) -> Result<PathBuf> {
         .map_err(|e| anyhow::anyhow!("Cannot read staged update binary: {e}"))?;
     crate::signing::verify_release_signature(&staged_bytes, &signature)
         .map_err(|e| anyhow::anyhow!("Refusing to apply update: {e}"))?;
+
+    // Re-check the sidecar at install time too, for the same reason the signature
+    // is re-checked: the staging directory is writable, so the file could have
+    // been swapped after the download-time check. The requested tag is not in
+    // scope here, so this enforces the asset name, the digest and "strictly newer
+    // than the running build" - enough to stop a rollback, though a swap to
+    // another org-signed release that is ALSO newer than the running build would
+    // still pass. Closing that needs the tag threaded through the staged state.
+    let (meta_path, meta_sig_path) = staged_metadata_paths(new_binary);
+    let staged_meta = std::fs::read(&meta_path).map_err(|e| {
+        anyhow::anyhow!(
+            "Missing staged update metadata ({}): {e}",
+            meta_path.display()
+        )
+    })?;
+    let staged_meta_sig = std::fs::read(&meta_sig_path).map_err(|e| {
+        anyhow::anyhow!(
+            "Missing staged update metadata signature ({}): {e}",
+            meta_sig_path.display()
+        )
+    })?;
+    let expected_asset = new_binary
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| anyhow::anyhow!("staged update has no usable file name"))?;
+    verify_launcher_metadata(
+        &staged_meta,
+        &staged_meta_sig,
+        &staged_bytes,
+        expected_asset,
+        None,
+    )
+    .map_err(|e| anyhow::anyhow!("Refusing to apply update: {e}"))?;
 
     // Refuse to touch the running binary if the staged update is empty/missing.
     anyhow::ensure!(
@@ -597,6 +833,10 @@ pub fn apply_launcher_update(new_binary: &std::path::Path) -> Result<PathBuf> {
         Ok(()) => {
             let _ = std::fs::remove_file(new_binary);
             let _ = std::fs::remove_file(&sig_path);
+            // The sidecars are staged next to the binary, so they must be swept
+            // too or the staging directory never becomes empty.
+            let _ = std::fs::remove_file(&meta_path);
+            let _ = std::fs::remove_file(&meta_sig_path);
             let _ = std::fs::remove_dir(new_binary.parent().unwrap_or(new_binary));
             Ok(current_exe)
         }
@@ -618,6 +858,185 @@ pub fn apply_launcher_update(new_binary: &std::path::Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The raw-binary branch of `extract_binary_from_archive` used to join the
+    /// manifest's `binary` field straight into the install dir, so a hostile
+    /// manifest could write anywhere (the caller then chmods 0755 and writes a
+    /// desktop entry pointing at it). The guard is now hoisted above the branch.
+    #[test]
+    fn raw_binary_branch_rejects_traversal_in_binary_name() {
+        // Every escape target below must ALREADY EXIST as a directory, so that
+        // without the guard the rename would genuinely succeed. A target whose
+        // parent is missing would make this test pass on ENOENT alone, and it
+        // would stay green with the fix reverted.
+        let root = std::env::temp_dir().join("colony_test_raw_traversal");
+        let _ = std::fs::remove_dir_all(&root);
+        let dest_dir = root.join("apps").join("SomeApp");
+        std::fs::create_dir_all(&dest_dir).unwrap();
+        std::fs::create_dir_all(dest_dir.join("sub")).unwrap();
+        let outside = root.join("apps").join("escaped");
+        let staged = dest_dir.join("app.bin.part");
+
+        for hostile in ["../escaped", "../../apps/escaped", "sub/nested", ".."] {
+            std::fs::write(&staged, b"payload").unwrap();
+            // `app.bin` has no archive extension, so this hits the raw branch.
+            let result = extract_binary_from_archive(&staged, "app.bin", hostile, &dest_dir);
+            assert!(
+                result.is_err(),
+                "traversal must be refused for binary name {hostile:?}"
+            );
+            assert!(
+                staged.exists(),
+                "a refused extraction must leave staging intact ({hostile:?})"
+            );
+            assert!(
+                !outside.exists(),
+                "nothing may be written outside the install dir ({hostile:?})"
+            );
+            assert!(
+                !dest_dir.join("sub").join("nested").exists(),
+                "nothing may be written below the install dir ({hostile:?})"
+            );
+            std::fs::remove_file(&staged).unwrap();
+        }
+
+        // Control: the same call with a plain name DOES install. Without it, the
+        // assertions above could be passing because of a broken fixture.
+        std::fs::write(&staged, b"payload").unwrap();
+        let installed = extract_binary_from_archive(&staged, "app.bin", "app", &dest_dir).unwrap();
+        assert_eq!(installed, dest_dir.join("app"));
+        assert!(installed.exists());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn only_http_and_https_urls_may_reach_the_uri_opener() {
+        for ok in [
+            "https://github.com/Project-Colony/Colony",
+            "http://example.com/a?b=c#d",
+            "HTTPS://GitHub.com/x",
+        ] {
+            assert!(web_url(ok).is_some(), "{ok} should be allowed");
+        }
+        for bad in [
+            // The one-click execution vectors from a hostile README.
+            "file:///home/user/.local/share/applications/colony-app.desktop",
+            "//198.51.100.7/share/setup.exe",
+            "\\\\198.51.100.7\\share\\setup.exe",
+            "javascript:alert(1)",
+            "smb://host/share",
+            "steam://run/1",
+            "data:text/html,<script>1</script>",
+            "mailto:a@b.c",
+            "",
+            "   ",
+            "not a url",
+            "/etc/passwd",
+        ] {
+            assert!(web_url(bad).is_none(), "{bad:?} must be refused");
+        }
+    }
+
+    /// The WHATWG parser strips tabs, newlines and leading control characters
+    /// anywhere in the input, so a bool-returning check would validate one string
+    /// while `open::that` received a different one. CommonMark decodes character
+    /// references in link destinations, so `[x](ht&#10;tps://evil)` produces
+    /// exactly these shapes from a hostile README.
+    #[test]
+    fn opened_url_is_the_one_that_was_validated() {
+        for sneaky in [
+            "ht\ntps://evil.example/x",
+            "ht\ttps://evil.example/x",
+            "\thttps://evil.example/x",
+            "  https://evil.example/x",
+            "https://evil.example/\rx",
+        ] {
+            // These DO parse (that is the whole problem), so the contract is not
+            // "refused" but "what comes back is clean": a real http(s) URL with no
+            // control characters, never the raw string.
+            let normalized = web_url(sneaky).expect("parses as https");
+            assert_ne!(normalized, sneaky, "the raw form must not be handed on");
+            assert!(normalized.starts_with("https://"), "{normalized}");
+            assert!(
+                !normalized.chars().any(|c| c.is_control()),
+                "{normalized:?} still carries control characters"
+            );
+        }
+        // Scheme-only forms are normalized by the parser rather than rejected:
+        // for http(s) it fills in the host, which stays a plain web URL.
+        assert_eq!(
+            web_url("http:evil.example/x").as_deref(),
+            Some("http://evil.example/x")
+        );
+    }
+
+    fn meta_for(bytes: &[u8], version: &str, asset: &str) -> crate::signing::ReleaseMetadata {
+        crate::signing::ReleaseMetadata {
+            version: version.into(),
+            asset: asset.into(),
+            sha256: format!("{:x}", Sha256::digest(bytes)),
+        }
+    }
+
+    #[test]
+    fn signed_metadata_accepts_a_genuine_newer_release() {
+        let bytes = b"new colony build";
+        let meta = meta_for(bytes, "v1.2.0", "colony-linux");
+        assert!(
+            check_metadata_bindings(&meta, bytes, "colony-linux", Some("v1.2.0"), "1.1.0").is_ok()
+        );
+    }
+
+    /// The point of the sidecar: an older but genuinely org-signed binary must
+    /// not be installable as an "update".
+    #[test]
+    fn signed_metadata_refuses_a_downgrade_or_replay() {
+        let bytes = b"old colony build";
+        for older in ["v1.0.0", "v0.9.0", "v1.1.0"] {
+            let meta = meta_for(bytes, older, "colony-linux");
+            let err = check_metadata_bindings(&meta, bytes, "colony-linux", Some(older), "1.1.0")
+                .unwrap_err()
+                .to_string();
+            assert!(
+                err.contains("downgrade"),
+                "{older} vs running 1.1.0 should be refused as a downgrade, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn signed_metadata_refuses_a_substituted_artefact() {
+        let served = b"the macos binary";
+        // Genuine, correctly signed metadata - but for a DIFFERENT asset.
+        let meta = meta_for(served, "v1.2.0", "colony-macos");
+        assert!(
+            check_metadata_bindings(&meta, served, "colony-linux", Some("v1.2.0"), "1.1.0")
+                .is_err(),
+            "metadata naming another asset must not validate this download"
+        );
+    }
+
+    #[test]
+    fn signed_metadata_refuses_mismatched_digest_or_tag() {
+        let meta = meta_for(b"expected bytes", "v1.2.0", "colony-linux");
+        assert!(
+            check_metadata_bindings(&meta, b"tampered bytes", "colony-linux", None, "1.1.0")
+                .is_err(),
+            "digest mismatch must fail"
+        );
+        assert!(
+            check_metadata_bindings(
+                &meta,
+                b"expected bytes",
+                "colony-linux",
+                Some("v1.3.0"),
+                "1.1.0"
+            )
+            .is_err(),
+            "metadata for another tag than the one resolved must fail"
+        );
+    }
 
     #[test]
     fn extract_from_zip_works() {

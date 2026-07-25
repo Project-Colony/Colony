@@ -18,9 +18,27 @@ pub fn colony_data_dir() -> Result<PathBuf> {
     Ok(base)
 }
 
+/// Join a repo name onto `base` as a single directory component.
+///
+/// `repo_name` is remote data (the `name` field of the GitHub API listing, also
+/// rehydrated from `repos_cache.json`), and it is joined into a path in every
+/// per-repo helper below plus the install directory and a `remove_dir_all`. The
+/// leaf-filename guard was applied everywhere but here, so the containment
+/// invariant "Colony only writes under `apps/<repo>/`" rested on GitHub refusing
+/// `/` and `..` in repo names. Enforce it locally instead of inheriting it.
+fn join_repo_component(base: PathBuf, repo_name: &str) -> Result<PathBuf> {
+    crate::download::ensure_safe_component(repo_name)?;
+    Ok(base.join(repo_name))
+}
+
+/// Per-repo directory under the apps root: `<data_local>/Colony/apps/{repo_name}/`
+pub(crate) fn colony_app_dir(repo_name: &str) -> Result<PathBuf> {
+    join_repo_component(colony_apps_dir()?, repo_name)
+}
+
 /// Directory for cached repo documentation files: `~/.config/Colony/Colony/repo-docs/{repo_name}/`
 fn repo_docs_dir(repo_name: &str) -> Result<PathBuf> {
-    let base = colony_data_dir()?.join("repo-docs").join(repo_name);
+    let base = join_repo_component(colony_data_dir()?.join("repo-docs"), repo_name)?;
     std::fs::create_dir_all(&base)?;
     Ok(base)
 }
@@ -40,7 +58,7 @@ pub fn read_repo_doc(repo_name: &str, filename: &str) -> Option<String> {
 
 /// Directory for the cached per-repo app icon: `~/.config/Colony/Colony/repo-icons/{repo_name}/`
 fn repo_icon_dir(repo_name: &str) -> Result<PathBuf> {
-    let base = colony_data_dir()?.join("repo-icons").join(repo_name);
+    let base = join_repo_component(colony_data_dir()?.join("repo-icons"), repo_name)?;
     std::fs::create_dir_all(&base)?;
     Ok(base)
 }
@@ -91,7 +109,7 @@ pub fn installed_app_path(repo: &ColonyRepo) -> Option<PathBuf> {
         );
         return None;
     }
-    let path = colony_apps_dir().ok()?.join(&repo.name).join(&filename);
+    let path = colony_app_dir(&repo.name).ok()?.join(&filename);
     if path.exists() {
         Some(path)
     } else {
@@ -105,31 +123,76 @@ const VERSION_FILE: &str = ".colony_version";
 /// Saved resolved asset name (when using filePattern).
 const ASSET_FILE: &str = ".colony_asset";
 
+/// Marker recording that this app was installed with a verified signature.
+const SIGNED_FILE: &str = ".colony_signed";
+
 /// Save the installed version tag for a repo.
 pub fn save_installed_version(repo_name: &str, tag: &str) -> Result<()> {
-    let path = colony_apps_dir()?.join(repo_name).join(VERSION_FILE);
+    let path = colony_app_dir(repo_name)?.join(VERSION_FILE);
     std::fs::write(&path, tag)?;
     Ok(())
 }
 
 /// Load the installed version tag for a repo.
 pub fn load_installed_version(repo_name: &str) -> Option<String> {
-    let path = colony_apps_dir().ok()?.join(repo_name).join(VERSION_FILE);
+    let path = colony_app_dir(repo_name).ok()?.join(VERSION_FILE);
     std::fs::read_to_string(path)
         .ok()
         .map(|s| s.trim().to_string())
 }
 
+/// Record whether the installed build was signature-verified.
+///
+/// Read back by the installer to pin the requirement: `manifest.signed` lives in
+/// the very repo the signature is meant to protect, so an attacker with write
+/// access could flip it to false and drop the `.sig` to install unsigned code
+/// silently. Once an app has been installed with a verified signature, later
+/// updates must stay signed regardless of what the manifest now claims.
+/// Only ever sets the marker: the pin must not be clearable by a later unsigned
+/// install, which is the whole point. Uninstalling removes the app directory and
+/// with it the pin, and that is the deliberate way out.
+pub fn save_installed_signed(repo_name: &str) -> Result<()> {
+    let path = colony_app_dir(repo_name)?.join(SIGNED_FILE);
+    std::fs::write(&path, "1")?;
+    Ok(())
+}
+
+/// True when a previous install of this repo was signature-verified.
+///
+/// Matched case-insensitively: GitHub repo names are case-insensitive for lookup
+/// while the install directory is not, so a rename from `Spotter` to `spotter`
+/// would otherwise present as a brand-new app and silently drop the pin (while
+/// still overwriting the same lowercased `.desktop` entry).
+pub fn load_installed_signed(repo_name: &str) -> bool {
+    if colony_app_dir(repo_name)
+        .map(|d| d.join(SIGNED_FILE).exists())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    let Ok(apps) = colony_apps_dir() else {
+        return false;
+    };
+    let wanted = repo_name.to_lowercase();
+    let Ok(entries) = std::fs::read_dir(apps) else {
+        return false;
+    };
+    entries.flatten().any(|e| {
+        e.file_name().to_string_lossy().to_lowercase() == wanted
+            && e.path().join(SIGNED_FILE).exists()
+    })
+}
+
 /// Save the resolved asset name for a repo (when using filePattern).
 pub fn save_installed_asset(repo_name: &str, filename: &str) -> Result<()> {
-    let path = colony_apps_dir()?.join(repo_name).join(ASSET_FILE);
+    let path = colony_app_dir(repo_name)?.join(ASSET_FILE);
     std::fs::write(&path, filename)?;
     Ok(())
 }
 
 /// Load the saved resolved asset name for a repo.
 pub fn load_installed_asset(repo_name: &str) -> Option<String> {
-    let path = colony_apps_dir().ok()?.join(repo_name).join(ASSET_FILE);
+    let path = colony_app_dir(repo_name).ok()?.join(ASSET_FILE);
     std::fs::read_to_string(path)
         .ok()
         .map(|s| s.trim().to_string())
@@ -270,18 +333,51 @@ pub fn write_desktop_entry(repo_name: &str, exec_path: &std::path::Path) -> Resu
         .ok_or_else(|| anyhow::anyhow!("Cannot determine data directory"))?
         .join("applications");
     std::fs::create_dir_all(&dir)?;
-    let icon_line = repo_icon_dir(repo_name)
+    // `repo_name` and the install path both derive from remote data, and both are
+    // interpolated into a line-oriented key=value format where glib keeps the
+    // FIRST occurrence of a key. Unescaped, a newline in either injects arbitrary
+    // keys - including an `Exec=` that shadows the legitimate one - and a quote in
+    // the path closes the Exec quoting to append arguments. The icon path contains
+    // repo_name too, so it goes through the same check rather than relying on
+    // being emitted last.
+    let name = desktop_value(repo_name)?;
+    let exec = desktop_value(&exec_path.to_string_lossy())?;
+    let icon_line = match repo_icon_dir(repo_name)
         .ok()
         .map(|d| d.join("icon.png"))
         .filter(|p| p.exists())
-        .map(|p| format!("Icon={}\n", p.display()))
-        .unwrap_or_default();
+    {
+        Some(p) => format!("Icon={}\n", desktop_value(&p.to_string_lossy())?),
+        None => String::new(),
+    };
     let entry = format!(
-        "[Desktop Entry]\nType=Application\nName={repo_name}\nExec=\"{}\"\nTerminal=false\nCategories=Utility;\nComment=Installed by Colony\nX-Colony-Managed=true\n{icon_line}",
-        exec_path.display()
+        "[Desktop Entry]\nType=Application\nName={name}\nExec=\"{exec}\"\nTerminal=false\nCategories=Utility;\nComment=Installed by Colony\nX-Colony-Managed=true\n{icon_line}"
     );
-    std::fs::write(dir.join(desktop_entry_filename(repo_name)), entry)?;
+    std::fs::write(dir.join(desktop_entry_filename(repo_name)?), entry)?;
     Ok(())
+}
+
+/// Escape a string for use as a quoted Desktop Entry value.
+///
+/// Per the Desktop Entry spec, a quoted argument must backslash-escape `"`, `` ` ``,
+/// `$` and `\` - the last three because implementations may expand them. Control
+/// characters have no valid escape and cannot appear in a value at all (a newline
+/// would inject a whole new key, and glib keeps the FIRST occurrence of a key), so
+/// they are rejected outright rather than mangled.
+#[cfg(target_os = "linux")]
+fn desktop_value(raw: &str) -> Result<String> {
+    anyhow::ensure!(
+        !raw.chars().any(|c| c.is_control()),
+        "refusing to write a desktop entry containing control characters: {raw:?}"
+    );
+    let mut out = String::with_capacity(raw.len());
+    for c in raw.chars() {
+        if matches!(c, '\\' | '"' | '`' | '$') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    Ok(out)
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -293,10 +389,8 @@ pub fn write_desktop_entry(_repo_name: &str, _exec_path: &std::path::Path) -> Re
 /// absent or on non-Linux platforms).
 pub fn remove_desktop_entry(repo_name: &str) {
     #[cfg(target_os = "linux")]
-    if let Some(data) = dirs::data_dir() {
-        let path = data
-            .join("applications")
-            .join(desktop_entry_filename(repo_name));
+    if let (Some(data), Ok(name)) = (dirs::data_dir(), desktop_entry_filename(repo_name)) {
+        let path = data.join("applications").join(name);
         if path.exists() {
             if let Err(e) = std::fs::remove_file(&path) {
                 tracing::warn!("failed to remove desktop entry {}: {e}", path.display());
@@ -307,9 +401,13 @@ pub fn remove_desktop_entry(repo_name: &str) {
     let _ = repo_name;
 }
 
+/// Filename of a repo's `.desktop` entry, guarded because `repo_name` is remote
+/// data and this string is joined into `~/.local/share/applications`: a separator
+/// or `..` in it would let a manifest choose which entry to write or delete.
 #[cfg(target_os = "linux")]
-fn desktop_entry_filename(repo_name: &str) -> String {
-    format!("colony-{}.desktop", repo_name.to_lowercase())
+fn desktop_entry_filename(repo_name: &str) -> Result<String> {
+    crate::download::ensure_safe_component(repo_name)?;
+    Ok(format!("colony-{}.desktop", repo_name.to_lowercase()))
 }
 
 /// Remove ALL store caches (docs + icons for every repo). Manual cache
@@ -388,6 +486,38 @@ pub fn save_scan_cache(apps: &[CachedApp]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `repo_name` is remote data (the GitHub API listing, and `repos_cache.json`
+    /// on top of it) and is joined into every per-repo path plus a
+    /// `remove_dir_all`, so containment must not depend on GitHub's own naming
+    /// rules.
+    #[test]
+    fn repo_component_refuses_anything_but_a_plain_name() {
+        let base = PathBuf::from("/tmp/colony-test");
+        assert_eq!(
+            join_repo_component(base.clone(), "Colony").unwrap(),
+            base.join("Colony")
+        );
+        for hostile in ["../../../../.local/bin", "..", "/etc", "a/b", "", "."] {
+            assert!(
+                join_repo_component(base.clone(), hostile).is_err(),
+                "repo name {hostile:?} must be refused"
+            );
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn desktop_values_are_escaped_and_control_chars_refused() {
+        // Quotes and backslashes are escaped rather than closing our Exec="..."
+        assert_eq!(desktop_value(r#"a"b"#).unwrap(), r#"a\"b"#);
+        assert_eq!(desktop_value(r"a\b").unwrap(), r"a\\b");
+        assert_eq!(desktop_value("plain-name").unwrap(), "plain-name");
+        // A newline would inject a whole key; glib keeps the FIRST Exec= it sees.
+        assert!(desktop_value("app\nExec=sh").is_err());
+        assert!(desktop_value("app\rExec=sh").is_err());
+        assert!(desktop_value("app\0").is_err());
+    }
 
     #[test]
     fn colony_apps_dir_returns_path() {
