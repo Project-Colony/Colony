@@ -1778,6 +1778,7 @@ mod tests {
     /// The pin is what stops a compromised repo from flipping `signed` back to
     /// false, so it must survive a manifest that no longer asks for signatures -
     /// and a case-only rename of the repo, which creates a different directory.
+    #[cfg(target_os = "linux")]
     #[test]
     fn signature_pin_survives_and_is_case_insensitive() {
         with_temp_dirs(|| {
@@ -1816,6 +1817,7 @@ mod tests {
         });
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn toggle_favorite_persists_to_disk() {
         with_temp_dirs(|| {
