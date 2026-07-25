@@ -32,7 +32,10 @@ impl App {
 
                 let login_btn = button(login_btn_content)
                     .on_press_maybe(
-                        if matches!(self.github_state, crate::GitHubState::Connecting { .. }) {
+                        if matches!(
+                            self.github_state,
+                            crate::state::GitHubState::Connecting { .. }
+                        ) {
                             None
                         } else {
                             Some(Message::GitHubLogin)
