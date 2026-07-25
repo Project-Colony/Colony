@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/Project-Colony/Colony/compare/v0.9.0...v0.9.1) (2026-07-25)
+
+
+### Bug Fixes
+
+* **security:** close audit findings on install paths, URI opening and update trust ([fdc9e16](https://github.com/Project-Colony/Colony/commit/fdc9e16163e4c7b7914b8173c28ae4ea4758edbe))
+
 ## [0.9.0](https://github.com/Project-Colony/Colony/compare/v0.8.0...v0.9.0) (2026-07-20)
 
 
