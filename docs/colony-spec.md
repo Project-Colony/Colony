@@ -220,17 +220,28 @@ signing is adopted per-app, no flag day - **unless** the manifest declares:
 { "signed": true }
 ```
 
-With `"signed": true`, a missing signature ABORTS the install: this closes the
-remaining hole where a compromised repository could simply omit signatures.
-Declare it once every release of the app ships `.sig` assets (all Project-
-Colony apps have signed releases as of 2026-07-20). Sign with:
+With `"signed": true`, a missing signature ABORTS the install. Declare it once
+every release of the app ships `.sig` assets (all Project-Colony apps have signed
+releases as of 2026-07-20). Sign with:
 
 ```sh
-COLONY_SIGNING_KEY=/path/to/colony-release.pem ./scripts/sign-release.sh <asset>
+COLONY_SIGNING_KEY=/path/to/colony-release.pem \
+COLONY_RELEASE_VERSION=<tag> ./scripts/sign-release.sh <asset>
 ```
 
-Note the trust boundary: signatures protect against tampered release assets
+`COLONY_RELEASE_VERSION` is required because the script also emits a signed
+`<asset>.meta` sidecar binding the bytes to a version and a filename. Only the
+launcher's own self-update consumes that sidecar today; for app assets the
+`.sig` is what matters, and the extra files are harmless if published.
+
+Note the trust boundary. Signatures protect against tampered release assets
 (e.g. an asset swapped after publication), because forging one requires the
-org's private signing key, which never lives in any repository. They do not
-yet protect against a fully compromised repository *omitting* signatures;
-enforcement ("this app must be signed") is a planned follow-up.
+org's private signing key, which never lives in any repository. Enforcement is
+implemented: `"signed": true` refuses an install with no signature, and the
+launcher **pins** the requirement client-side once an app has been installed with
+a verified signature, so flipping `signed` back to false in a compromised
+repository no longer downgrades that app to unsigned. What remains open is that
+an app signature is not bound to a version or an asset name, so an attacker with
+push access to a catalogue repo could still replay a *different* org-signed
+artefact; binding it needs the `.meta` sidecar rolled out to the ecosystem app
+release workflows first.

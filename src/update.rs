@@ -248,13 +248,28 @@ impl App {
                 let launch_result = {
                     #[cfg(windows)]
                     {
-                        std::process::Command::new("cmd")
-                            .args(["/C", "start", "", &exec])
-                            .spawn()
-                            .map(|_| ())
-                            .map_err(|error| {
-                                i18n::t_fmt("launch_error", &[("error", &error.to_string())])
-                            })
+                        // A scanned Windows entry is often a `.lnk`, which
+                        // CreateProcess cannot run, so this one genuinely needs
+                        // `start`. Build the command line with raw_arg and quote
+                        // the target ourselves: Rust only quotes arguments that
+                        // contain whitespace, which would leave cmd to re-parse
+                        // `&`, `|` and friends in the path as separators. A quote
+                        // in the path would escape our quoting, so reject it.
+                        use std::os::windows::process::CommandExt;
+                        if exec.contains('"') || exec.chars().any(|c| c.is_control()) {
+                            Err(i18n::t_fmt(
+                                "launch_error",
+                                &[("error", "unsupported characters in application path")],
+                            ))
+                        } else {
+                            std::process::Command::new("cmd")
+                                .raw_arg(format!("/C start \"\" \"{exec}\""))
+                                .spawn()
+                                .map(|_| ())
+                                .map_err(|error| {
+                                    i18n::t_fmt("launch_error", &[("error", &error.to_string())])
+                                })
+                        }
                     }
 
                     #[cfg(not(windows))]
@@ -474,6 +489,9 @@ impl App {
                         let file_pattern = entry.file_pattern.clone();
                         let binary = entry.binary.clone();
                         let expected_sha256 = entry.sha256.clone();
+                        // Only what the manifest declares; the installer ORs in
+                        // its own pin from any previously verified install, so
+                        // that rule lives next to the check it feeds.
                         let require_signature = repo.manifest.signed;
                         let repo_name = repo.name.clone();
                         // API calls (release resolution) use the token for
@@ -658,8 +676,8 @@ impl App {
                 // The aborted task cannot clean up its staging file: sweep
                 // the cancelled repo's *.part leftovers here.
                 if let Some(repo) = self.downloading_repo.take() {
-                    if let Ok(apps_dir) = crate::persistence::colony_apps_dir() {
-                        if let Ok(entries) = std::fs::read_dir(apps_dir.join(&repo)) {
+                    if let Ok(app_dir) = crate::persistence::colony_app_dir(&repo) {
+                        if let Ok(entries) = std::fs::read_dir(&app_dir) {
                             for entry in entries.flatten() {
                                 let name = entry.file_name().to_string_lossy().to_string();
                                 if name.ends_with(".part") {
@@ -678,12 +696,11 @@ impl App {
                 self.push_notification(i18n::t("download_cancelled"), NotificationLevel::Warning)
             }
             Message::LaunchColonyApp(path) => {
-                #[cfg(windows)]
-                let result = std::process::Command::new("cmd")
-                    .args(["/C", "start", "", &path.display().to_string()])
-                    .spawn()
-                    .map(|_| ());
-                #[cfg(not(windows))]
+                // Executed directly on every platform, never through `cmd /C`:
+                // Windows only quotes an argument containing a space or tab, so a
+                // manifest-derived path like `app&calc` reached cmd unquoted and
+                // its `&` was parsed as a command separator. A store install is
+                // always a real executable, so the shell buys nothing here.
                 let result = std::process::Command::new(&path).spawn().map(|_| ());
 
                 match result {
@@ -721,9 +738,8 @@ impl App {
                 // cleanup happens on catalog refresh instead.)
                 self.release_notes.remove(&repo_name);
                 crate::persistence::remove_desktop_entry(&repo_name);
-                match crate::persistence::colony_apps_dir() {
-                    Ok(apps_dir) => {
-                        let app_dir = apps_dir.join(&repo_name);
+                match crate::persistence::colony_app_dir(&repo_name) {
+                    Ok(app_dir) => {
                         if app_dir.exists() {
                             if let Err(e) = std::fs::remove_dir_all(&app_dir) {
                                 self.status_message =
@@ -778,8 +794,16 @@ impl App {
             }
             Message::CopyToClipboard(value) => iced::clipboard::write(value),
             Message::OpenUrl(url) => {
-                if let Err(err) = open::that(&url) {
-                    tracing::warn!("failed to open url {url:?}: {err}");
+                // Single choke point for the three producers of this message
+                // (Markdown link clicks, README badge pills, "View on GitHub"),
+                // two of which carry remote attacker-influenced strings. Only
+                // http(s) may reach the desktop URI opener - see is_web_url.
+                let Some(safe) = crate::download::web_url(&url) else {
+                    tracing::warn!("refusing to open non-http(s) url {url:?}");
+                    return Task::none();
+                };
+                if let Err(err) = open::that(&safe) {
+                    tracing::warn!("failed to open url {safe:?}: {err}");
                 }
                 Task::none()
             }
@@ -1747,6 +1771,49 @@ mod tests {
             let _ = app.update(Message::GitHubError("boom".into()));
             assert!(app.notifications.is_empty());
             assert!(app.status_message.contains("boom"));
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    /// The pin is what stops a compromised repo from flipping `signed` back to
+    /// false, so it must survive a manifest that no longer asks for signatures -
+    /// and a case-only rename of the repo, which creates a different directory.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn signature_pin_survives_and_is_case_insensitive() {
+        with_temp_dirs(|| {
+            use crate::persistence::{load_installed_signed, save_installed_signed};
+            assert!(
+                !load_installed_signed("Spotter"),
+                "no pin before any install"
+            );
+
+            // The installer creates the app directory before recording anything;
+            // colony_app_dir deliberately does not, so mirror that order here.
+            std::fs::create_dir_all(crate::persistence::colony_app_dir("Spotter").unwrap())
+                .unwrap();
+            save_installed_signed("Spotter").unwrap();
+            assert!(load_installed_signed("Spotter"));
+            assert!(
+                load_installed_signed("spotter"),
+                "a case-only rename must not drop the pin"
+            );
+            assert!(load_installed_signed("SPOTTER"));
+            assert!(
+                !load_installed_signed("SpotterX"),
+                "the match must not be a prefix match"
+            );
+
+            // No API can clear it: only removing the app directory does, which is
+            // what uninstalling deliberately performs.
+            save_installed_signed("Spotter").unwrap();
+            assert!(load_installed_signed("Spotter"));
+            let dir = crate::persistence::colony_app_dir("Spotter").unwrap();
+            std::fs::remove_dir_all(&dir).unwrap();
+            assert!(
+                !load_installed_signed("Spotter"),
+                "uninstall clears the pin"
+            );
         });
     }
 

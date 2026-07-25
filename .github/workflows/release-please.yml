@@ -91,20 +91,25 @@ jobs:
     needs: [release-please, build]
     if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
+    env:
+      # Single source of truth for the four launcher assets. Declared once so the
+      # download, sign, verify and post-upload steps cannot drift apart: a list
+      # repeated per step means adding a platform silently leaves it unsigned,
+      # which is exactly how v0.7.0 shipped.
+      ASSETS: colony-linux colony-windows.exe colony-macos colony-macos-x86
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.release-please.outputs.tag_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download release binaries
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release-please.outputs.tag_name }}
         run: |
           mkdir dist
-          gh release download "$TAG" --dir dist \
-            --pattern colony-linux \
-            --pattern colony-windows.exe \
-            --pattern colony-macos \
-            --pattern colony-macos-x86
+          for a in $ASSETS; do PATTERNS="$PATTERNS --pattern $a"; done
+          gh release download "$TAG" --dir dist $PATTERNS
+          for a in $ASSETS; do
+            [ -s "dist/$a" ] || { echo "::error::release asset $a is missing or empty"; exit 1; }
+          done
 
       - name: Sign
         env:
@@ -116,15 +121,43 @@ jobs:
           fi
           printf '%s' "$KEY" > /tmp/colony-release.pem
           chmod 600 /tmp/colony-release.pem
+          for a in $ASSETS; do PATHS="$PATHS dist/$a"; done
           COLONY_SIGNING_KEY=/tmp/colony-release.pem \
-            ./scripts/sign-release.sh dist/colony-linux dist/colony-windows.exe dist/colony-macos dist/colony-macos-x86
+          COLONY_RELEASE_VERSION="$TAG" \
+            ./scripts/sign-release.sh $PATHS
           rm -f /tmp/colony-release.pem
 
-      - name: Upload signatures
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release-please.outputs.tag_name }}
-        run: gh release upload "$TAG" dist/*.sig --clobber
+      # Self-update is fail-closed on BOTH the signature and the signed metadata
+      # sidecar that binds it to a version, so a release missing either one is
+      # un-updatable. Check locally before uploading...
+      - name: Verify every asset got a signature and a signed sidecar
+        run: |
+          for a in $ASSETS; do
+            for required in "dist/$a.sig" "dist/$a.meta" "dist/$a.meta.sig"; do
+              [ -s "$required" ] || { echo "::error::missing or empty $required"; exit 1; }
+            done
+            grep -qx "version=$TAG" "dist/$a.meta" \
+              || { echo "::error::dist/$a.meta does not bind version=$TAG"; exit 1; }
+            grep -qx "asset=$a" "dist/$a.meta" \
+              || { echo "::error::dist/$a.meta does not bind asset=$a"; exit 1; }
+          done
+          echo "all assets carry .sig + .meta + .meta.sig, correctly bound"
+
+      - name: Upload signatures and metadata
+        run: gh release upload "$TAG" dist/*.sig dist/*.meta --clobber
+
+      # ...and again against the PUBLISHED release, because a local file proves
+      # nothing about what users can actually download.
+      - name: Verify the published release carries every asset
+        run: |
+          gh release view "$TAG" --json assets --jq '.assets[].name' | sort > /tmp/published
+          for a in $ASSETS; do
+            for required in "$a" "$a.sig" "$a.meta" "$a.meta.sig"; do
+              grep -qx "$required" /tmp/published \
+                || { echo "::error::$required is not published on $TAG - self-update would refuse this release"; exit 1; }
+            done
+          done
+          echo "published release verified"
 
   # Chained here (not on `release: published`) because release-please creates
   # the release with the default GITHUB_TOKEN, whose events do not trigger
