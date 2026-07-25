@@ -1,0 +1,9 @@
+# Commits that only MOVE code and never change behaviour. Listing them here keeps
+# `git blame` pointing at the change that actually wrote each line instead of at
+# the move. GitHub honours this file automatically; locally, enable it once with:
+#
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# refactor: split the four most-edited modules into directories
+# (update/ + app.rs + i18n/ + github/, ~2000 lines moved, no behaviour change)
+430f23840a63e3e69843215d27f87365057e4e34
