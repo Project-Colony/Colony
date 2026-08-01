@@ -87,6 +87,9 @@ jobs:
             echo "pkgver already at ${PKGVER} — nothing to do."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            # Carried to the next step so it can rewrite every occurrence of
+            # the OUTGOING version, not just the fields someone listed.
+            echo "oldver=${CURRENT}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Update PKGBUILD + .SRCINFO
@@ -94,6 +97,7 @@ jobs:
         env:
           PKGVER: ${{ steps.tag.outputs.pkgver }}
           SHA256: ${{ steps.sha.outputs.sha256 }}
+          OLDVER: ${{ steps.check.outputs.oldver }}
         run: |
           cd aur-repo
           # Reset pkgrel to 1 because pkgver changed — standard AUR convention.
@@ -103,17 +107,29 @@ jobs:
           # _iconsha is stable across releases and must not be touched).
           sed -i "s/^_binsha=.*/_binsha='${SHA256}'/" PKGBUILD
 
-          # .SRCINFO mirrors the PKGBUILD metadata. We sed the three fields
-          # that track pkgver (pkgver itself, noextract filename, source URL)
-          # plus the single sha256sums line. Everything else is static.
+          # .SRCINFO mirrors the PKGBUILD metadata, field by field. The
+          # mirroring is the weakness: it only holds while someone adds a sed
+          # for every new line that embeds $pkgver, and nobody did when the
+          # icon source was added. The published .SRCINFO announced pkgver
+          # 0.9.1 while still pointing the icon at the v0.8.0 tag, and nothing
+          # complained - the AUR simply served metadata disagreeing with the
+          # PKGBUILD beside it.
+          #
+          # So: rewrite EVERY occurrence of the outgoing version rather than
+          # naming the lines it may appear on, and then refuse to continue if
+          # any survived. The check is the part that matters - it turns the
+          # next forgotten field from silent staleness into a failed release.
           sed -i "s/^\tpkgver = .*/\tpkgver = ${PKGVER}/" .SRCINFO
           sed -i "s/^\tpkgrel = .*/\tpkgrel = 1/" .SRCINFO
-          sed -i "s|noextract = colony-[^[:space:]]*|noextract = colony-${PKGVER}|" .SRCINFO
-          sed -i "s|colony-[0-9.]*::https|colony-${PKGVER}::https|" .SRCINFO
-          sed -i "s|download/v[0-9.]*/colony-linux|download/v${PKGVER}/colony-linux|" .SRCINFO
+          sed -i "s|${OLDVER//./\\.}|${PKGVER}|g" .SRCINFO
           # Only the FIRST sha256sums line is the binary's; the second is the
           # stable icon hash.
           sed -i "0,/^\tsha256sums = .*/s//\tsha256sums = ${SHA256}/" .SRCINFO
+
+          if grep -n "${OLDVER//./\\.}" .SRCINFO; then
+            echo "::error::.SRCINFO still mentions ${OLDVER} after the bump to ${PKGVER} (lines above)"
+            exit 1
+          fi
 
           echo "--- PKGBUILD diff ---"
           git --no-pager diff PKGBUILD || true
