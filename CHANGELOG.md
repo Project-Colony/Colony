@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/Project-Colony/Colony/compare/v0.9.1...v0.9.2) (2026-08-01)
+
+
+### Bug Fixes
+
+* **ci:** stop leaving stale versions behind in the AUR .SRCINFO ([#62](https://github.com/Project-Colony/Colony/issues/62)) ([798c1dd](https://github.com/Project-Colony/Colony/commit/798c1dd5661187e70949f64691c886ba4c56b2e2))
+
 ## [0.9.1](https://github.com/Project-Colony/Colony/compare/v0.9.0...v0.9.1) (2026-07-25)
 
 
