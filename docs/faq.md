@@ -8,7 +8,7 @@ A desktop application launcher. It curates a catalog of small Rust-native apps (
 
 ### Is Colony free / open source?
 
-Yes. [MIT licensed](../LICENSE), no telemetry, no mandatory account, no paid tier. Source at [Project-Colony/Colony](https://github.com/Project-Colony/Colony).
+Yes. [GPL-3.0-or-later licensed](../LICENSE), no telemetry, no mandatory account, no paid tier. Source at [Project-Colony/Colony](https://github.com/Project-Colony/Colony).
 
 ### What platforms are supported?
 
