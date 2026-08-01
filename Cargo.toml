@@ -2,6 +2,7 @@
 name = "colony"
 version = "0.9.1"
 edition = "2021"
+license = "GPL-3.0-or-later"
 # Enforced floor for the README's "Rust 1.80+" claim (std::sync::LazyLock).
 rust-version = "1.80"
 

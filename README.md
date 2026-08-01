@@ -4,7 +4,7 @@
 
 Colony is the central piece of [Project Colony](https://github.com/Project-Colony) — an ecosystem of small, focused desktop utilities built with Rust. Instead of one monolithic tool that does everything poorly, Colony curates a growing collection of apps, each designed to do one thing exceptionally well.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![AUR: colony-bin](https://img.shields.io/badge/AUR-colony--bin-blue)](https://aur.archlinux.org/packages/colony-bin)
 [![AUR: colony-git](https://img.shields.io/badge/AUR-colony--git-blue)](https://aur.archlinux.org/packages/colony-git)
 [![Platforms](https://img.shields.io/badge/platforms-linux%20%7C%20windows%20%7C%20macOS-lightgrey)](#installation)
@@ -128,4 +128,6 @@ A [release workflow template](.github/workflows/colony-rust-release.yml.template
 
 ## License
 
-[MIT](LICENSE) © 2026 Project Colony contributors
+[GPL-3.0-or-later](LICENSE) © 2026 Project Colony contributors
+
+Colony is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
