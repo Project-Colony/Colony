@@ -29,6 +29,10 @@ pub fn main() -> iced::Result {
         )
         .init();
 
+    // Earlier versions wrote to different directories; move them before
+    // anything reads a path. No-op once done, and on a fresh install.
+    crate::persistence::migrate_legacy_paths();
+
     // Honor the saved language preference over environment locale detection,
     // and reopen at the last persisted window size (clamped to sanity).
     let prefs = crate::persistence::load_preferences();

@@ -573,8 +573,14 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let old_config = std::env::var_os("XDG_CONFIG_HOME");
         let old_data = std::env::var_os("XDG_DATA_HOME");
+        // XDG_CACHE_HOME matters since the caches moved out of the config
+        // directory: without it these tests read and write the developer's real
+        // ~/.cache, which makes them pass or fail depending on what a previous
+        // run left behind.
+        let old_cache = std::env::var_os("XDG_CACHE_HOME");
         std::env::set_var("XDG_CONFIG_HOME", tmp.path().join("config"));
         std::env::set_var("XDG_DATA_HOME", tmp.path().join("data"));
+        std::env::set_var("XDG_CACHE_HOME", tmp.path().join("cache"));
         f();
         match old_config {
             Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
@@ -583,6 +589,10 @@ mod tests {
         match old_data {
             Some(v) => std::env::set_var("XDG_DATA_HOME", v),
             None => std::env::remove_var("XDG_DATA_HOME"),
+        }
+        match old_cache {
+            Some(v) => std::env::set_var("XDG_CACHE_HOME", v),
+            None => std::env::remove_var("XDG_CACHE_HOME"),
         }
     }
 
