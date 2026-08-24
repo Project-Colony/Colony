@@ -735,7 +735,7 @@ mod tests {
             assert!(matches!(app.github_state, GitHubState::Disconnected));
 
             // Seed an orphaned doc cache for a repo that no longer exists.
-            let orphan = crate::persistence::colony_data_dir()
+            let orphan = crate::persistence::colony_cache_dir()
                 .unwrap()
                 .join("repo-docs")
                 .join("Ghost");

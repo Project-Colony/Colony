@@ -21,7 +21,7 @@ pub fn colony_data_dir() -> Result<PathBuf> {
 }
 
 /// Regenerable state: the repo listing and the scan results.
-fn colony_cache_dir() -> Result<PathBuf> {
+pub(crate) fn colony_cache_dir() -> Result<PathBuf> {
     Ok(colony_ui::paths::cache_dir(PROGRAM)?)
 }
 
@@ -47,13 +47,17 @@ pub fn migrate_legacy_paths() {
         );
     }
 
-    // The cache used to live inside the config directory. It is regenerable, so
-    // a failure here costs a re-fetch and nothing more.
+    // Everything regenerable used to live inside the config directory. All of
+    // it is re-fetched when missing, so a failure here costs a round trip to
+    // GitHub and nothing more.
     if let (Ok(config), Ok(cache)) = (
         colony_ui::paths::locate::config_dir(PROGRAM),
         colony_ui::paths::locate::cache_dir(PROGRAM),
     ) {
         relocate(&config.join("cache"), &cache, "cache");
+        for sub in ["repo-docs", "repo-icons", "update-staging"] {
+            relocate(&config.join(sub), &cache.join(sub), sub);
+        }
     }
 }
 
@@ -126,9 +130,10 @@ pub(crate) fn colony_app_dir(repo_name: &str) -> Result<PathBuf> {
     join_repo_component(colony_apps_dir()?, repo_name)
 }
 
-/// Directory for cached repo documentation files: `~/.config/Colony/Colony/repo-docs/{repo_name}/`
+/// Cached repo documentation: `<cache>/repo-docs/{repo_name}/`. Re-fetched from
+/// GitHub when missing, so it is cache rather than config.
 fn repo_docs_dir(repo_name: &str) -> Result<PathBuf> {
-    let base = join_repo_component(colony_data_dir()?.join("repo-docs"), repo_name)?;
+    let base = join_repo_component(colony_cache_dir()?.join("repo-docs"), repo_name)?;
     std::fs::create_dir_all(&base)?;
     Ok(base)
 }
@@ -146,9 +151,10 @@ pub fn read_repo_doc(repo_name: &str, filename: &str) -> Option<String> {
     std::fs::read_to_string(dir.join(filename)).ok()
 }
 
-/// Directory for the cached per-repo app icon: `~/.config/Colony/Colony/repo-icons/{repo_name}/`
+/// Cached per-repo app icon: `<cache>/repo-icons/{repo_name}/`. Re-downloaded
+/// when missing, so it is cache rather than config.
 fn repo_icon_dir(repo_name: &str) -> Result<PathBuf> {
-    let base = join_repo_component(colony_data_dir()?.join("repo-icons"), repo_name)?;
+    let base = join_repo_component(colony_cache_dir()?.join("repo-icons"), repo_name)?;
     std::fs::create_dir_all(&base)?;
     Ok(base)
 }
@@ -502,7 +508,7 @@ fn desktop_entry_filename(repo_name: &str) -> Result<String> {
 /// management from Settings > Storage; installs and preferences are NOT
 /// touched. Returns the number of cache directories removed.
 pub fn clear_store_caches() -> usize {
-    let Ok(base) = colony_data_dir() else {
+    let Ok(base) = colony_cache_dir() else {
         return 0;
     };
     let mut removed = 0;
@@ -525,7 +531,7 @@ pub fn clear_store_caches() -> usize {
 /// transient absence must not purge anything). Uninstalling a still-listed
 /// app deliberately keeps its caches - they render the catalog entry.
 pub fn prune_orphaned_repo_caches(live_repo_names: &[String]) {
-    let Ok(base) = colony_data_dir() else {
+    let Ok(base) = colony_cache_dir() else {
         return;
     };
     for parent in ["repo-docs", "repo-icons"] {
