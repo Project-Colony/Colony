@@ -7,6 +7,7 @@ use crate::i18n;
 use crate::message::Message;
 use crate::state::App;
 use crate::ui::theme::Palette;
+use colony_ui::widgets;
 
 /// Settings category names (keys for i18n).
 const SETTINGS_CATEGORIES: &[&str] = &[
@@ -806,208 +807,38 @@ impl App {
     }
 
     // ── Theme sub-section ──
+    /// The theme picker, drawn by colony-ui straight from the generated
+    /// catalog. This used to be 135 lines here, character for character what
+    /// the crate now draws - the crate's copy was ported FROM this one.
     fn view_theme_section(&self) -> Element<'_, Message> {
-        let font = self.app_font();
-        let medium = self.app_font_with_weight(Weight::Medium);
-
-        let mut col = column![].spacing(12);
-
-        // Rendered straight from colony-ui's generated catalog: adding a theme
-        // family upstream needs no change here.
-        for family in colony_ui::THEME_FAMILIES {
-            let (theme_key, label_key, icon) = (family.key, family.label_key, family.icon);
-            let is_selected_family = self.selected_theme == theme_key;
-            let label = i18n::t(label_key);
-
-            // Family name label with optional themed icon
-            let label_text = if icon.is_empty() {
-                label.clone()
-            } else {
-                format!("{} {}", icon, label)
-            };
-            let family_label =
-                text(label_text)
-                    .size(self.sz(13))
-                    .font(medium)
-                    .color(if is_selected_family {
-                        Palette::TEXT_PRIMARY()
-                    } else {
-                        Palette::TEXT_SECONDARY()
-                    });
-
-            // Variant cards as a horizontal row of mini color-swatch cards
-            let mut variant_row = row![].spacing(8);
-
-            for variant in family.variants {
-                let (var_key, var_label_key) = (&variant.key, variant.label_key);
-                let is_active = is_selected_family && self.selected_variant == *var_key;
-                let theme_owned = theme_key.to_string();
-                let var_owned = var_key.to_string();
-
-                let bg_color = variant.swatch_bg_color();
-                let accent_color = variant.swatch_accent_color();
-
-                // Color swatch: bg stripe + accent dot
-                let swatch_bg = container(text(""))
-                    .width(Length::Fill)
-                    .height(Length::Fixed(4.0))
-                    .style(move |_theme| container::Style {
-                        background: Some(accent_color.into()),
-                        border: iced::Border::default().rounded(2),
-                        ..Default::default()
-                    });
-
-                let swatch = container(swatch_bg)
-                    .width(Length::Fill)
-                    .height(Length::Fixed(28.0))
-                    .padding(iced::Padding {
-                        top: 20.0,
-                        right: 6.0,
-                        bottom: 4.0,
-                        left: 6.0,
-                    })
-                    .style(move |_theme| container::Style {
-                        background: Some(bg_color.into()),
-                        border: iced::Border::default().rounded(6),
-                        ..Default::default()
-                    });
-
-                // Variant label below the swatch
-                let var_label = text(i18n::t(var_label_key))
-                    .size(self.sz(10))
-                    .font(font)
-                    .color(if is_active {
-                        Palette::TEXT_PRIMARY()
-                    } else {
-                        Palette::TEXT_MUTED()
-                    });
-
-                // Check indicator for active variant
-                let indicator: Element<'_, Message> = if is_active {
-                    text("\u{f00c}")
-                        .size(self.sz(8))
-                        .font(font)
-                        .color(Palette::ACCENT())
-                        .into()
-                } else {
-                    text("").size(self.sz(8)).into()
-                };
-
-                let card_content = column![
-                    swatch,
-                    container(
-                        row![var_label, indicator]
-                            .spacing(4)
-                            .align_y(iced::Alignment::Center)
-                    )
-                    .padding(iced::Padding {
-                        top: 4.0,
-                        right: 0.0,
-                        bottom: 0.0,
-                        left: 2.0
-                    }),
-                ]
-                .spacing(0)
-                .width(Length::Fill);
-
-                let card = button(card_content)
-                    .on_press(Message::SelectThemeVariant(theme_owned, var_owned))
-                    .padding(4)
-                    .width(Length::Fill)
-                    .style(move |_theme, status| {
-                        let border_color = match status {
-                            _ if is_active => Palette::ACCENT(),
-                            button::Status::Hovered => Palette::TEXT_DIMMER(),
-                            _ => Palette::BORDER_SUBTLE(),
-                        };
-                        button::Style {
-                            background: Some(Palette::BG_CARD().into()),
-                            text_color: Palette::TEXT_PRIMARY(),
-                            border: iced::Border {
-                                color: border_color,
-                                width: if is_active { 2.0 } else { 1.0 },
-                                radius: 8.0.into(),
-                            },
-                            ..Default::default()
-                        }
-                    });
-
-                variant_row = variant_row.push(card);
-            }
-
-            col = col.push(column![family_label, variant_row,].spacing(6));
-        }
-
-        col.into()
+        widgets::theme_picker(
+            &self.typo(),
+            &self.selected_theme,
+            &self.selected_variant,
+            |family, variant| {
+                Message::SelectThemeVariant(family.to_string(), variant.to_string())
+            },
+        )
     }
 
     // ── Colors & accents sub-section ──
+    /// The accent swatches, plus the separate "derive the accent from the
+    /// background" behaviour toggle.
+    ///
+    /// The eight colours were hardcoded here as a `vec![]` of literals. They
+    /// now come from `ACCENT_OVERRIDES`, generated from `tokens/accents.toml`,
+    /// which matters more than the line count: **the order is load-bearing**.
+    /// Colony buckets a hash of each installed app's name into that list to
+    /// pick its identity tint, so a local edit that reordered or inserted an
+    /// entry would silently re-colour every icon on every machine - and there
+    /// was nothing here to say so.
     fn view_colors_section(&self) -> Element<'_, Message> {
-        let font = self.app_font();
+        let swatches = widgets::accent_picker(
+            &self.typo(),
+            Some(self.selected_accent.as_str()),
+            |key| Message::SelectAccentColor(key.to_string()),
+        );
 
-        // Accent colors: (key, i18n_label_key, hex_color)
-        let accent_colors: Vec<(&str, &str, u32)> = vec![
-            ("red", "settings_accent_red", 0xE05555),
-            ("orange", "settings_accent_orange", 0xE0855A),
-            ("yellow", "settings_accent_yellow", 0xC8A832),
-            ("green", "settings_accent_green", 0x55B87A),
-            ("blue", "settings_accent_blue", 0x6B8BD6),
-            ("indigo", "settings_accent_indigo", 0x7B6BD6),
-            ("violet", "settings_accent_violet", 0xB06BD6),
-            ("amber", "settings_accent_amber", 0xD4A030),
-        ];
-
-        let mut color_row = row![].spacing(8).align_y(iced::Alignment::Center);
-
-        for (color_key, _label_key, hex) in &accent_colors {
-            let is_active = self.selected_accent == *color_key;
-            let color_key_owned = color_key.to_string();
-            let r = ((*hex >> 16) & 0xFF) as f32 / 255.0;
-            let g = ((*hex >> 8) & 0xFF) as f32 / 255.0;
-            let b = (*hex & 0xFF) as f32 / 255.0;
-            let dot_color = iced::Color { r, g, b, a: 1.0 };
-
-            // Circular color swatch button
-            let check_icon: Element<'_, Message> = if is_active {
-                text("\u{f00c}")
-                    .size(self.sz(8))
-                    .font(font)
-                    .color(iced::Color::WHITE)
-                    .into()
-            } else {
-                text("").size(self.sz(8)).into()
-            };
-            let swatch = button(
-                container(check_icon)
-                    .center_x(Length::Fill)
-                    .center_y(Length::Fill),
-            )
-            .on_press(Message::SelectAccentColor(color_key_owned))
-            .width(Length::Fixed(28.0))
-            .height(Length::Fixed(28.0))
-            .padding(0)
-            .style(move |_theme, status| {
-                let border_color = match status {
-                    _ if is_active => Palette::TEXT_PRIMARY(),
-                    button::Status::Hovered => Palette::TEXT_DIMMER(),
-                    _ => iced::Color::TRANSPARENT,
-                };
-                button::Style {
-                    background: Some(dot_color.into()),
-                    text_color: iced::Color::WHITE,
-                    border: iced::Border {
-                        color: border_color,
-                        width: if is_active { 2.0 } else { 0.0 },
-                        radius: 14.0.into(),
-                    },
-                    ..Default::default()
-                }
-            });
-
-            color_row = color_row.push(swatch);
-        }
-
-        // Auto accent toggle
         let auto_accent_row = self.view_functional_toggle(
             &i18n::t("settings_auto_accent"),
             &i18n::t("settings_auto_accent_desc"),
@@ -1015,82 +846,34 @@ impl App {
             Message::ToggleAutoAccent,
         );
 
-        column![color_row, container(text("")).height(12), auto_accent_row,]
+        column![swatches, container(text("")).height(12), auto_accent_row]
             .spacing(0)
             .into()
     }
 
     // ── Collapsible section ──
+    /// A collapsible settings section.
+    ///
+    /// Kept as a method rather than calling the crate from all sixteen sites:
+    /// the expanded set and the message are the HOST's, the drawing is the
+    /// crate's. That split is why no call site changed.
     fn view_collapsible_section<'a>(
         &self,
         key: &str,
         title: &str,
         content: Element<'a, Message>,
     ) -> Element<'a, Message> {
-        let is_expanded = self.settings_expanded_sections.contains(key);
-        let arrow = if is_expanded { "\u{f078}" } else { "\u{f054}" }; // chevron down / right
-        let key_owned = key.to_string();
-        let title_owned = title.to_string();
-
-        // Header: clean flat style, no box — just text + chevron
-        let header_btn = button(
-            row![
-                text(title_owned)
-                    .size(self.sz(15))
-                    .font(self.app_font_with_weight(Weight::Bold))
-                    .color(Palette::TEXT_PRIMARY()),
-                container(text("")).width(Fill),
-                text(arrow)
-                    .size(self.sz(9))
-                    .font(self.app_font())
-                    .color(Palette::TEXT_DIMMER()),
-            ]
-            .spacing(8)
-            .align_y(iced::Alignment::Center),
+        widgets::collapsible_section(
+            &self.typo(),
+            title,
+            self.settings_expanded_sections.contains(key),
+            Message::SettingsToggleSection(key.to_string()),
+            content,
         )
-        .on_press(Message::SettingsToggleSection(key_owned))
-        .padding([12, 4])
-        .width(Fill)
-        .style(move |_theme, status| {
-            let bg = match status {
-                button::Status::Hovered => Palette::BG_CARD_HOVER(),
-                _ => iced::Color::TRANSPARENT,
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: Palette::TEXT_PRIMARY(),
-                border: iced::Border::default().rounded(6),
-                ..Default::default()
-            }
-        });
-
-        if is_expanded {
-            // Thin divider line under header
-            let divider =
-                container(text(""))
-                    .width(Fill)
-                    .height(1)
-                    .style(|_theme| container::Style {
-                        background: Some(Palette::DIVIDER().into()),
-                        ..Default::default()
-                    });
-
-            let body = container(content)
-                .padding(iced::Padding {
-                    top: 12.0,
-                    right: 4.0,
-                    bottom: 4.0,
-                    left: 4.0,
-                })
-                .width(Fill);
-
-            column![header_btn, divider, body].spacing(0).into()
-        } else {
-            header_btn.into()
-        }
     }
 
-    /// A functional toggle: clicking sends the given message.
+    /// A labelled on/off row. Same split as above: eleven call sites, none of
+    /// which changed.
     fn view_functional_toggle(
         &self,
         title: &str,
@@ -1098,71 +881,7 @@ impl App {
         on: bool,
         msg: Message,
     ) -> Element<'_, Message> {
-        let font = self.app_font();
-        let track_bg = if on {
-            Palette::ACCENT()
-        } else {
-            Palette::BG_CARD_HOVER()
-        };
-        let knob_offset: f32 = if on { 16.0 } else { 2.0 };
-
-        let knob = container(text(""))
-            .width(Length::Fixed(14.0))
-            .height(Length::Fixed(14.0))
-            .style(move |_theme| container::Style {
-                background: Some(Palette::TEXT_PRIMARY().into()),
-                border: iced::Border::default().rounded(7),
-                ..Default::default()
-            });
-        let toggle_visual = container(container(knob).padding(iced::Padding {
-            top: 1.0,
-            right: 0.0,
-            bottom: 0.0,
-            left: knob_offset,
-        }))
-        .width(Length::Fixed(34.0))
-        .height(Length::Fixed(18.0))
-        .style(move |_theme| container::Style {
-            background: Some(track_bg.into()),
-            border: iced::Border::default().rounded(9),
-            ..Default::default()
-        });
-
-        button(
-            row![
-                column![
-                    text(title.to_string())
-                        .size(self.sz(13))
-                        .font(font)
-                        .color(Palette::TEXT_PRIMARY()),
-                    text(desc.to_string())
-                        .size(self.sz(11))
-                        .font(font)
-                        .color(Palette::TEXT_DIMMER()),
-                ]
-                .spacing(2),
-                container(text("")).width(Fill),
-                toggle_visual,
-            ]
-            .spacing(10)
-            .align_y(iced::Alignment::Center),
-        )
-        .on_press(msg)
-        .padding([6, 4])
-        .width(Fill)
-        .style(|_theme, status| {
-            let bg = match status {
-                button::Status::Hovered => Palette::BG_CARD_HOVER(),
-                _ => iced::Color::TRANSPARENT,
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: Palette::TEXT_PRIMARY(),
-                border: iced::Border::default().rounded(6),
-                ..Default::default()
-            }
-        })
-        .into()
+        widgets::functional_toggle(&self.typo(), title, desc, on, msg)
     }
 
     /// A setting row with a pick_list dropdown for selecting from options.

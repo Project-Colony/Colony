@@ -376,77 +376,9 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "Overall application appearance.".into(),
     );
     strings.insert("settings_theme_dark".into(), "Dark".into());
-    // Theme families
-    strings.insert("settings_theme_catppuccin".into(), "Catppuccin".into());
-    strings.insert("settings_theme_catppuccin_latte".into(), "Latte".into());
-    strings.insert("settings_theme_catppuccin_frappe".into(), "Frappé".into());
-    strings.insert(
-        "settings_theme_catppuccin_macchiato".into(),
-        "Macchiato".into(),
-    );
-    strings.insert("settings_theme_catppuccin_mocha".into(), "Mocha".into());
-    strings.insert("settings_theme_gruvbox".into(), "Gruvbox".into());
-    strings.insert("settings_theme_light".into(), "Light mode".into());
-    strings.insert("settings_theme_dark_mode".into(), "Dark mode".into());
-    strings.insert("settings_theme_everblush".into(), "Everblush".into());
-    strings.insert("settings_theme_kanagawa".into(), "Kanagawa".into());
-    strings.insert(
-        "settings_theme_kanagawa_journal".into(),
-        "Journal mode".into(),
-    );
-    // New theme families
-    strings.insert("settings_theme_nord".into(), "Nord".into());
-    strings.insert("settings_theme_dracula".into(), "Dracula".into());
-    strings.insert("settings_theme_solarized".into(), "Solarized".into());
-    strings.insert("settings_theme_tokyonight".into(), "Tokyo Night".into());
-    strings.insert("settings_theme_tokyonight_night".into(), "Night".into());
-    strings.insert("settings_theme_tokyonight_day".into(), "Day".into());
-    strings.insert("settings_theme_rosepine".into(), "Rosé Pine".into());
-    strings.insert("settings_theme_rosepine_main".into(), "Main".into());
-    strings.insert("settings_theme_rosepine_moon".into(), "Moon".into());
-    strings.insert("settings_theme_rosepine_dawn".into(), "Dawn".into());
-    strings.insert("settings_theme_onedark".into(), "One Dark".into());
-    strings.insert("settings_theme_monokai".into(), "Monokai Pro".into());
-    strings.insert("settings_theme_monokai_pro".into(), "Pro".into());
-    strings.insert("settings_theme_monokai_classic".into(), "Classic".into());
-    strings.insert("settings_theme_monokai_spectrum".into(), "Spectrum".into());
-    strings.insert("settings_theme_ayu".into(), "Ayu".into());
-    strings.insert("settings_theme_ayu_mirage".into(), "Mirage".into());
-    strings.insert("settings_theme_everforest".into(), "Everforest".into());
-    strings.insert("settings_theme_material".into(), "Material".into());
-    strings.insert("settings_theme_material_oceanic".into(), "Oceanic".into());
-    strings.insert(
-        "settings_theme_material_palenight".into(),
-        "Palenight".into(),
-    );
-    strings.insert(
-        "settings_theme_material_deepocean".into(),
-        "Deep Ocean".into(),
-    );
-    strings.insert("settings_theme_flexoki".into(), "Flexoki".into());
-    strings.insert("settings_theme_nightfox".into(), "Nightfox".into());
-    strings.insert("settings_theme_nightfox_nightfox".into(), "Nightfox".into());
-    strings.insert("settings_theme_nightfox_dawnfox".into(), "Dawnfox".into());
-    strings.insert("settings_theme_sonokai".into(), "Sonokai".into());
-    strings.insert("settings_theme_sonokai_default".into(), "Default".into());
-    strings.insert("settings_theme_oxocarbon".into(), "Oxocarbon".into());
-    strings.insert("settings_theme_nightowl".into(), "Night Owl".into());
-    strings.insert("settings_theme_iceberg".into(), "Iceberg".into());
-    strings.insert("settings_theme_horizon".into(), "Horizon".into());
-    strings.insert("settings_theme_melange".into(), "Melange".into());
-    strings.insert("settings_theme_synthwave".into(), "Synthwave '84".into());
-    strings.insert("settings_theme_modus".into(), "Modus".into());
-    strings.insert("settings_theme_modus_operandi".into(), "Operandi".into());
-    strings.insert("settings_theme_modus_vivendi".into(), "Vivendi".into());
-    strings.insert(
-        "settings_theme_stellar_blade".into(),
-        "Stellar Blade".into(),
-    );
-    strings.insert("settings_theme_stellar_blade_eve".into(), "EVE".into());
-    strings.insert("settings_theme_stellar_blade_tachy".into(), "Tachy".into());
-    strings.insert("settings_theme_stellar_blade_lily".into(), "Lily".into());
-    strings.insert("settings_theme_stellar_blade_enya".into(), "Enya".into());
-    strings.insert("settings_theme_stellar_blade_kaya".into(), "Kaya".into());
+    // The theme family and variant names are NOT here: they come from
+    // colony-ui, generated from the design tokens. A family added upstream
+    // must not need a line in this file - see `Locale::new`.
     // Colors & accents
     strings.insert("settings_section_colors".into(), "Colors & accents".into());
     strings.insert(
@@ -458,14 +390,6 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "settings_accent_color_desc".into(),
         "Color used for interactive elements.".into(),
     );
-    strings.insert("settings_accent_red".into(), "Red".into());
-    strings.insert("settings_accent_orange".into(), "Orange".into());
-    strings.insert("settings_accent_yellow".into(), "Yellow".into());
-    strings.insert("settings_accent_green".into(), "Green".into());
-    strings.insert("settings_accent_blue".into(), "Blue".into());
-    strings.insert("settings_accent_indigo".into(), "Indigo".into());
-    strings.insert("settings_accent_violet".into(), "Violet".into());
-    strings.insert("settings_accent_amber".into(), "Amber".into());
     strings.insert(
         "settings_auto_accent".into(),
         "Auto accent from background".into(),

@@ -416,6 +416,21 @@ impl App {
         (base as f32 * self.font_scale()).round()
     }
 
+    /// What the shared colony-ui widgets need to know about this program's text.
+    ///
+    /// A widget in that crate cannot reach `App`, so the three fonts and the
+    /// combined scale are handed over explicitly. `Typography::sz` is
+    /// `(base * scale).round()` - the same arithmetic as [`Self::sz`], which is
+    /// what keeps a shared widget the same size as the rows around it.
+    pub fn typo(&self) -> colony_ui::Typography {
+        colony_ui::Typography {
+            scale: self.font_scale(),
+            regular: self.app_font(),
+            medium: self.app_font_with_weight(Weight::Medium),
+            bold: self.app_font_with_weight(Weight::Bold),
+        }
+    }
+
     /// Duration of the sidebar slide animation.
     pub const SIDEBAR_ANIM_MS: f32 = 200.0;
 
