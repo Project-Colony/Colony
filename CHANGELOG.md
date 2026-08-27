@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/Project-Colony/Colony/compare/v0.9.2...v0.10.0) (2026-08-27)
+
+
+### Features
+
+* close the audit backlog - honest update checks, resumable installs, and a trust chain that reaches the apps ([#68](https://github.com/Project-Colony/Colony/issues/68)) ([89028f7](https://github.com/Project-Colony/Colony/commit/89028f7ff961c735a717086c5caa23b6ca6b872b))
+
+
+### Bug Fixes
+
+* **release:** keep the release a draft - the uploader was publishing it ([#70](https://github.com/Project-Colony/Colony/issues/70)) ([54305c4](https://github.com/Project-Colony/Colony/commit/54305c450fb989c37aaa5732dde6f63ab7372faf))
+
 ## [0.9.2](https://github.com/Project-Colony/Colony/compare/v0.9.1...v0.9.2) (2026-08-01)
 
 
