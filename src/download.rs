@@ -33,10 +33,83 @@ fn download_client() -> Result<reqwest::Client> {
         .build()?)
 }
 
-/// Stream an HTTP GET to `dest_path`, sending throttled progress (0.0..1.0)
-/// over `progress_tx`. Verifies the received length against Content-Length when
-/// present and rejects empty/truncated downloads. Removes `dest_path` on any
-/// failure. Shared by app-asset install and launcher self-update.
+/// Sanity ceiling on an advertised body. The whole asset is written to disk
+/// before any signature or digest check can run - that is unavoidable for a
+/// detached signature - so a misconfigured or hostile release could otherwise
+/// fill the user's home partition on its own say-so. Generous: the largest
+/// asset the org ships is two orders of magnitude below this.
+const MAX_ASSET_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+
+/// Identity of the transfer a `.part` file belongs to, written beside it.
+///
+/// Resuming means stitching two responses into one file, so it is only sound
+/// while both halves describe the same artifact. A re-tagged release, or an
+/// asset rebuilt under the same name, must restart from zero rather than
+/// produce a file that never existed anywhere.
+#[derive(PartialEq, Eq)]
+struct PartIdentity {
+    etag: String,
+    total: u64,
+}
+
+impl PartIdentity {
+    fn path(dest: &std::path::Path) -> PathBuf {
+        let mut name = dest.as_os_str().to_os_string();
+        name.push(".id");
+        PathBuf::from(name)
+    }
+
+    fn read(dest: &std::path::Path) -> Option<Self> {
+        let raw = std::fs::read_to_string(Self::path(dest)).ok()?;
+        let (etag, total) = raw.split_once('\n')?;
+        Some(Self {
+            etag: etag.to_string(),
+            total: total.trim().parse().ok()?,
+        })
+    }
+
+    fn write(&self, dest: &std::path::Path) {
+        let _ = std::fs::write(Self::path(dest), format!("{}\n{}\n", self.etag, self.total));
+    }
+
+    fn forget(dest: &std::path::Path) {
+        let _ = std::fs::remove_file(Self::path(dest));
+    }
+}
+
+/// Whether a 206 response still describes the artifact a partial file belongs
+/// to. Both the validator and the total length must agree.
+fn response_matches_identity(resp: &reqwest::Response, id: &PartIdentity) -> bool {
+    let etag = resp
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok());
+    if etag != Some(id.etag.as_str()) {
+        return false;
+    }
+    // "bytes <start>-<end>/<total>" - the total is the part we can compare.
+    resp.headers()
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.rsplit('/').next())
+        .and_then(|total| total.trim().parse::<u64>().ok())
+        == Some(id.total)
+}
+
+/// Discard a partial transfer and the identity that described it.
+fn discard_partial(dest_path: &std::path::Path) {
+    let _ = std::fs::remove_file(dest_path);
+    PartIdentity::forget(dest_path);
+}
+
+/// Stream an HTTP GET to `dest_path`, sending throttled progress over
+/// `progress_tx`, resuming a previous partial transfer when one is present and
+/// provably describes the same bytes.
+///
+/// Verifies the received length against Content-Length when present and rejects
+/// empty/truncated downloads. A partial file is KEPT on a transport failure so
+/// the next attempt can continue it, and removed on anything that makes it
+/// meaningless. Shared by app-asset install and launcher self-update.
 async fn download_to_file(
     client: &reqwest::Client,
     url: &str,
@@ -44,9 +117,34 @@ async fn download_to_file(
     dest_path: &std::path::Path,
     progress_tx: Option<futures::channel::mpsc::UnboundedSender<(u64, Option<u64>)>>,
 ) -> Result<()> {
+    // What is already on disk, and may we continue it? Both the server's ETag
+    // and the total length must match what the previous attempt recorded.
+    let resume_from = match (
+        std::fs::metadata(dest_path).map(|m| m.len()).ok(),
+        PartIdentity::read(dest_path),
+    ) {
+        (Some(have), Some(id)) if have > 0 && have < id.total => Some((have, id)),
+        // Anything else - no identity file, a complete or over-long file, an
+        // empty one - is not resumable. Start clean.
+        _ => {
+            discard_partial(dest_path);
+            None
+        }
+    };
+
     let mut request = client.get(url);
     if let Some(t) = token {
         request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {t}"));
+    }
+    if let Some((have, ref id)) = resume_from {
+        // If-Range is sent, but is NOT trusted: GitHub redirects release assets
+        // to Azure blob storage, which ignores the header and answers 206 to a
+        // stale validator just the same (verified against a real release
+        // asset). So the 206 branch below re-checks the ETag and the total
+        // itself rather than taking the status code as proof.
+        request = request
+            .header(reqwest::header::RANGE, format!("bytes={have}-"))
+            .header(reqwest::header::IF_RANGE, id.etag.clone());
     }
 
     let resp = request.send().await.map_err(|e| {
@@ -61,14 +159,66 @@ async fn download_to_file(
         anyhow::bail!("Download failed: HTTP {} for {url}", resp.status());
     }
 
-    let total = resp.content_length();
-    let mut downloaded: u64 = 0;
+    // A 206 is a claim, not a proof - the storage backend ignores If-Range.
+    // Accept it only when the response still describes the artifact the partial
+    // file belongs to: same ETag, and the same total in Content-Range. On any
+    // disagreement, throw the partial away and let the retry start clean rather
+    // than stitching two different bodies into a file that never existed.
+    let resuming = if resp.status().as_u16() == 206 {
+        match resume_from {
+            Some((_, ref id)) if response_matches_identity(&resp, id) => true,
+            Some(_) => {
+                discard_partial(dest_path);
+                anyhow::bail!("The release changed while downloading {url}; restarting");
+            }
+            None => false,
+        }
+    } else {
+        false
+    };
+    let already: u64 = if resuming {
+        resume_from.as_ref().map(|(have, _)| *have).unwrap_or(0)
+    } else {
+        0
+    };
+
+    // Total size of the WHOLE asset, not of this response.
+    let total = if resuming {
+        resume_from.as_ref().map(|(_, id)| id.total)
+    } else {
+        resp.content_length()
+    };
+
+    if let Some(total) = total {
+        anyhow::ensure!(
+            total <= MAX_ASSET_BYTES,
+            "Refusing {url}: the release advertises {total} bytes, over Colony's {MAX_ASSET_BYTES}-byte ceiling"
+        );
+    }
 
     use futures::StreamExt;
     use std::io::Write;
-    // Staging names are predictable, so never follow whatever sits there.
-    let mut file = create_new_file(dest_path)?;
+    let mut file = if resuming {
+        tracing::info!("resuming {url} at {already} bytes");
+        std::fs::OpenOptions::new().append(true).open(dest_path)?
+    } else {
+        // Fresh transfer. Record what we are about to fetch so a later attempt
+        // can tell whether continuing this file is sound, and never follow
+        // whatever sits at the (predictable) staging name.
+        discard_partial(dest_path);
+        if let (Some(etag), Some(total)) = (
+            resp.headers()
+                .get(reqwest::header::ETAG)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string),
+            resp.content_length(),
+        ) {
+            PartIdentity { etag, total }.write(dest_path);
+        }
+        create_new_file(dest_path)?
+    };
     let mut stream = resp.bytes_stream();
+    let mut downloaded: u64 = already;
     let mut last_pct: u32 = 0;
 
     let stream_result: Result<()> = async {
@@ -76,6 +226,10 @@ async fn download_to_file(
             let chunk = chunk?;
             file.write_all(&chunk)?;
             downloaded += chunk.len() as u64;
+            anyhow::ensure!(
+                downloaded <= MAX_ASSET_BYTES,
+                "Refusing {url}: body exceeded Colony's {MAX_ASSET_BYTES}-byte ceiling"
+            );
 
             if let Some(ref tx) = progress_tx {
                 // Throttle: send on whole-percent changes when the total is
@@ -111,23 +265,75 @@ async fn download_to_file(
     .await;
 
     if let Err(e) = stream_result {
-        let _ = std::fs::remove_file(dest_path);
+        // KEEP the partial file. A drop at 95% used to throw away everything
+        // and charge the user the full asset again on the next click; with the
+        // identity sidecar beside it, the next attempt continues instead. Only
+        // a transfer we can no longer describe is discarded.
+        if PartIdentity::read(dest_path).is_none() {
+            discard_partial(dest_path);
+        }
         return Err(e);
     }
 
-    // Guard against a silently-truncated or empty transfer.
+    // Guard against a silently-truncated or empty transfer. Both are terminal
+    // for THIS file: a short body means the server disagrees with the length it
+    // advertised, so continuing from it would be guesswork.
     if let Some(total) = total {
         if downloaded != total {
-            let _ = std::fs::remove_file(dest_path);
+            discard_partial(dest_path);
             anyhow::bail!("Incomplete download: got {downloaded} of {total} bytes for {url}");
         }
     }
     if downloaded == 0 {
-        let _ = std::fs::remove_file(dest_path);
+        discard_partial(dest_path);
         anyhow::bail!("Empty download (0 bytes) for {url}");
     }
 
+    // Complete: the identity file has done its job.
+    PartIdentity::forget(dest_path);
     Ok(())
+}
+
+/// `download_to_file` with a bounded retry, so a dropped connection continues
+/// from where it stopped without the user having to notice and click again.
+///
+/// Only transport failures are retried, and only because the partial file now
+/// survives them: each attempt resumes from what the previous one wrote, so
+/// three tries cost three connections, not three assets. A verification failure
+/// never reaches here - it happens after this returns.
+async fn download_with_resume(
+    client: &reqwest::Client,
+    url: &str,
+    token: Option<&str>,
+    dest_path: &std::path::Path,
+    progress_tx: Option<futures::channel::mpsc::UnboundedSender<(u64, Option<u64>)>>,
+) -> Result<()> {
+    const ATTEMPTS: u32 = 3;
+    let mut last_err = None;
+    for attempt in 0..ATTEMPTS {
+        if attempt > 0 {
+            // Linear backoff; the point is to ride out a blip, not to hammer.
+            tokio::time::sleep(Duration::from_secs(2 * attempt as u64)).await;
+            tracing::info!("retrying {url} (attempt {} of {ATTEMPTS})", attempt + 1);
+        }
+        let had_partial = PartIdentity::read(dest_path).is_some();
+        match download_to_file(client, url, token, dest_path, progress_tx.clone()).await {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                last_err = Some(e);
+                // Retry when the next attempt would do something DIFFERENT:
+                // either a partial survived and will be continued, or one was
+                // just discarded (the release changed under us) and the next
+                // attempt starts clean. Otherwise - a 404, a refused URL - the
+                // next attempt would only repeat this one.
+                let resumable = PartIdentity::read(dest_path).is_some();
+                if !resumable && !had_partial {
+                    break;
+                }
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("Download failed for {url}")))
 }
 
 /// Ceiling for the small sidecars Colony buffers whole (`.sig` is 64 bytes,
@@ -549,7 +755,7 @@ pub async fn download_release_asset(
     )?;
 
     let client = download_client()?;
-    download_to_file(&client, &url, token.as_deref(), &temp_path, progress_tx).await?;
+    download_with_resume(&client, &url, token.as_deref(), &temp_path, progress_tx).await?;
 
     // `manifest.signed` lives in the very repo the signature protects, so a
     // compromised repo could flip it to false and drop the `.sig` to install
@@ -662,10 +868,21 @@ pub async fn download_release_asset(
             // installed binary with no version file, silently excluded from
             // every future update check (or, in the filePattern case, an
             // orphaned binary the app no longer even sees as installed).
-            crate::persistence::save_installed_version(&repo_name, &tag)?;
+            //
+            // Order matters: the ASSET marker lands first and the VERSION
+            // marker last. The two writes are individually non-atomic, so a
+            // kill between them leaves a torn state - and only this order makes
+            // that state honest. With the version written first, a
+            // filePattern app whose asset name carries the version would claim
+            // the new version while `.colony_asset` still named the old file:
+            // installed_app_path resolves through the asset marker, so Colony
+            // would report the new version and Launch would run the old binary,
+            // with no update offered to correct it. This way round, a torn
+            // install simply re-offers the update.
             if record_asset {
                 crate::persistence::save_installed_asset(&repo_name, &filename)?;
             }
+            crate::persistence::save_installed_version(&repo_name, &tag)?;
             // Pin the signature requirement for future updates: a repo that
             // ships signatures today must not be able to stop tomorrow. Only
             // ever raises the bar - the marker is written, never cleared, while
@@ -705,14 +922,31 @@ pub async fn download_launcher_asset(
     let temp_dir = colony_data_dir()?.join("update-staging");
     std::fs::create_dir_all(&temp_dir)?;
     let dest_path = temp_dir.join(&filename);
+    // Stream to `<asset>.part` and only rename onto the apply path once the
+    // whole file is here. Writing straight to the final name meant a download
+    // the user never applied - or a cancelled one - left a partial file at
+    // exactly the path apply_launcher_update consumes. Apply re-verifies, so it
+    // was refused fail-closed rather than being a hole, but the file sat there.
+    let part_path = temp_dir.join(format!("{filename}.part"));
 
-    let url = format!(
-        "https://github.com/{LAUNCHER_OWNER}/{LAUNCHER_REPO}/releases/download/{tag}/{filename}"
-    );
+    let url = build_url(
+        "https://github.com",
+        &[
+            LAUNCHER_OWNER,
+            LAUNCHER_REPO,
+            "releases",
+            "download",
+            &tag,
+            &filename,
+        ],
+    )?;
 
     let client = download_client()?;
-    // download_to_file validates the length and rejects an empty/truncated body.
-    download_to_file(&client, &url, token.as_deref(), &dest_path, progress_tx).await?;
+    // Validates the length, rejects an empty/truncated body, and resumes a
+    // previous partial transfer when one provably describes the same asset.
+    download_with_resume(&client, &url, token.as_deref(), &part_path, progress_tx).await?;
+    let _ = std::fs::remove_file(&dest_path);
+    std::fs::rename(&part_path, &dest_path)?;
 
     // Fail-closed signature check: fetch the detached signature and verify the
     // downloaded binary against the embedded release key BEFORE it can be
@@ -1011,6 +1245,156 @@ pub fn apply_launcher_update(new_binary: &std::path::Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A one-shot HTTP server that TRUNCATES the first response and honours
+    /// Range on the next one - the shape of a real dropped connection.
+    ///
+    /// Hand-rolled on `std::net` rather than pulled in as a dependency: the
+    /// point is to prove the resume path end to end without adding a test-only
+    /// crate to a project that counts its dependencies.
+    fn spawn_truncating_server(
+        body: Vec<u8>,
+        cut: usize,
+        etag: &str,
+    ) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let url = format!("http://{}/asset", listener.local_addr().unwrap());
+        let etag = etag.to_string();
+        let handle = std::thread::spawn(move || {
+            // Two connections: the truncated one, then the ranged one.
+            for _ in 0..2 {
+                let Ok((stream, _)) = listener.accept() else {
+                    return;
+                };
+                let mut reader = BufReader::new(&stream);
+                let mut range_start: Option<usize> = None;
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                        return;
+                    }
+                    if let Some(v) = line.to_ascii_lowercase().strip_prefix("range: bytes=") {
+                        range_start = v.split('-').next().and_then(|n| n.trim().parse().ok());
+                    }
+                    if line == "\r\n" || line == "\n" {
+                        break;
+                    }
+                }
+                let mut stream = &stream;
+                match range_start {
+                    Some(start) => {
+                        let chunk = &body[start..];
+                        let head = format!(
+                            "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {}-{}/{}\r\nContent-Length: {}\r\nETag: {}\r\nConnection: close\r\n\r\n",
+                            start,
+                            body.len() - 1,
+                            body.len(),
+                            chunk.len(),
+                            etag
+                        );
+                        let _ = stream.write_all(head.as_bytes());
+                        let _ = stream.write_all(chunk);
+                    }
+                    None => {
+                        let head = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nETag: {}\r\nConnection: close\r\n\r\n",
+                            body.len(),
+                            etag
+                        );
+                        let _ = stream.write_all(head.as_bytes());
+                        // Promise the whole body, deliver part of it, hang up.
+                        let _ = stream.write_all(&body[..cut]);
+                    }
+                }
+                let _ = stream.flush();
+            }
+        });
+        (url, handle)
+    }
+
+    /// The behaviour this whole batch exists for: a connection that died at 40%
+    /// used to throw away every byte and charge the user the full asset again.
+    #[test]
+    fn a_dropped_connection_is_resumed_instead_of_restarted() {
+        let body: Vec<u8> = (0..300_000usize)
+            .map(|i| ((i * 7 + 3) % 256) as u8)
+            .collect();
+        let (url, server) = spawn_truncating_server(body.clone(), 120_000, "\"v1\"");
+
+        let dir = std::env::temp_dir().join("colony_test_resume");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("asset.part");
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = rt.block_on(async {
+            let client = download_client().unwrap();
+            download_with_resume(&client, &url, None, &dest, None).await
+        });
+
+        assert!(
+            result.is_ok(),
+            "the retry must finish the transfer: {result:?}"
+        );
+        assert_eq!(
+            std::fs::read(&dest).unwrap(),
+            body,
+            "the stitched file must be byte-identical to the asset"
+        );
+        assert!(
+            !PartIdentity::path(&dest).exists(),
+            "a completed transfer leaves no identity file behind"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = server.join();
+    }
+
+    /// Resuming stitches two responses into one file, so it is only sound
+    /// while both describe the same artifact. The identity sidecar is what
+    /// makes that decidable; without it, a re-tagged release could be silently
+    /// assembled from two different bodies.
+    #[test]
+    fn a_partial_transfer_is_only_resumable_against_its_own_identity() {
+        let dir = std::env::temp_dir().join("colony_test_part_identity");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let part = dir.join("grape-linux.part");
+
+        // A partial transfer plus the identity that describes it.
+        std::fs::write(&part, vec![0u8; 512]).unwrap();
+        PartIdentity {
+            etag: "\"abc\"".into(),
+            total: 4096,
+        }
+        .write(&part);
+
+        let id = PartIdentity::read(&part).expect("identity round-trips");
+        assert_eq!(id.etag, "\"abc\"");
+        assert_eq!(id.total, 4096);
+        assert!(
+            std::fs::metadata(&part).unwrap().len() < id.total,
+            "a short file against a known total is what makes a resume possible"
+        );
+
+        // Discarding takes the sidecar with it, so the next attempt cannot
+        // resume from bytes nothing describes.
+        discard_partial(&part);
+        assert!(!part.exists());
+        assert!(PartIdentity::read(&part).is_none());
+
+        // A truncated or garbage sidecar is not an identity.
+        std::fs::write(PartIdentity::path(&part), "no-newline-here").unwrap();
+        assert!(PartIdentity::read(&part).is_none());
+        std::fs::write(PartIdentity::path(&part), "\"abc\"\nnot-a-number\n").unwrap();
+        assert!(PartIdentity::read(&part).is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A `tag` from colony.json used to be interpolated straight into the
     /// release URL. reqwest parses with the WHATWG parser, which collapses

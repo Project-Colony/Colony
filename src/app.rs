@@ -227,6 +227,17 @@ impl App {
         app.reload_app_icons();
         app.refresh_install_status();
 
+        // Nothing is in flight yet, so any staging file on disk is left over
+        // from a crash, an OOM, or a window closed mid-download. Cancel was the
+        // only thing that ever swept them.
+        let reclaimed = crate::persistence::prune_staging();
+        if reclaimed > 0 {
+            tracing::info!(
+                "reclaimed {} from interrupted transfers",
+                state::human_bytes(reclaimed)
+            );
+        }
+
         set_active_theme(&app.selected_theme, &app.selected_variant);
         set_high_contrast(app.high_contrast);
         if !app.auto_accent {

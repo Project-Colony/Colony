@@ -464,6 +464,72 @@ pub fn clear_store_caches() -> usize {
     removed
 }
 
+/// Delete staging leftovers from interrupted transfers, and report the bytes
+/// reclaimed.
+///
+/// The only sweep that existed ran inside Cancel, so a crash, an OOM, a SIGKILL
+/// or simply closing the window mid-download left the whole partial asset in
+/// `apps/<repo>/` with no UI that showed or removed it. A `filePattern` app
+/// whose asset name carries the version leaves one per version, so it
+/// accumulates. Run once at boot: any staging file present then is by
+/// definition orphaned, because nothing is in flight yet.
+///
+/// The `update-staging` directory gets the same treatment, plus the `.old`
+/// backup a completed self-update leaves next to the executable - two full
+/// copies of the launcher could otherwise sit on disk indefinitely.
+pub fn prune_staging() -> u64 {
+    fn sweep(dir: &std::path::Path, reclaimed: &mut u64) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !(name.ends_with(".part")
+                || name.ends_with(".part.id")
+                || name.ends_with(".new")
+                || name.ends_with(".old"))
+            {
+                continue;
+            }
+            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            if std::fs::remove_file(&path).is_ok() {
+                tracing::info!("pruned staging leftover {}", path.display());
+                *reclaimed += size;
+            }
+        }
+    }
+
+    let mut reclaimed = 0;
+    if let Ok(apps) = colony_apps_dir() {
+        if let Ok(entries) = std::fs::read_dir(&apps) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() {
+                    sweep(&entry.path(), &mut reclaimed);
+                }
+            }
+        }
+    }
+    if let Ok(base) = colony_data_dir() {
+        sweep(&base.join("update-staging"), &mut reclaimed);
+    }
+    // Only our OWN backup, by exact path - never a directory sweep here. The
+    // executable may well live in /usr/bin, where an extension-based sweep
+    // would happily delete somebody else's `.old` file.
+    if let Ok(exe) = std::env::current_exe() {
+        for stale in [exe.with_extension("old"), exe.with_extension("new")] {
+            let size = std::fs::metadata(&stale).map(|m| m.len()).unwrap_or(0);
+            if stale.exists() && std::fs::remove_file(&stale).is_ok() {
+                tracing::info!("pruned launcher leftover {}", stale.display());
+                reclaimed += size;
+            }
+        }
+    }
+    reclaimed
+}
+
 /// Remove doc/icon caches for repos that are NO LONGER in the catalog, so a
 /// deleted or renamed repo does not leave its caches behind forever. Runs
 /// after each successful catalog fetch (never on a cache fallback, where a

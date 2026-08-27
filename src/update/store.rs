@@ -221,14 +221,16 @@ impl App {
         if let Some(handle) = self.download_abort.take() {
             handle.abort();
         }
-        // The aborted task cannot clean up its staging file: sweep
-        // the cancelled repo's *.part leftovers here.
+        // The aborted task cannot clean up its staging file: sweep the
+        // cancelled repo's leftovers here, including the `.part.id` sidecar
+        // that would otherwise invite a resume of a transfer the user stopped
+        // on purpose.
         if let Some(repo) = self.downloading_repo.take() {
             if let Ok(app_dir) = crate::persistence::colony_app_dir(&repo) {
                 if let Ok(entries) = std::fs::read_dir(&app_dir) {
                     for entry in entries.flatten() {
                         let name = entry.file_name().to_string_lossy().to_string();
-                        if name.ends_with(".part") {
+                        if name.ends_with(".part") || name.ends_with(".part.id") {
                             let _ = std::fs::remove_file(entry.path());
                         }
                     }
