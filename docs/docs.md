@@ -10,6 +10,7 @@ This folder contains the technical and end-user documentation for Colony.
 | [faq.md](faq.md)                       | End users       | Common questions + troubleshooting                        |
 | [architecture.md](architecture.md)     | Contributors    | Internal architecture, tech stack, file structure, data flow |
 | [colony-spec.md](colony-spec.md)       | App developers  | `colony.json` manifest spec + asset naming convention     |
+| [release-signing.md](release-signing.md) | Maintainers   | ed25519 release signing, the signed `.meta` sidecar, key rotation |
 
 ## See also
 

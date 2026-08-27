@@ -226,7 +226,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("shortcuts_title".into(), "Raccourcis clavier".into());
     strings.insert(
         "shortcut_esc".into(),
-        "Échap — Fermer le panneau actif".into(),
+        "Échap — Fermer le panneau, la boîte de dialogue ou la fiche en cours".into(),
     );
     strings.insert(
         "shortcut_tab".into(),
@@ -234,11 +234,11 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert(
         "shortcut_arrows".into(),
-        "↑ ↓ — Naviguer dans les paramètres".into(),
+        "↑ ↓ — Naviguer dans les réglages et la grille".into(),
     );
     strings.insert(
         "shortcut_enter".into(),
-        "Entrée — Ouvrir le premier élément visible".into(),
+        "Entrée — Ouvrir l'élément sélectionné (lance directement une app locale)".into(),
     );
     strings.insert(
         "shortcut_pageupdown".into(),

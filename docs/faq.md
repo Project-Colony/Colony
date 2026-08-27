@@ -150,6 +150,25 @@ Themes apply immediately, no restart. If a palette looks off, verify Settings �
 
 ---
 
+
+## Can I rename or reorder the sidebar sections?
+
+Yes. Colony looks for a `categories.json` override before falling back to the
+copy compiled into the binary, in this order:
+
+1. `~/.config/Colony/Colony/categories.json`
+2. next to the `colony` binary
+3. `./config/categories.json`
+
+Copy the shipped [`config/categories.json`](https://github.com/Project-Colony/Colony/blob/main/config/categories.json)
+to the first path and edit it. Each entry takes `name`, `icon` (a Nerd Font
+glyph), `origin` (`colony`, `windows`, `external`), `category`, and an optional
+`platforms` list that hides the section on other operating systems. A Favorites
+section is injected automatically if you leave it out.
+
+The same search order applies to `colony.toml`, which controls the directories
+scanned for locally installed apps.
+
 ## Troubleshooting
 
 ### Colony won't launch / crashes immediately
@@ -162,13 +181,13 @@ colony 2>&1 | tee colony.log
 
 Common causes:
 
-- Missing Linux runtime libs (GTK, dbus, xdo) — on AUR the deps are pulled automatically. For manual downloads, install them via your package manager.
+- A missing D-Bus session (the keyring backend needs one; a bare TTY or a minimal container has none) — on AUR the deps are pulled automatically. For manual downloads, install them via your package manager.
 - Corrupted cache — `rm -rf ~/.cache/colony` and relaunch.
 - Corrupted preferences — `mv ~/.config/colony/preferences.json ~/.config/colony/preferences.json.bak` and relaunch to regenerate defaults.
 
 ### Download stuck / very slow
 
-Colony uses a 300s timeout per download. If you're on slow network this may not be enough; interrupt with Esc and retry.
+Colony uses a 300s timeout per download. If you're on slow network this may not be enough; interrupt with the Cancel button on the download toast.
 
 ### Self-update fails
 

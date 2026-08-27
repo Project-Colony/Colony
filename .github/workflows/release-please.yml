@@ -24,6 +24,24 @@ jobs:
         with:
           release-type: rust
 
+      # release-please's own step PUBLISHES the release - and moves
+      # /releases/latest - before a single binary exists. For the whole
+      # build+sign window every running Colony therefore showed an update badge
+      # whose every click failed: a missing asset first, then a fail-closed
+      # signature refusal once `build` had uploaded but `sign` had not. And if
+      # any build leg failed, that state was permanent until someone noticed.
+      #
+      # Held as a draft here rather than via a release-please config file: the
+      # config-file route means switching the action to manifest mode, which
+      # changes the outputs contract that the build, sign and aur jobs all
+      # depend on and that nine releases have proven. This is one gh call, and
+      # it narrows the window from minutes to the second between the two steps.
+      - name: Hold the release as a draft until it is signed
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${{ steps.release.outputs.tag_name }}" --draft=true
+
   build:
     name: Build ${{ matrix.asset }}
     needs: release-please
@@ -73,6 +91,31 @@ jobs:
       - name: Rename binary (Windows)
         if: runner.os == 'Windows'
         run: copy target\${{ matrix.target }}\release\colony.exe ${{ matrix.asset }}
+
+      # The pipeline's signature checks prove provenance and say nothing about
+      # whether the binary RUNS. An asset built for the wrong architecture, or
+      # one that aborts under the release profile's LTO, would be signed,
+      # verified, published and hashed into the AUR PKGBUILD with every check
+      # green. `--version` exits before opening a window, so this is a genuine
+      # end-to-end smoke test of the shipped artefact.
+      - name: Smoke-test the artefact
+        if: matrix.target != 'x86_64-apple-darwin'
+        shell: bash
+        run: |
+          chmod +x "${{ matrix.asset }}" || true
+          "./${{ matrix.asset }}" --version
+
+      # The Intel macOS asset is cross-compiled on an arm64 runner and cannot
+      # be executed there, so assert the architecture instead - which is the
+      # regression that would otherwise survive longest, on the leg with the
+      # fewest users.
+      - name: Check the cross-compiled artefact's architecture
+        if: matrix.target == 'x86_64-apple-darwin'
+        shell: bash
+        run: |
+          file "${{ matrix.asset }}"
+          file "${{ matrix.asset }}" | grep -q 'x86_64' \
+            || { echo "::error::${{ matrix.asset }} is not an x86_64 binary"; exit 1; }
 
       - name: Upload binary to GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
@@ -159,6 +202,13 @@ jobs:
           done
           echo "published release verified"
 
+      # Only now does the release become visible. Until this step, /releases/
+      # latest still points at the previous version, so no client is offered an
+      # update it cannot apply, and the README's download link never points at
+      # an empty release.
+      - name: Publish the release
+        run: gh release edit "$TAG" --draft=false
+
   # Chained here (not on `release: published`) because release-please creates
   # the release with the default GITHUB_TOKEN, whose events do not trigger
   # other workflows - the standalone trigger never fired once in nine
@@ -171,4 +221,7 @@ jobs:
     uses: ./.github/workflows/aur-publish.yml
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
-    secrets: inherit
+    # NOT `inherit`: the AUR job needs one secret, and inheriting handed it
+    # the release signing key as well.
+    secrets:
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}

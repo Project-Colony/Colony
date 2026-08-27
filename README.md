@@ -41,7 +41,9 @@ Grab the single-file executable for your platform from the [latest release](http
 | macOS (Apple Silicon) | `colony-macos`           |
 | macOS (Intel)         | `colony-macos-x86`       |
 
-No installer — download, `chmod +x` on Unix, and run. A new release is published automatically by `release-please` after each merged change, so the latest binary is always at `/releases/latest`.
+No installer - download, `chmod +x` on Unix, and run. On macOS, Gatekeeper
+quarantines anything fetched from a browser, so clear the flag first:
+`xattr -d com.apple.quarantine colony-macos`. A new release is published automatically by `release-please` after each merged change, so the latest binary is always at `/releases/latest`.
 
 ### Build from source
 
@@ -133,6 +135,7 @@ how these move up.
 | [Tutorial](docs/tutorial.md)       | End-user walkthrough: install → first app → launch    |
 | [FAQ](docs/faq.md)                 | Common questions + troubleshooting                    |
 | [Architecture](docs/architecture.md) | Internal structure, tech stack, data flow             |
+| [Release signing](docs/release-signing.md) | ed25519 signing, the `.meta` sidecar, key rotation |
 | [Colony spec](docs/colony-spec.md) | Full `colony.json` manifest reference                 |
 | [Contributing](CONTRIBUTING.md)    | How to add your app + how to contribute to Colony itself |
 

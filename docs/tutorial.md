@@ -151,6 +151,6 @@ upgraded alongside the rest of your system.
   a published release with assets matching `<repo>-<platform>`. See
   [colony-spec.md](colony-spec.md) for the full manifest reference.
 - **Rate limit hit?** Connect a GitHub account (section 6).
-- **Download fails?** Check your network. Colony retries automatically; logs
+- **Download fails?** Check your network. Colony retries up to three times and resumes where it stopped; logs
   go to `~/.cache/colony/colony.log` if you need to dig in.
 - **More questions?** See the [FAQ](faq.md).

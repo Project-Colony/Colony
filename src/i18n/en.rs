@@ -203,15 +203,21 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
 
     // Keyboard shortcuts
     strings.insert("shortcuts_title".into(), "Keyboard shortcuts".into());
-    strings.insert("shortcut_esc".into(), "Esc — Close active panel".into());
+    strings.insert(
+        "shortcut_esc".into(),
+        "Esc — Close the current panel, dialog or detail page".into(),
+    );
     strings.insert(
         "shortcut_tab".into(),
         "Tab / Shift+Tab — Navigate categories".into(),
     );
-    strings.insert("shortcut_arrows".into(), "↑ ↓ — Navigate settings".into());
+    strings.insert(
+        "shortcut_arrows".into(),
+        "↑ ↓ — Navigate settings and the app grid".into(),
+    );
     strings.insert(
         "shortcut_enter".into(),
-        "Enter — Open first visible item".into(),
+        "Enter — Open the highlighted item (launches a local app directly)".into(),
     );
     strings.insert(
         "shortcut_pageupdown".into(),
