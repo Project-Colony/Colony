@@ -1,190 +1,36 @@
-# Colony Rust App — Release Workflow Template
+# Colony Rust program — release workflow
 #
-# Copy this file to your repo as .github/workflows/release.yml
-# Replace {{APP_NAME}} with your binary/repo name (lowercase).
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  THIS FILE IS NOT THE TEMPLATE. The canonical one lives in              │
+# │                                                                         │
+# │    Project-Colony-Resources / templates/release.yml                     │
+# │    https://github.com/Project-Colony/Project-Colony-Resources           │
+# │                                                                         │
+# │  Copy THAT file to your repo as .github/workflows/release.yml.          │
+# └─────────────────────────────────────────────────────────────────────────┘
 #
-# Assets follow the Colony naming convention:
-#   {{APP_NAME}}-linux, {{APP_NAME}}-windows.exe,
-#   {{APP_NAME}}-macos, {{APP_NAME}}-macos-x86
+# Why this is a pointer and not a copy: it used to be a copy, and the two
+# drifted. The Resources template referenced a secret named
+# COLONY_SIGNING_KEY while every real repo uses COLONY_SIGNING_KEY_PEM, and it
+# skipped signing on Windows entirely - so a program following it shipped an
+# unsigned .exe that Colony then refused to install, because the manifest said
+# "signed": true. Neither mistake was visible from either side. One canonical
+# file, kept next to the shared script it calls, is what stops that recurring.
 #
-# Colony auto-detects platforms from these asset names, so your
-# colony.json only needs: { "name": "...", "category": "..." }
+# What you need, in short:
 #
-# The `sign` job below is NOT optional if your colony.json sets
-# "signed": true - Colony refuses to install an asset with no signature, so a
-# release without it is un-installable. It needs the org secret
-# COLONY_SIGNING_KEY_PEM, which is restricted to the Project-Colony repos.
-# See Colony's docs/release-signing.md.
+#   1. colony.json at your repo root (name + category is usually the whole
+#      file). Validate it with:  colony validate-manifest colony.json
+#   2. templates/release.yml   -> .github/workflows/release.yml
+#   3. templates/sign-release.sh -> scripts/sign-release.sh   (only if you set
+#      "signed": true; the workflow calls it from there)
+#   4. The COLONY_SIGNING_KEY_PEM organisation secret, which is restricted to
+#      Project-Colony repositories.
 #
-# Action refs are pinned to commit SHAs on purpose. A floating tag on a workflow
-# that holds the org's release signing key is a supply-chain hole: whoever can
-# move that tag can read the secret.
-
-name: Release
-
-on:
-  push:
-    branches: [main]
-
-permissions:
-  contents: write
-  pull-requests: write
-
-env:
-  CARGO_TERM_COLOR: always
-
-jobs:
-  release-please:
-    runs-on: ubuntu-latest
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      upload_url: ${{ steps.release.outputs.upload_url }}
-    steps:
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        id: release
-        with:
-          release-type: rust
-
-  build:
-    name: Build ${{ matrix.asset }}
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            asset: "{{APP_NAME}}-linux"
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            asset: "{{APP_NAME}}-windows.exe"
-          - target: aarch64-apple-darwin
-            os: macos-latest
-            asset: "{{APP_NAME}}-macos"
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            asset: "{{APP_NAME}}-macos-x86"
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch
-        with:
-          targets: ${{ matrix.target }}
-
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          key: ${{ matrix.target }}
-
-      # Uncomment if your app needs GTK/X11 dependencies on Linux:
-      # - name: Install Linux dependencies
-      #   if: runner.os == 'Linux'
-      #   run: |
-      #     sudo apt-get update
-      #     sudo apt-get install -y libgtk-3-dev libxdo-dev libdbus-1-dev
-
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Rename binary (Unix)
-        if: runner.os != 'Windows'
-        run: cp target/${{ matrix.target }}/release/{{APP_NAME}} ${{ matrix.asset }}
-
-      - name: Rename binary (Windows)
-        if: runner.os == 'Windows'
-        run: copy target\${{ matrix.target }}\release\{{APP_NAME}}.exe ${{ matrix.asset }}
-
-      - name: Upload binary to GitHub Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
-        with:
-          tag_name: ${{ needs.release-please.outputs.tag_name }}
-          files: ${{ matrix.asset }}
-
-  # Signs every asset with the org release key and publishes, per asset:
-  #   <asset>.sig       ed25519 over the asset bytes
-  #   <asset>.meta      version / asset name / sha256
-  #   <asset>.meta.sig  ed25519 over the .meta bytes
-  #
-  # The bare .sig proves the bytes came from the org. It does NOT say which
-  # artefact or which version they are, so on its own it lets a compromised
-  # maintainer re-upload an old, genuinely signed, known-vulnerable build under
-  # a new tag. The sidecar is what closes that, and Colony verifies it.
-  #
-  # Chained as `needs:` rather than `on: release published`, because a release
-  # created by release-please with the default GITHUB_TOKEN does not trigger
-  # release events - a workflow written that way never runs, silently.
-  sign:
-    name: Sign release assets
-    needs: [release-please, build]
-    if: ${{ needs.release-please.outputs.release_created }}
-    runs-on: ubuntu-latest
-    env:
-      # Single source of truth for the asset list. Declared once so the
-      # download, sign, verify and upload steps cannot drift apart: a list
-      # repeated per step means adding a platform silently leaves it unsigned.
-      ASSETS: "{{APP_NAME}}-linux {{APP_NAME}}-windows.exe {{APP_NAME}}-macos {{APP_NAME}}-macos-x86"
-      GH_TOKEN: ${{ github.token }}
-      TAG: ${{ needs.release-please.outputs.tag_name }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Fetch the signing script from Colony
-        run: |
-          curl -fsSL -o sign-release.sh \
-            https://raw.githubusercontent.com/Project-Colony/Colony/main/scripts/sign-release.sh
-          chmod +x sign-release.sh
-
-      # Catches the failure that actually happens: a manifest that PARSES but
-      # resolves to nothing, so the app lists in Colony with no Download
-      # button. Runs against the asset names this release is publishing.
-      - name: Validate colony.json against the published assets
-        run: |
-          curl -fsSL -o colony \
-            https://github.com/Project-Colony/Colony/releases/latest/download/colony-linux
-          chmod +x colony
-          gh release view "$TAG" --json assets --jq '.assets[].name' > asset-names.txt
-          ./colony validate-manifest colony.json $(tr '\n' ' ' < asset-names.txt)
-
-      - name: Download release binaries
-        run: |
-          mkdir dist
-          for a in $ASSETS; do PATTERNS="$PATTERNS --pattern $a"; done
-          gh release download "$TAG" --dir dist $PATTERNS
-          for a in $ASSETS; do
-            [ -s "dist/$a" ] || { echo "::error::release asset $a is missing or empty"; exit 1; }
-          done
-
-      - name: Sign
-        env:
-          KEY: ${{ secrets.COLONY_SIGNING_KEY_PEM }}
-        run: |
-          if [ -z "$KEY" ]; then
-            echo "::error::COLONY_SIGNING_KEY_PEM is not set - the release would ship unsigned, and Colony refuses unsigned installs for a repo with \"signed\": true."
-            exit 1
-          fi
-          printf '%s' "$KEY" > /tmp/colony-release.pem
-          chmod 600 /tmp/colony-release.pem
-          for a in $ASSETS; do PATHS="$PATHS dist/$a"; done
-          COLONY_SIGNING_KEY=/tmp/colony-release.pem \
-          COLONY_RELEASE_VERSION="$TAG" \
-            ./sign-release.sh $PATHS
-          rm -f /tmp/colony-release.pem
-
-      - name: Verify every asset got a signature and a signed sidecar
-        run: |
-          for a in $ASSETS; do
-            for f in "dist/$a.sig" "dist/$a.meta" "dist/$a.meta.sig"; do
-              [ -s "$f" ] || { echo "::error::$f is missing or empty"; exit 1; }
-            done
-          done
-
-      - name: Upload signatures and sidecars
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
-        with:
-          tag_name: ${{ env.TAG }}
-          files: |
-            dist/*.sig
-            dist/*.meta
+# The full contract - asset naming, the manifest, signing, the .meta sidecar,
+# key rotation, and how to adopt signatures in a program that already ships -
+# is in Project-Colony-Resources / design/releases.md.
+#
+# Colony's own release pipeline (.github/workflows/release-please.yml) is the
+# reference implementation and stays separate: it self-updates, so its
+# signature verification is mandatory rather than opt-in.

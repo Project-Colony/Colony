@@ -46,7 +46,7 @@ You can upload any subset — Colony only advertises the platforms whose asset i
 
 ### Step 3 — Wire up a release workflow (Rust apps)
 
-A ready-to-use GitHub Actions template is in this repo at [`.github/workflows/colony-rust-release.yml.template`](.github/workflows/colony-rust-release.yml.template). Copy it to your own repo as `.github/workflows/release.yml` and replace `{{APP_NAME}}` with your binary/repo name (lowercase).
+The ready-to-use GitHub Actions template lives in Project-Colony-Resources at [`templates/release.yml`](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/release.yml), next to the shared signing script it calls. Copy it to your own repo as `.github/workflows/release.yml` and replace `{{APP_NAME}}` with your binary/repo name (lowercase).
 
 It uses [`release-please`](https://github.com/googleapis/release-please) so every merged PR tagged with a conventional-commit prefix (`feat:`, `fix:`, etc.) opens a release PR; merging that PR tags the version, builds the matrix of 4 platforms, and uploads the assets under the convention above. Zero manual release work afterwards.
 

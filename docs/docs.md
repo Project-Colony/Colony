@@ -16,4 +16,4 @@ This folder contains the technical and end-user documentation for Colony.
 
 - [Project-Colony GitHub organization](https://github.com/Project-Colony)
 - [Contributing guide](../CONTRIBUTING.md) — adding your app + contributing to Colony itself
-- [Release workflow template](../.github/workflows/colony-rust-release.yml.template) for Rust apps using `release-please`
+- [Release workflow template](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/release.yml) and the shared signing script, in Project-Colony-Resources

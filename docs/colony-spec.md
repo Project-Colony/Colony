@@ -272,5 +272,5 @@ colony validate-manifest colony.json $(tr '\n' ' ' < names.txt)
 ```
 
 It exits non-zero on any problem, so it works as a CI gate. The shipped
-[release workflow template](../.github/workflows/colony-rust-release.yml.template)
+[release workflow template](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/release.yml)
 already runs it against each release before signing.

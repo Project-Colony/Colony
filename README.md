@@ -108,7 +108,7 @@ Then publish a GitHub Release with assets named `yourapp-linux`, `yourapp-window
 
 **Full walkthrough**: see [CONTRIBUTING.md § Adding your app to Colony](CONTRIBUTING.md#adding-your-app-to-colony).
 
-A [release workflow template](.github/workflows/colony-rust-release.yml.template) is included for Rust apps using Release Please.
+The canonical [release workflow template](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/release.yml) lives in Project-Colony-Resources, alongside the shared signing script and the manifest schema.
 
 ## Platforms
 
