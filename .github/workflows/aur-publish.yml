@@ -80,8 +80,15 @@ jobs:
           printf '%s\n' "$AUR_HOSTKEY" > ~/.ssh/known_hosts
           # A mismatch means either a legitimate rotation (update the pin) or
           # something worth stopping the release for.
-          if ! ssh-keyscan -t ed25519 aur.archlinux.org 2>/dev/null | grep -qxF "$AUR_HOSTKEY"; then
-            echo "::error::aur.archlinux.org host key does not match the pinned one"
+          # Distinguish "the scan failed" from "the key changed". Piping
+          # straight into grep reports a compromise for any network blip, and
+          # the exit code of ssh-keyscan is swallowed - a scary message for the
+          # wrong reason is worse than no message.
+          scanned=$(ssh-keyscan -t ed25519 aur.archlinux.org 2>/dev/null || true)
+          if [ -z "$scanned" ]; then
+            echo "::warning::could not reach aur.archlinux.org to cross-check the host key; continuing with the pinned one"
+          elif ! printf '%s\n' "$scanned" | grep -qxF "$AUR_HOSTKEY"; then
+            echo "::error::aur.archlinux.org presented a DIFFERENT host key than the pinned one. Either it rotated (update the pin) or something is wrong. Stopping."
             exit 1
           fi
 

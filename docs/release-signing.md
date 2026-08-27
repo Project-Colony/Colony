@@ -51,15 +51,63 @@ The private key never lives in the repo. Point `COLONY_SIGNING_KEY` at the
 ed25519 private key (PEM), set `COLONY_RELEASE_VERSION` to the release tag (it is
 bound into each sidecar), and run:
 
+**Sign the PUBLISHED bytes, never a local rebuild.** Download the assets from
+the release first:
+
 ```sh
+gh release download v1.2.3 --dir dist \
+  --pattern colony-linux --pattern colony-windows.exe \
+  --pattern colony-macos --pattern colony-macos-x86
+
 COLONY_SIGNING_KEY=/path/to/colony-release.pem \
 COLONY_RELEASE_VERSION=v1.2.3 \
-  ./scripts/sign-release.sh colony-linux colony-windows.exe colony-macos colony-macos-x86
+  ./scripts/sign-release.sh dist/colony-linux dist/colony-windows.exe \
+                            dist/colony-macos dist/colony-macos-x86
+
+gh release upload v1.2.3 dist/*.sig dist/*.meta --clobber
 ```
+
+The download step is not optional. `sign-release.sh` hashes whatever local file
+you hand it into the `.meta` sidecar, and the client then enforces that digest
+against the bytes it downloaded. Rust release builds are not bit-reproducible
+across machines, so signing a fresh `cargo build --release` produces a sidecar
+whose digest does not match what users receive - and every install fails
+verification, which is worse than being unsigned because it also fails
+fail-closed.
 
 For each asset this writes `<asset>.sig`, `<asset>.meta` and `<asset>.meta.sig`,
 every signature self-verified before it is kept. Upload all of them as release
-assets.
+assets, then confirm the count:
+
+```sh
+gh release view v1.2.3 --json assets --jq '.assets|length'   # must be 16
+```
+
+### If a release goes wrong
+
+`gh release view <tag> --json isDraft,assets --jq '{draft:.isDraft, n:(.assets|length)}'`
+tells you which state you are in.
+
+**Still a draft, incomplete.** Nobody is affected: `/releases/latest` still
+points at the previous version and no client has been offered anything. Fix the
+cause and use **"Re-run failed jobs"**.
+
+**Never "Re-run all jobs".** release-please re-runs against a `main` whose
+release already exists, emits an empty `release_created`, and every downstream
+job skips - while the run reports green. That looks like a successful recovery
+and is the opposite of one.
+
+**Published but unsigned or partial.** Clients are being offered an update that
+cannot be applied. Take it out of `latest` first, then complete it:
+
+```sh
+gh release edit <tag> --prerelease          # assets exist; keeps their URLs alive
+# or: gh release edit <tag> --draft=true    # release is empty anyway
+gh api repos/Project-Colony/Colony/releases/latest --jq .tag_name   # confirm the fallback
+```
+
+then follow the manual signing procedure above and re-publish with
+`gh release edit <tag> --draft=false --prerelease=false`.
 
 ### In CI (the normal path)
 
