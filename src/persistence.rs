@@ -464,6 +464,35 @@ pub fn clear_store_caches() -> usize {
     removed
 }
 
+/// Remove an installed app's directory, coping with a binary that is currently
+/// running.
+///
+/// `remove_dir_all` cannot delete a live executable on Windows, so uninstalling
+/// an app the user had left open failed outright and left it half-removed. A
+/// running image can always be RENAMED though, so fall back to renaming each
+/// file aside: the directory then empties and [`prune_staging`] collects the
+/// leftovers at the next start, once the process holding them has exited.
+pub fn remove_app_dir(app_dir: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::remove_dir_all(app_dir) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(first) => {
+            let Ok(entries) = std::fs::read_dir(app_dir) else {
+                return Err(first);
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && std::fs::remove_file(&path).is_err() {
+                    let _ = std::fs::rename(&path, path.with_extension("old"));
+                }
+            }
+            // Second pass: everything deletable is gone, and anything renamed
+            // aside is now a `.old` the boot sweep will take.
+            std::fs::remove_dir_all(app_dir).or(Err(first))
+        }
+    }
+}
+
 /// Delete staging leftovers from interrupted transfers, and report the bytes
 /// reclaimed.
 ///
@@ -508,6 +537,16 @@ pub fn prune_staging() -> u64 {
             for entry in entries.flatten() {
                 if entry.path().is_dir() {
                     sweep(&entry.path(), &mut reclaimed);
+                    // An uninstall that could not delete a running binary
+                    // renames it aside and leaves the shell of the directory;
+                    // once the sweep above has taken the `.old` file, finish
+                    // the job.
+                    if std::fs::read_dir(entry.path())
+                        .map(|mut d| d.next().is_none())
+                        .unwrap_or(false)
+                    {
+                        let _ = std::fs::remove_dir(entry.path());
+                    }
                 }
             }
         }

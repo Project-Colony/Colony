@@ -7,7 +7,7 @@ Colony is the central piece of [Project Colony](https://github.com/Project-Colon
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![AUR: colony-bin](https://img.shields.io/badge/AUR-colony--bin-blue)](https://aur.archlinux.org/packages/colony-bin)
 [![AUR: colony-git](https://img.shields.io/badge/AUR-colony--git-blue)](https://aur.archlinux.org/packages/colony-git)
-[![Platforms](https://img.shields.io/badge/platforms-linux%20%7C%20windows%20%7C%20macOS-lightgrey)](#installation)
+[![Platforms](https://img.shields.io/badge/platforms-linux%20%7C%20windows*%20%7C%20macOS*-lightgrey)](#platforms)
 
 <!-- Screenshots — drop PNG files into assets/screenshots/ and replace the comment below. -->
 <!--
@@ -60,7 +60,7 @@ Requires Rust 1.80+ and, on Linux, `libgtk-3-dev`, `libxdo-dev`, `libdbus-1-dev`
 
 - **Discover** — Browse all Colony apps by category, search by name, read descriptions, changelogs, and licenses without leaving the launcher.
 - **Install & Update** — One click to download, one click to update. Colony tracks versions and shows when something new is available — for apps and for itself.
-- **Launch** — Colony also detects every application already installed on your system (Start Menu on Windows, `.desktop` files on Linux) and lets you launch them alongside Colony apps.
+- **Launch** - Colony also detects every application already installed on your system (`.desktop` files on Linux, the Start Menu on Windows, `/Applications` on macOS) and lets you launch them alongside Colony apps.
 - **Self-update** — Colony keeps itself up to date. When a new version is available, a badge appears in the sidebar; click to download, then restart.
 
 ➡️ New user? Start with the **[Tutorial](docs/tutorial.md)** for a step-by-step walkthrough.
@@ -109,12 +109,21 @@ A [release workflow template](.github/workflows/colony-rust-release.yml.template
 
 ## Platforms
 
-| Platform | Architecture | Status |
-|---|---|---|
-| Linux | x86_64 | Supported |
-| Windows | x86_64 | Supported |
-| macOS | ARM (Apple Silicon) | Supported |
-| macOS | x86_64 (Intel) | Supported |
+Colony is developed and tested on Linux. Windows and macOS builds are produced
+by the same CI, install and update apps, and are genuinely usable, but they get
+far less exercise, and some desktop integration is Linux-only.
+
+| Platform | Architecture | Status | Notes |
+|---|---|---|---|
+| Linux | x86_64 | Supported | Primary platform. `.desktop` entries for installed apps, `.desktop` scan of local apps. |
+| Windows | x86_64 | Best-effort | Installs, updates and launches. No Start Menu shortcut is created for installed apps. |
+| macOS | ARM (Apple Silicon) | Best-effort | Installs, updates and launches single-binary apps. `.app` bundles are not supported, and nothing is registered with Launch Services. |
+| macOS | x86_64 (Intel) | Best-effort | As above. |
+
+"Best-effort" means bug reports are welcome and will be fixed, but the platform
+is not part of the routine test loop. If you use Colony on Windows or macOS and
+something is wrong, please [open an issue](https://github.com/Project-Colony/Colony/issues): that is
+how these move up.
 
 ## Documentation
 

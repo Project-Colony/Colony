@@ -19,7 +19,18 @@ futures = "0.3"
 open = "5"
 base64 = "0.23"
 dirs = "6"
-keyring = { version = "3", features = ["sync-secret-service", "vendored"] }
+# apple-native / windows-native are REQUIRED, not optional: keyring 3 has no
+# default feature, and without them its macOS and Windows backends resolve to
+# the in-memory `mock`, whose set_password returns Ok while storing nothing.
+# Colony reads that Ok as success and deletes its plaintext fallback on purpose,
+# so the token was written nowhere and every restart logged the user out. Both
+# are target-gated in keyring's manifest, so they add nothing to the Linux build.
+keyring = { version = "3", features = [
+    "apple-native",
+    "windows-native",
+    "sync-secret-service",
+    "vendored",
+] }
 semver = "1"
 sha2 = "0.10"
 # Pure-Rust ed25519 verification for signed launcher self-updates (no openssl).

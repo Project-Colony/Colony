@@ -96,6 +96,45 @@ fn response_matches_identity(resp: &reqwest::Response, id: &PartIdentity) -> boo
         == Some(id.total)
 }
 
+/// Move `new` onto `dest`, even when `dest` is a binary that is currently
+/// running.
+///
+/// `std::fs::rename` over a live executable fails on Windows: the image is held
+/// with FILE_SHARE_READ|FILE_SHARE_DELETE, so MoveFileExW cannot delete the
+/// destination and returns ERROR_ACCESS_DENIED. Colony already knew the parade
+/// and applied it to its OWN self-update - rename the running file aside first,
+/// then move the new one in - but the app installer never learned it, so
+/// updating an app the user had left open failed AFTER downloading and
+/// verifying the whole asset, with a raw "Access is denied" and no hint that
+/// closing the app would fix it.
+///
+/// The aside-rename is harmless on Unix (where the plain rename would have
+/// worked anyway), so this takes the same path on every platform rather than
+/// keeping two behaviours that only one of them exercises.
+fn replace_file(new: &std::path::Path, dest: &std::path::Path) -> std::io::Result<()> {
+    if !dest.exists() {
+        return std::fs::rename(new, dest);
+    }
+    let aside = dest.with_extension("old");
+    let _ = std::fs::remove_file(&aside);
+    // A running image can always be RENAMED, on every platform - that is the
+    // whole trick. If even this fails, the destination is genuinely locked and
+    // the caller gets the real error instead of a mystery.
+    std::fs::rename(dest, &aside)?;
+    match std::fs::rename(new, dest) {
+        Ok(()) => {
+            // Best effort: on Windows the old image stays until the process
+            // holding it exits, and prune_staging() sweeps it at next boot.
+            let _ = std::fs::remove_file(&aside);
+            Ok(())
+        }
+        Err(e) => {
+            let _ = std::fs::rename(&aside, dest);
+            Err(e)
+        }
+    }
+}
+
 /// Discard a partial transfer and the identity that described it.
 fn discard_partial(dest_path: &std::path::Path) {
     let _ = std::fs::remove_file(dest_path);
@@ -425,15 +464,26 @@ fn verify_sha256_bytes(bytes: &[u8], expected_hex: &str) -> Result<()> {
 /// whole asset - so the UI offers package-manager guidance instead of a
 /// download button that is guaranteed to die.
 pub fn launcher_is_system_managed() -> bool {
-    #[cfg(unix)]
-    {
-        std::env::current_exe()
-            .map(|exe| exe.starts_with("/usr") || exe.starts_with("/opt"))
-            .unwrap_or(false)
-    }
-    #[cfg(not(unix))]
-    {
-        false
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    let Some(dir) = exe.parent() else {
+        return false;
+    };
+    // Behavioural, not a list of paths: probe whether we can actually create a
+    // file next to the executable. That answers /usr, /opt, Program Files,
+    // a read-only mount and a macOS /Applications install with one test and no
+    // per-platform table to keep in sync. The path check was #[cfg(unix)] only,
+    // so a Windows install under Program Files downloaded and verified the
+    // entire asset before dying on the rename - exactly the failure the guard
+    // was written to prevent, just never extended to the other platforms.
+    let probe = dir.join(format!(".colony-write-probe-{}", std::process::id()));
+    match std::fs::File::create(&probe) {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&probe);
+            false
+        }
+        Err(_) => true,
     }
 }
 
@@ -610,7 +660,7 @@ fn extract_from_zip(
             let mut out = create_new_file(&tmp_dest)?;
             std::io::copy(&mut entry, &mut out)?;
             drop(out);
-            std::fs::rename(&tmp_dest, &final_dest)?;
+            replace_file(&tmp_dest, &final_dest)?;
             return Ok(final_dest);
         }
     }
@@ -647,7 +697,7 @@ fn extract_from_tar_gz(
             let final_dest = dest_dir.join(binary_name);
             let tmp_dest = dest_dir.join(format!("{binary_name}.new"));
             entry.unpack(&tmp_dest)?;
-            std::fs::rename(&tmp_dest, &final_dest)?;
+            replace_file(&tmp_dest, &final_dest)?;
             return Ok(final_dest);
         }
     }
@@ -684,7 +734,7 @@ fn extract_binary_from_archive(
     } else {
         // Raw binary (e.g. .exe, no archive extension) — rename to binary_name in dest_dir
         let dest = dest_dir.join(binary_name);
-        std::fs::rename(archive_path, &dest)?;
+        replace_file(archive_path, &dest)?;
         Ok(dest)
     }
 }
@@ -849,9 +899,31 @@ pub async fn download_release_asset(
             } else {
                 // Raw binary: atomically promote the verified temp file over any
                 // previous install.
-                std::fs::rename(&temp_path, &dest_path)?;
+                replace_file(&temp_path, &dest_path)?;
                 dest_path
             };
+
+            // An app whose asset name carries the version - which is the case
+            // `filePattern` exists to serve - installs the new release under a
+            // NEW filename, so the previous binary is simply orphaned. Nothing
+            // ever showed or reclaimed it: SphereCord's AppImage is 166 MB, so
+            // three updates left half a gigabyte of invisible junk that only an
+            // uninstall would clear. Drop the superseded file now that the new
+            // one is committed.
+            if let Some(stale) = crate::persistence::load_installed_asset(&repo_name) {
+                if stale != filename
+                    && Some(stale.as_str()) != binary_name.as_deref()
+                    && ensure_safe_component(&stale).is_ok()
+                {
+                    let stale_path = dest_dir.join(&stale);
+                    if stale_path != final_path && stale_path.is_file() {
+                        match std::fs::remove_file(&stale_path) {
+                            Ok(()) => tracing::info!("removed superseded binary {stale}"),
+                            Err(e) => tracing::warn!("could not remove superseded {stale}: {e}"),
+                        }
+                    }
+                }
+            }
 
             #[cfg(unix)]
             {

@@ -295,7 +295,7 @@ impl App {
         match crate::persistence::colony_app_dir(&repo_name) {
             Ok(app_dir) => {
                 if app_dir.exists() {
-                    if let Err(e) = std::fs::remove_dir_all(&app_dir) {
+                    if let Err(e) = crate::persistence::remove_app_dir(&app_dir) {
                         // Uninstall is always confirmed from the detail page,
                         // and the app stays on disk half-removed. Toast it -
                         // this is not a background condition.

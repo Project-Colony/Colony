@@ -116,6 +116,10 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "{count} mise(s) à jour disponible(s) : {names}".into(),
     );
     strings.insert(
+        "launcher_relaunch_failed".into(),
+        "Colony a été mis à jour mais la nouvelle version n'a pas démarré ({error}). L'ancienne version est conservée dans {backup} - renommez-la pour revenir en arrière.".into(),
+    );
+    strings.insert(
         "update_skipped".into(),
         "{name} ignorée : absente du catalogue, ou aucune version pour cette plateforme".into(),
     );
@@ -129,6 +133,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("section_favorites".into(), "Favoris".into());
     strings.insert("section_windows".into(), "Windows".into());
     strings.insert("section_linux".into(), "Linux".into());
+    strings.insert("section_macos".into(), "macOS".into());
     strings.insert("section_development".into(), "Développement".into());
     strings.insert("section_graphics".into(), "Graphisme".into());
     strings.insert("section_network".into(), "Réseau".into());

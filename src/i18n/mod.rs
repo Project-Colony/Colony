@@ -64,6 +64,7 @@ pub fn section_display_name(name: &str) -> String {
         "favorites" | "favoris" => "section_favorites",
         "windows" => "section_windows",
         "linux" => "section_linux",
+        "macos" => "section_macos",
         "development" => "section_development",
         "graphics" => "section_graphics",
         "network" => "section_network",

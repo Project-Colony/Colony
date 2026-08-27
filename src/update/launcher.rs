@@ -184,8 +184,29 @@ impl App {
             |result: Result<std::path::PathBuf, String>| match result {
                 Ok(exe_path) => {
                     tracing::info!("Launching updated Colony: {}", exe_path.display());
-                    let _ = std::process::Command::new(&exe_path).spawn();
-                    std::process::exit(0);
+                    // Exit only if the replacement actually started. The swap is
+                    // already committed by this point, so discarding the spawn
+                    // result and exiting regardless meant that a binary which
+                    // will not exec - wrong arch, missing runtime library,
+                    // noexec mount, antivirus quarantine - made Colony vanish
+                    // from the screen for good, with no window, no toast and no
+                    // way for the user to know that a `.old` backup exists.
+                    match std::process::Command::new(&exe_path).spawn() {
+                        Ok(_) => std::process::exit(0),
+                        Err(e) => {
+                            tracing::error!("updated Colony failed to start: {e}");
+                            Message::LauncherDownloadCompleted(Err(i18n::t_fmt(
+                                "launcher_relaunch_failed",
+                                &[
+                                    ("error", &e.to_string()),
+                                    (
+                                        "backup",
+                                        &exe_path.with_extension("old").display().to_string(),
+                                    ),
+                                ],
+                            )))
+                        }
+                    }
                 }
                 Err(e) => Message::LauncherDownloadCompleted(Err(e)),
             },

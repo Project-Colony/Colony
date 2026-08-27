@@ -102,6 +102,10 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "{count} update(s) available: {names}".into(),
     );
     strings.insert(
+        "launcher_relaunch_failed".into(),
+        "Colony updated, but the new version would not start ({error}). The previous version is kept at {backup} - rename it back to recover.".into(),
+    );
+    strings.insert(
         "update_skipped".into(),
         "Skipped {name}: no longer in the catalog, or no build for this platform".into(),
     );
@@ -115,6 +119,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("section_favorites".into(), "Favorites".into());
     strings.insert("section_windows".into(), "Windows".into());
     strings.insert("section_linux".into(), "Linux".into());
+    strings.insert("section_macos".into(), "macOS".into());
     strings.insert("section_development".into(), "Development".into());
     strings.insert("section_graphics".into(), "Graphics".into());
     strings.insert("section_network".into(), "Network".into());

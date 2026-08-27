@@ -9,13 +9,29 @@
     "name": "Windows",
     "icon": "",
     "origin": "windows",
-    "category": "all"
+    "category": "all",
+    "platforms": [
+      "windows"
+    ]
   },
   {
     "name": "Linux",
     "icon": "",
     "origin": "external",
-    "category": "all"
+    "category": "all",
+    "platforms": [
+      "linux"
+    ]
+  },
+  {
+    "name": "macOS",
+    "icon": "",
+    "origin": "external",
+    "category": "all",
+    "platforms": [
+      "macos",
+      "macos-x86"
+    ]
   },
   {
     "name": "Development",
