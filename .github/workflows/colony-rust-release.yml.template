@@ -129,11 +129,24 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.release-please.outputs.tag_name }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Fetch the signing script from Colony
         run: |
           curl -fsSL -o sign-release.sh \
             https://raw.githubusercontent.com/Project-Colony/Colony/main/scripts/sign-release.sh
           chmod +x sign-release.sh
+
+      # Catches the failure that actually happens: a manifest that PARSES but
+      # resolves to nothing, so the app lists in Colony with no Download
+      # button. Runs against the asset names this release is publishing.
+      - name: Validate colony.json against the published assets
+        run: |
+          curl -fsSL -o colony \
+            https://github.com/Project-Colony/Colony/releases/latest/download/colony-linux
+          chmod +x colony
+          gh release view "$TAG" --json assets --jq '.assets[].name' > asset-names.txt
+          ./colony validate-manifest colony.json $(tr '\n' ' ' < asset-names.txt)
 
       - name: Download release binaries
         run: |

@@ -63,6 +63,32 @@ impl AppCategory {
             Self::Other => "\u{f187}",       // archive-box
         }
     }
+
+    /// freedesktop main categories for the `Categories=` key of a `.desktop`
+    /// entry, terminated with the trailing `;` the spec requires.
+    ///
+    /// Every Colony-installed app used to be filed as `Utility;` regardless of
+    /// what its manifest declared, so a music player and two games landed in
+    /// the same GNOME/KDE menu section - defeating the categorisation the
+    /// manifest already carries, in the one place the user browses outside
+    /// Colony.
+    ///
+    /// `Security` has no freedesktop MAIN category, so it is paired with the
+    /// `Utility` main category as the spec requires of additional categories.
+    pub fn desktop_categories(&self) -> &'static str {
+        match self {
+            Self::Development => "Development;",
+            Self::Graphics => "Graphics;",
+            Self::Network => "Network;",
+            Self::Office => "Office;",
+            Self::Multimedia => "AudioVideo;",
+            Self::System => "System;",
+            Self::Utility => "Utility;",
+            Self::Security => "Utility;Security;",
+            Self::Game => "Game;",
+            Self::Other => "Utility;",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

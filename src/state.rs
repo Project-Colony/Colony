@@ -342,10 +342,21 @@ impl App {
     }
 
     /// Filter local applications by the currently selected section.
+    ///
+    /// A non-empty search query makes the search GLOBAL: the section's
+    /// origin/category filter is bypassed. The shipped "All" section declares
+    /// `origin: colony`, and `AppOrigin::Colony` is effectively unreachable for
+    /// scanned apps (entries Colony wrote are skipped by the X-Colony-Managed
+    /// bail; everything else is External or Windows), so typing "firefox" in
+    /// the default view reported zero results on a machine where Firefox sits
+    /// two clicks away. A search that lies about zero results is worse than no
+    /// search - the user concludes the feature is broken. Favorites stays
+    /// scoped: it is a chosen set, not a browsing filter.
     pub fn filtered_applications(&self) -> Vec<&Application> {
         let query = self.search_query.to_lowercase();
         let selected_section = self.sections.get(self.selected_section);
         let is_favorites = selected_section.map(|s| s.is_favorites).unwrap_or(false);
+        let searching = !query.is_empty();
         self.applications
             .iter()
             .filter(|app| {
@@ -354,7 +365,7 @@ impl App {
                         return false;
                     }
                 } else if let Some(section) = selected_section {
-                    if !section.filter.matches(app) {
+                    if !searching && !section.filter.matches(app) {
                         return false;
                     }
                 }
@@ -372,6 +383,7 @@ impl App {
         let selected_section = self.sections.get(self.selected_section);
         let is_favorites = selected_section.map(|s| s.is_favorites).unwrap_or(false);
 
+        let searching = !query.is_empty();
         self.colony_repos()
             .iter()
             .filter(|repo| {
@@ -380,10 +392,19 @@ impl App {
                         return false;
                     }
                 } else if let Some(section) = selected_section {
-                    if let Some(section_category) = section.category() {
-                        let repo_category = scan::AppCategory::from_name(&repo.manifest.category);
-                        if &repo_category != section_category {
-                            return false;
+                    if !searching {
+                        if let Some(section_category) = section.category() {
+                            let repo_category =
+                                scan::AppCategory::from_name(&repo.manifest.category);
+                            if &repo_category != section_category {
+                                return false;
+                            }
+                        }
+                        // Platform sections filter the store half too.
+                        if let Some(platform) = section.required_platform() {
+                            if !repo.manifest.release_files.contains_key(platform) {
+                                return false;
+                            }
                         }
                     }
                 }

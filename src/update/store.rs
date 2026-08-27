@@ -34,6 +34,7 @@ impl App {
                 // The app's menu name, distinct from `display_name` below,
                 // which is the FILE being downloaded (shown in the toast).
                 let app_display_name = repo.display_name().to_string();
+                let app_category = crate::scan::AppCategory::from_name(&repo.manifest.category);
                 // API calls (release resolution) use the token for
                 // rate limits; the asset download itself is a public
                 // endpoint and gets NO token - no reason to present
@@ -89,6 +90,7 @@ impl App {
                             crate::download::AssetInstall {
                                 repo_name: repo_name.clone(),
                                 display_name: app_display_name,
+                                category: app_category,
                                 tag: resolved_tag.clone(),
                                 filename: resolved_file.clone(),
                                 binary_name: binary,

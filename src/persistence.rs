@@ -385,6 +385,7 @@ pub struct CachedApp {
 pub fn write_desktop_entry(
     repo_name: &str,
     display_name: &str,
+    category: crate::scan::AppCategory,
     exec_path: &std::path::Path,
 ) -> Result<()> {
     let dir = dirs::data_dir()
@@ -414,8 +415,9 @@ pub fn write_desktop_entry(
         Some(p) => format!("Icon={}\n", desktop_value(&p.to_string_lossy())?),
         None => String::new(),
     };
+    let categories = category.desktop_categories();
     let entry = format!(
-        "[Desktop Entry]\nType=Application\nName={name}\nExec=\"{exec}\"\nTerminal=false\nCategories=Utility;\nComment=Installed by Colony\nX-Colony-Managed=true\n{icon_line}"
+        "[Desktop Entry]\nType=Application\nName={name}\nExec=\"{exec}\"\nTerminal=false\nCategories={categories}\nComment=Installed by Colony\nX-Colony-Managed=true\n{icon_line}"
     );
     std::fs::write(dir.join(desktop_entry_filename(repo_name)?), entry)?;
     Ok(())
@@ -455,6 +457,7 @@ fn desktop_value(raw: &str) -> Result<String> {
 pub fn write_desktop_entry(
     _repo_name: &str,
     _display_name: &str,
+    _category: crate::scan::AppCategory,
     _exec_path: &std::path::Path,
 ) -> Result<()> {
     Ok(())

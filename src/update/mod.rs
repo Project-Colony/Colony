@@ -691,6 +691,67 @@ mod tests {
     /// that differs from the repo slug, and Colony threw it away everywhere the
     /// user looks - so a card titled "Lilypad-Vault" carried a button reading
     /// "Launch Lilypad".
+    /// Typing "firefox" in the default view reported zero results on a machine
+    /// where Firefox was two clicks away: the shipped "All" section filters to
+    /// `origin: colony`, and scanned apps are never AppOrigin::Colony.
+    #[test]
+    fn search_reaches_local_apps_the_section_filter_would_hide() {
+        let mut app = App::new_for_test();
+        app.sections = crate::sections::load_sections();
+        app.selected_section = 0; // "All", origin: colony
+        app.applications = vec![scan::Application {
+            name: "Firefox".into(),
+            exec: "firefox".into(),
+            icon: None,
+            category: scan::AppCategory::Network,
+            origin: scan::AppOrigin::External,
+        }];
+
+        // Browsing the section still hides it - that is what the filter is for.
+        assert!(app.filtered_applications().is_empty());
+
+        // Searching for it must not.
+        app.search_query = "firefox".into();
+        assert_eq!(
+            app.filtered_applications().len(),
+            1,
+            "a search that reports zero results for an installed app is worse than no search"
+        );
+
+        // And a search that matches nothing still matches nothing.
+        app.search_query = "definitely-not-installed".into();
+        assert!(app.filtered_applications().is_empty());
+    }
+
+    /// The .desktop integration exists so store apps land correctly in
+    /// GNOME/KDE/rofi; filing a music player and two games under Utility
+    /// defeats the categorisation the manifest already carries.
+    #[test]
+    fn desktop_categories_follow_the_manifest() {
+        use scan::AppCategory as C;
+        assert_eq!(C::Multimedia.desktop_categories(), "AudioVideo;");
+        assert_eq!(C::Game.desktop_categories(), "Game;");
+        assert_eq!(C::Network.desktop_categories(), "Network;");
+        // Security is not a freedesktop MAIN category, so it must be paired
+        // with one or the entry is invalid.
+        assert_eq!(C::Security.desktop_categories(), "Utility;Security;");
+        for c in [
+            C::Development,
+            C::Graphics,
+            C::Network,
+            C::Office,
+            C::Multimedia,
+            C::System,
+            C::Utility,
+            C::Security,
+            C::Game,
+            C::Other,
+        ] {
+            let v = c.desktop_categories();
+            assert!(v.ends_with(';'), "{v:?} must be ;-terminated per the spec");
+        }
+    }
+
     #[test]
     fn the_manifest_display_name_wins_but_never_becomes_the_identity() {
         let mut declared = repo("Lilypad-Vault", "");

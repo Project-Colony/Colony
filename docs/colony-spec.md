@@ -114,6 +114,7 @@ Signature and checksum siblings (`.sig`, `.sha256`, `.yml`, ...) are never match
 | `platforms` | `string[]` | no | Supported platforms. Values: `"windows"`, `"linux"`, `"macos"` (Apple Silicon), `"macos-x86"` (Intel). Auto-detected if omitted. |
 | `releaseFiles` | `object` | no | Map of platform → release entry. Each key is a platform. Auto-detected if omitted. |
 | `icon` | `string` | no | Path (relative to the repo root) to a square **PNG** app icon shown in the Colony grid. See [App icon](#app-icon). |
+| `signed` | `boolean` | no | When `true`, every release asset MUST ship a valid `<asset>.sig`; a missing signature aborts the install instead of falling back to the legacy unsigned path. Defaults to `false`. See [Signed releases](#signed-releases). |
 
 ### `releaseFiles` entry fields
 
@@ -240,8 +241,36 @@ org's private signing key, which never lives in any repository. Enforcement is
 implemented: `"signed": true` refuses an install with no signature, and the
 launcher **pins** the requirement client-side once an app has been installed with
 a verified signature, so flipping `signed` back to false in a compromised
-repository no longer downgrades that app to unsigned. What remains open is that
-an app signature is not bound to a version or an asset name, so an attacker with
-push access to a catalogue repo could still replay a *different* org-signed
-artefact; binding it needs the `.meta` sidecar rolled out to the ecosystem app
-release workflows first.
+repository no longer downgrades that app to unsigned. Since Colony 0.9.3 the binding gap is closed on the CLIENT side: an app asset
+that publishes a signed `<asset>.meta` sidecar (plus `<asset>.meta.sig`) has its
+bytes bound to an asset name, a digest and the resolved tag, and Colony refuses
+anything older than what is installed. That stops the replay of a *different*
+org-signed artefact under a new tag.
+
+Sidecars are **opportunistic and pinned**: an app that publishes none still
+installs, but once Colony has verified one for an app, a later release that
+stops publishing them is refused. So the ecosystem can adopt them repo by repo
+with no flag day, and no repo can quietly stop. The release template ships the
+`sign` job that emits them.
+
+## Validating your manifest
+
+Colony validates its own manifest format, so you do not have to guess:
+
+```sh
+colony validate-manifest colony.json
+```
+
+Pass the asset names your release publishes to also check that every platform
+actually **resolves** - which is the failure that matters, because a manifest
+can be structurally perfect and still leave your app listed with no Download
+button:
+
+```sh
+gh release view v1.2.3 --json assets --jq '.assets[].name' > names.txt
+colony validate-manifest colony.json $(tr '\n' ' ' < names.txt)
+```
+
+It exits non-zero on any problem, so it works as a CI gate. The shipped
+[release workflow template](../.github/workflows/colony-rust-release.yml.template)
+already runs it against each release before signing.

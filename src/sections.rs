@@ -74,6 +74,24 @@ impl SectionFilter {
     }
 }
 
+impl Section {
+    /// The platform key a section restricts the STORE half of the grid to, if
+    /// any.
+    ///
+    /// The platform sections consulted only the category filter, which is None
+    /// for them, so "Windows" listed every store repo - including linux-only
+    /// ones - right beside the locally scanned Windows apps. They are
+    /// advertised as platform views, so they should filter both halves, using
+    /// the manifest's own `platforms` data.
+    pub fn required_platform(&self) -> Option<&'static str> {
+        match self.filter.origin {
+            OriginFilter::WindowsOnly => Some("windows"),
+            OriginFilter::ExternalOnly => Some(crate::github::current_platform_key()),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct SectionConfig {
     name: String,
