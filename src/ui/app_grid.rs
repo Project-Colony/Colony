@@ -371,13 +371,15 @@ impl App {
             )
             .padding([8, 14])
             .style(|_theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => Palette::BG_CARD_HOVER(),
-                    _ => Palette::BG_SELECTED(),
-                };
+                let (bg, text_color) = theme::button_colors(
+                    status,
+                    Palette::BG_SELECTED(),
+                    Palette::BG_CARD_HOVER(),
+                    Palette::ACCENT(),
+                );
                 button::Style {
                     background: Some(bg.into()),
-                    text_color: Palette::ACCENT(),
+                    text_color,
                     border: iced::Border::default().rounded(6),
                     ..Default::default()
                 }
@@ -471,18 +473,13 @@ impl App {
                         (!self.is_fetching_repos).then_some(Message::GitHubRefreshRepos),
                     )
                     .padding([8, 16])
-                    .style(|_theme, status| {
-                        let bg = match status {
-                            button::Status::Hovered => Palette::BTN_HOVER(),
-                            button::Status::Pressed => Palette::BTN_PRESSED(),
-                            _ => Palette::BTN_DEFAULT(),
-                        };
-                        button::Style {
-                            background: Some(bg.into()),
-                            text_color: Palette::TEXT_PRIMARY(),
-                            border: iced::Border::default().rounded(8),
-                            ..Default::default()
-                        }
+                    .style(move |_theme, status| {
+                        crate::ui::theme::action_button_style(
+                            status,
+                            Palette::BTN_DEFAULT(),
+                            Palette::BTN_HOVER(),
+                            Palette::BTN_PRESSED(),
+                        )
                     }),
                 );
             }
@@ -705,18 +702,13 @@ impl App {
         )
         .on_press(Message::LaunchApp(app.exec.clone()))
         .padding([8, 14])
-        .style(|_theme, status| {
-            let bg = match status {
-                button::Status::Hovered => Palette::BTN_SUCCESS_HOVER(),
-                button::Status::Pressed => Palette::BTN_SUCCESS_PRESSED(),
-                _ => Palette::BG_SELECTED(),
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: Palette::TEXT_PRIMARY(),
-                border: iced::Border::default().rounded(8),
-                ..Default::default()
-            }
+        .style(move |_theme, status| {
+            crate::ui::theme::action_button_style(
+                status,
+                Palette::BG_SELECTED(),
+                Palette::BTN_SUCCESS_HOVER(),
+                Palette::BTN_SUCCESS_PRESSED(),
+            )
         });
 
         let status = container(

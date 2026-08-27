@@ -242,6 +242,11 @@ impl App {
         self.download_speed = 0.0;
         self.last_progress_sample = None;
         self.is_downloading = false;
+        // The install itself runs in a DETACHED blocking task that runs to
+        // completion, so a cancel landing after the rename and marker writes
+        // leaves the app genuinely installed while install_status - the only
+        // source the grid and detail views read - still says otherwise.
+        self.refresh_install_status();
         self.status_message = i18n::t("download_cancelled");
         self.push_notification(i18n::t("download_cancelled"), NotificationLevel::Warning)
     }
@@ -284,6 +289,33 @@ impl App {
 
     pub(super) fn uninstall_colony_app(&mut self, repo_name: String) -> Task<Message> {
         self.confirm_uninstall = None;
+
+        let app_dir = match crate::persistence::colony_app_dir(&repo_name) {
+            Ok(dir) => dir,
+            Err(e) => {
+                let msg = i18n::t_fmt("scan_error", &[("error", &e.to_string())]);
+                self.status_message = msg.clone();
+                return self.push_notification(msg, NotificationLevel::Error);
+            }
+        };
+
+        // Do the thing that can FAIL first. The teardown used to run in the
+        // opposite order - drop the update badge, drop the release notes, delete
+        // the desktop entry, and only then try the removal - so a directory that
+        // could not be deleted (a running binary on Windows, a busy or read-only
+        // path on Unix) left the app on disk with its integration already ripped
+        // out, and nothing said so.
+        if app_dir.exists() {
+            if let Err(e) = crate::persistence::remove_app_dir(&app_dir) {
+                let msg = i18n::t_fmt("uninstall_error", &[("error", &e.to_string())]);
+                self.status_message = msg.clone();
+                // The card must reflect what is actually on disk either way.
+                self.refresh_install_status();
+                return self.push_notification(msg, NotificationLevel::Error);
+            }
+        }
+
+        // Committed: now the state that cannot be undone.
         // An uninstalled app has no meaningful "update available".
         self.available_updates.remove(&repo_name);
         // Stale notes describe the version that was just removed.
@@ -292,35 +324,17 @@ impl App {
         // cleanup happens on catalog refresh instead.)
         self.release_notes.remove(&repo_name);
         crate::persistence::remove_desktop_entry(&repo_name);
-        match crate::persistence::colony_app_dir(&repo_name) {
-            Ok(app_dir) => {
-                if app_dir.exists() {
-                    if let Err(e) = crate::persistence::remove_app_dir(&app_dir) {
-                        // Uninstall is always confirmed from the detail page,
-                        // and the app stays on disk half-removed. Toast it -
-                        // this is not a background condition.
-                        let msg = i18n::t_fmt("uninstall_error", &[("error", &e.to_string())]);
-                        self.status_message = msg.clone();
-                        return self.push_notification(msg, NotificationLevel::Error);
-                    } else {
-                        self.status_message = i18n::t_fmt("uninstalled", &[("name", &repo_name)]);
-                        // AFTER the directory removal, so the cache
-                        // records the app as gone.
-                        self.refresh_install_status();
-                        return Task::perform(
-                            async {
-                                tokio::time::sleep(Duration::from_secs(4)).await;
-                            },
-                            |_| Message::ClearStatus,
-                        );
-                    }
-                }
-            }
-            Err(e) => {
-                self.status_message = i18n::t_fmt("scan_error", &[("error", &e.to_string())]);
-            }
-        }
-        Task::none()
+        // AFTER the directory removal, so the cache records the app as gone.
+        self.refresh_install_status();
+        // Removing something already absent is a success, not a silent skip:
+        // the confirm dialog used to just close with no message at all.
+        self.status_message = i18n::t_fmt("uninstalled", &[("name", &repo_name)]);
+        Task::perform(
+            async {
+                tokio::time::sleep(Duration::from_secs(4)).await;
+            },
+            |_| Message::ClearStatus,
+        )
     }
 
     pub(super) fn clear_store_caches(&mut self) -> Task<Message> {

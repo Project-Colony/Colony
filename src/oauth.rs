@@ -37,7 +37,7 @@ impl std::fmt::Debug for OAuthSession {
 #[derive(Debug, Clone)]
 pub struct DeviceCode {
     pub user_code: String,
-    #[allow(dead_code)]
+    /// Shown in the panel so the flow survives a browser that would not open.
     pub verification_uri: String,
     pub(crate) device_code: String,
     pub(crate) expires_in: u64,
@@ -88,7 +88,11 @@ pub async fn request_device_code() -> Result<DeviceCode> {
     let url = format!("{}?user_code={}", device.verification_uri, device.user_code);
     match crate::download::web_url(&url) {
         Some(safe) => {
-            let _ = open::that(&safe);
+            if let Err(e) = open::that(&safe) {
+                // Not fatal: the panel shows the URL and the code, and the poll
+                // keeps running until the device code expires.
+                tracing::warn!("could not open the verification page: {e}");
+            }
         }
         None => tracing::warn!("refusing to open non-http(s) verification uri {url:?}"),
     }
@@ -347,16 +351,44 @@ pub fn load_saved_token() -> Option<OAuthSession> {
 }
 
 /// Delete the stored token (logout).
+/// Forget the stored credential, reporting whether it actually went away.
+///
+/// `save_token` checks and logs every keyring outcome, and deliberately deletes
+/// the plaintext fallback once the keychain accepted the secret. The delete path
+/// used to get none of that care: the keyring result was dropped on the floor,
+/// so a failed deletion still reported "Disconnected" and the next launch
+/// silently restored the session from the credential the user just revoked.
 pub fn delete_saved_token() -> Result<()> {
-    // Remove from keychain
-    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
-        let _ = entry.delete_credential();
+    let mut failure: Option<String> = None;
+
+    match keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+        Ok(entry) => match entry.delete_credential() {
+            // Nothing stored is the desired end state, not an error.
+            Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Err(e) => {
+                tracing::warn!("could not delete the keychain credential: {e}");
+                failure = Some(e.to_string());
+            }
+        },
+        Err(e) => {
+            tracing::warn!("could not open the keychain entry to delete it: {e}");
+            failure = Some(e.to_string());
+        }
     }
-    // Remove file too
+
     let path = token_path();
     if path.exists() {
-        std::fs::remove_file(&path)?;
+        if let Err(e) = std::fs::remove_file(&path) {
+            tracing::warn!("could not delete the token file: {e}");
+            failure = Some(e.to_string());
+        }
     }
-    tracing::info!("Token deleted");
-    Ok(())
+
+    match failure {
+        None => {
+            tracing::info!("Token deleted");
+            Ok(())
+        }
+        Some(e) => anyhow::bail!("{e}"),
+    }
 }

@@ -15,7 +15,10 @@ impl App {
     }
 
     pub(super) fn github_login(&mut self) -> Task<Message> {
-        self.github_state = GitHubState::Connecting { user_code: None };
+        self.github_state = GitHubState::Connecting {
+            user_code: None,
+            verification_uri: None,
+        };
         Task::perform(
             async {
                 oauth::request_device_code()
@@ -34,6 +37,7 @@ impl App {
             Ok(device) => {
                 self.github_state = GitHubState::Connecting {
                     user_code: Some(device.user_code.clone()),
+                    verification_uri: Some(device.verification_uri.clone()),
                 };
                 Task::perform(
                     async move {
@@ -97,10 +101,21 @@ impl App {
     }
 
     pub(super) fn github_logout(&mut self) -> Task<Message> {
-        let _ = oauth::delete_saved_token();
+        let outcome = oauth::delete_saved_token();
+        // The in-memory session is gone either way, so the state change stands.
+        // But if the STORED credential survived, saying "Disconnected" and
+        // nothing else is a lie the user discovers at the next launch, when the
+        // session comes back. Say so, and say what to do about it.
         self.github_state = GitHubState::Disconnected;
         self.status_message = i18n::t("github_disconnected");
-        Task::none()
+        match outcome {
+            Ok(()) => Task::none(),
+            Err(e) => {
+                let msg = i18n::t_fmt("logout_incomplete", &[("error", &e.to_string())]);
+                self.status_message = msg.clone();
+                self.push_notification(msg, NotificationLevel::Error)
+            }
+        }
     }
 
     pub(super) fn github_repos_fetched(

@@ -228,18 +228,13 @@ impl App {
                 Some(Message::LaunchColonyApp(app_path))
             })
             .padding([12, 24])
-            .style(|_theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => Palette::BTN_SUCCESS_HOVER(),
-                    button::Status::Pressed => Palette::BTN_SUCCESS_PRESSED(),
-                    _ => Palette::BTN_SUCCESS(),
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: Palette::TEXT_PRIMARY(),
-                    border: iced::Border::default().rounded(8),
-                    ..Default::default()
-                }
+            .style(move |_theme, status| {
+                crate::ui::theme::action_button_style(
+                    status,
+                    Palette::BTN_SUCCESS(),
+                    Palette::BTN_SUCCESS_HOVER(),
+                    Palette::BTN_SUCCESS_PRESSED(),
+                )
             });
 
             let repo_name = repo.name.clone();
@@ -255,18 +250,13 @@ impl App {
                 Some(Message::DownloadRelease(repo_name, platform_key))
             })
             .padding([10, 20])
-            .style(|_theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => Palette::BTN_HOVER(),
-                    button::Status::Pressed => Palette::BTN_PRESSED(),
-                    _ => Palette::BTN_DEFAULT(),
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: Palette::TEXT_PRIMARY(),
-                    border: iced::Border::default().rounded(8),
-                    ..Default::default()
-                }
+            .style(move |_theme, status| {
+                crate::ui::theme::action_button_style(
+                    status,
+                    Palette::BTN_DEFAULT(),
+                    Palette::BTN_HOVER(),
+                    Palette::BTN_PRESSED(),
+                )
             });
 
             // Uninstall now triggers confirmation dialog
@@ -277,25 +267,26 @@ impl App {
                     .font(self.app_font())
                     .center(),
             )
-            .on_press(Message::ConfirmUninstall(uninstall_repo_name))
+            // The only action here that was not gated on a running download.
+            // Uninstalling mid-install remove_dir_all's the directory the
+            // detached blocking install is still renaming into, and the install
+            // then fails with a bare ENOENT.
+            .on_press_maybe(
+                (!self.is_downloading).then_some(Message::ConfirmUninstall(uninstall_repo_name)),
+            )
             .padding(iced::Padding {
                 top: 10.0,
                 right: 14.0,
                 bottom: 10.0,
                 left: 12.0,
             })
-            .style(|_theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => Palette::BTN_TRASH_HOVER(),
-                    button::Status::Pressed => Palette::BTN_TRASH_PRESSED(),
-                    _ => Palette::BTN_DEFAULT(),
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: Palette::TEXT_PRIMARY(),
-                    border: iced::Border::default().rounded(8),
-                    ..Default::default()
-                }
+            .style(move |_theme, status| {
+                crate::ui::theme::action_button_style(
+                    status,
+                    Palette::BTN_DEFAULT(),
+                    Palette::BTN_TRASH_HOVER(),
+                    Palette::BTN_TRASH_PRESSED(),
+                )
             });
 
             let spacer: Element<'_, Message> = container(text("")).width(Fill).into();
@@ -324,18 +315,13 @@ impl App {
                     Some(Message::DownloadRelease(repo_name, platform_key))
                 })
                 .padding([12, 24])
-                .style(|_theme, status| {
-                    let bg = match status {
-                        button::Status::Hovered => Palette::BTN_HOVER(),
-                        button::Status::Pressed => Palette::BTN_PRESSED(),
-                        _ => Palette::BTN_DEFAULT(),
-                    };
-                    button::Style {
-                        background: Some(bg.into()),
-                        text_color: Palette::TEXT_PRIMARY(),
-                        border: iced::Border::default().rounded(8),
-                        ..Default::default()
-                    }
+                .style(move |_theme, status| {
+                    crate::ui::theme::action_button_style(
+                        status,
+                        Palette::BTN_DEFAULT(),
+                        Palette::BTN_HOVER(),
+                        Palette::BTN_PRESSED(),
+                    )
                 });
                 Row::new()
                     .push(spacer)

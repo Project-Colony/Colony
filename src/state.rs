@@ -126,8 +126,17 @@ impl Notification {
 #[derive(Debug, Clone)]
 pub enum GitHubState {
     Disconnected,
-    Connecting { user_code: Option<String> },
-    Connected { session: OAuthSession },
+    Connecting {
+        user_code: Option<String>,
+        /// Where to enter the code. Without it the panel said "Enter this code
+        /// on GitHub" and never named github.com/login/device, so a browser
+        /// that failed to open left the user with a code and nowhere to put it
+        /// while the poll ran on until it expired.
+        verification_uri: Option<String>,
+    },
+    Connected {
+        session: OAuthSession,
+    },
     Error(String),
 }
 

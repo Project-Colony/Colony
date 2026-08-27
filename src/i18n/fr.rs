@@ -120,6 +120,10 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "Colony a été mis à jour mais la nouvelle version n'a pas démarré ({error}). L'ancienne version est conservée dans {backup} - renommez-la pour revenir en arrière.".into(),
     );
     strings.insert(
+        "logout_incomplete".into(),
+        "Déconnecté, mais le jeton stocké n'a pas pu être supprimé ({error}). Révoquez-le sur github.com/settings/applications.".into(),
+    );
+    strings.insert(
         "update_skipped".into(),
         "{name} ignorée : absente du catalogue, ou aucune version pour cette plateforme".into(),
     );

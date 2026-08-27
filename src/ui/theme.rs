@@ -2933,3 +2933,70 @@ impl ThemePalette {
         divider: hex(0x382F4C),
     };
 }
+
+/// Style an action button from its three base colours, with a real disabled
+/// state.
+///
+/// Every action button in the app was written as
+/// `match status { Hovered => .., Pressed => .., _ => normal }`, so
+/// `button::Status::Disabled` fell into the catch-all and a disabled button
+/// rendered byte-identically to an active one: during a download, Launch,
+/// Update, Download, Update All, Refresh and the update badge all looked
+/// clickable and did nothing. Routing them through one helper means the next
+/// button cannot regress the same way.
+pub fn action_button_style(
+    status: iced::widget::button::Status,
+    normal: iced::Color,
+    hover: iced::Color,
+    pressed: iced::Color,
+) -> iced::widget::button::Style {
+    use iced::widget::button::Status;
+    let (background, text_color) = match status {
+        Status::Hovered => (hover, Palette::TEXT_PRIMARY()),
+        Status::Pressed => (pressed, Palette::TEXT_PRIMARY()),
+        Status::Disabled => (
+            // Halfway to the page background reads as "not available now"
+            // without inventing a new palette entry per theme.
+            mix(normal, Palette::BG_PRIMARY(), 0.6),
+            Palette::TEXT_DIMMER(),
+        ),
+        Status::Active => (normal, Palette::TEXT_PRIMARY()),
+    };
+    iced::widget::button::Style {
+        background: Some(background.into()),
+        text_color,
+        border: iced::Border::default().rounded(8),
+        ..Default::default()
+    }
+}
+
+/// Background and text colour for a two-state (normal/hover) button, with the
+/// disabled case handled. Companion to [`action_button_style`] for the buttons
+/// that carry their own text colour rather than TEXT_PRIMARY.
+pub fn button_colors(
+    status: iced::widget::button::Status,
+    normal: iced::Color,
+    hover: iced::Color,
+    text: iced::Color,
+) -> (iced::Color, iced::Color) {
+    use iced::widget::button::Status;
+    match status {
+        Status::Hovered | Status::Pressed => (hover, text),
+        Status::Disabled => (
+            mix(normal, Palette::BG_PRIMARY(), 0.6),
+            mix(text, Palette::BG_PRIMARY(), 0.55),
+        ),
+        Status::Active => (normal, text),
+    }
+}
+
+/// Linear blend of two colours; `t` is how much of `b` to take.
+fn mix(a: iced::Color, b: iced::Color, t: f32) -> iced::Color {
+    let t = t.clamp(0.0, 1.0);
+    iced::Color {
+        r: a.r + (b.r - a.r) * t,
+        g: a.g + (b.g - a.g) * t,
+        b: a.b + (b.b - a.b) * t,
+        a: a.a + (b.a - a.a) * t,
+    }
+}

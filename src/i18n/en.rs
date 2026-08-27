@@ -106,6 +106,10 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "Colony updated, but the new version would not start ({error}). The previous version is kept at {backup} - rename it back to recover.".into(),
     );
     strings.insert(
+        "logout_incomplete".into(),
+        "Signed out, but the stored credential could not be removed ({error}). Revoke it at github.com/settings/applications.".into(),
+    );
+    strings.insert(
         "update_skipped".into(),
         "Skipped {name}: no longer in the catalog, or no build for this platform".into(),
     );
