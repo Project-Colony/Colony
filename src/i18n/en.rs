@@ -65,6 +65,10 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("download".into(), "Download".into());
     strings.insert("no_release".into(), "No release available".into());
     strings.insert(
+        "no_release_unrecognized".into(),
+        "No installable release found - this app has not published assets Colony recognizes".into(),
+    );
+    strings.insert(
         "no_release_platform".into(),
         "Not available for your platform".into(),
     );

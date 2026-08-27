@@ -329,7 +329,20 @@ impl App {
                     .spacing(12)
                     .align_y(iced::Alignment::Center)
             } else {
-                let no_release = text(crate::i18n::t("no_release_platform"))
+                // Two very different situations wore the same label. A manifest
+                // that declares platforms, none of them yours, genuinely has no
+                // build for you. A manifest that declares NONE at all means
+                // Colony could not match the repo's release assets to any
+                // convention - which is the app author's problem, not the
+                // user's, and reads as "Colony is broken" when it says only
+                // "not available for your platform". (Eidos is the live case:
+                // its assets are named eidos-1.12.0-x86_64-linux.tar.gz.)
+                let key = if repo.manifest.release_files.is_empty() {
+                    "no_release_unrecognized"
+                } else {
+                    "no_release_platform"
+                };
+                let no_release = text(crate::i18n::t(key))
                     .size(self.sz(12))
                     .font(self.app_font())
                     .color(Palette::TEXT_MUTED());
