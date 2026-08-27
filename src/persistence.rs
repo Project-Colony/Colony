@@ -375,6 +375,13 @@ fn desktop_value(raw: &str) -> Result<String> {
         if matches!(c, '\\' | '"' | '`' | '$') {
             out.push('\\');
         }
+        // The Desktop Entry spec writes a literal percent as `%%`. Unescaped,
+        // the launcher expands the FIELD CODE instead: a manifest declaring
+        // `binary: "app%f"` yields Exec="/…/app%f", glib substitutes an empty
+        // file list, and the entry silently launches the wrong path.
+        if c == '%' {
+            out.push('%');
+        }
         out.push(c);
     }
     Ok(out)
@@ -517,6 +524,8 @@ mod tests {
         assert!(desktop_value("app\nExec=sh").is_err());
         assert!(desktop_value("app\rExec=sh").is_err());
         assert!(desktop_value("app\0").is_err());
+        // A literal percent must be doubled, or the field code is expanded.
+        assert_eq!(desktop_value("app%f").unwrap(), "app%%f");
     }
 
     #[test]

@@ -130,6 +130,35 @@ async fn download_to_file(
     Ok(())
 }
 
+/// Ceiling for the small sidecars Colony buffers whole (`.sig` is 64 bytes,
+/// `.meta` three short lines). Whoever controls a release can publish a
+/// multi-gigabyte file named `foo-linux.sig`; without a cap that is an OOM the
+/// moment a user clicks Install. Generous by four orders of magnitude.
+const MAX_SIDECAR_BYTES: u64 = 64 * 1024;
+
+/// Read a response body with an upper bound, so a body with no Content-Length -
+/// or one that lies about it - cannot be unbounded.
+async fn bounded_body(resp: reqwest::Response, url: &str, max: u64) -> Result<Vec<u8>> {
+    if let Some(len) = resp.content_length() {
+        anyhow::ensure!(
+            len <= max,
+            "Refusing {url}: declares {len} bytes, over the {max}-byte limit"
+        );
+    }
+    use futures::StreamExt;
+    let mut stream = resp.bytes_stream();
+    let mut out: Vec<u8> = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        anyhow::ensure!(
+            out.len() as u64 + chunk.len() as u64 <= max,
+            "Refusing {url}: body exceeds the {max}-byte limit"
+        );
+        out.extend_from_slice(&chunk);
+    }
+    Ok(out)
+}
+
 /// Fetch a small OPTIONAL resource: `Ok(None)` on HTTP 404 (the resource
 /// genuinely is not published), `Err` on any other failure - so a transient
 /// network error can never be mistaken for "not published" (an attacker able
@@ -150,7 +179,7 @@ async fn fetch_optional_bytes(
     if !resp.status().is_success() {
         anyhow::bail!("HTTP {} for {url}", resp.status());
     }
-    Ok(Some(resp.bytes().await?.to_vec()))
+    Ok(Some(bounded_body(resp, url, MAX_SIDECAR_BYTES).await?))
 }
 
 /// Fetch a small resource (e.g. a detached signature) fully into memory.
@@ -163,15 +192,16 @@ async fn fetch_bytes(client: &reqwest::Client, url: &str, token: Option<&str>) -
     if !resp.status().is_success() {
         anyhow::bail!("HTTP {} for {url}", resp.status());
     }
-    Ok(resp.bytes().await?.to_vec())
+    bounded_body(resp, url, MAX_SIDECAR_BYTES).await
 }
 
-/// Verify SHA256 checksum of a file against an expected hex digest.
-fn verify_sha256(path: &std::path::Path, expected_hex: &str) -> Result<()> {
-    let mut file = std::fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    std::io::copy(&mut file, &mut hasher)?;
-    let computed = format!("{:x}", hasher.finalize());
+/// Verify a SHA256 digest over bytes already in memory.
+///
+/// Takes bytes rather than a path so the caller checks exactly what it is about
+/// to install: re-opening the staged file to hash it means the digest describes
+/// one read and the install uses another.
+fn verify_sha256_bytes(bytes: &[u8], expected_hex: &str) -> Result<()> {
+    let computed = format!("{:x}", Sha256::digest(bytes));
     if computed != expected_hex.to_lowercase() {
         anyhow::bail!(
             "SHA256 mismatch: expected {}, got {}",
@@ -204,6 +234,13 @@ pub fn launcher_is_system_managed() -> bool {
 /// Ensure a filename is a single normal path component (no `..`, no path
 /// separators, not absolute) before it is joined into a destination directory.
 /// Shared by archive extraction and raw-asset download to block path traversal.
+/// Names Win32 resolves to devices no matter which directory contains them,
+/// and regardless of any extension (`CON.txt` is still the console).
+const RESERVED_DEVICE_NAMES: &[&str] = &[
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
 pub(crate) fn ensure_safe_component(name: &str) -> Result<()> {
     let p = std::path::Path::new(name);
     anyhow::ensure!(
@@ -211,7 +248,72 @@ pub(crate) fn ensure_safe_component(name: &str) -> Result<()> {
             && matches!(p.components().next(), Some(std::path::Component::Normal(_))),
         "Invalid file name (path traversal attempt?): {name}"
     );
+
+    // The check above is the shape of a POSIX path, which is only half the
+    // question on the three platforms Colony supports. Rust's Windows parser
+    // recognises a drive prefix only when exactly one letter precedes the
+    // colon, so "payload:stream" is a single Normal component and joining it
+    // writes an NTFS alternate data stream on a file named "payload"; a
+    // reserved device name resolves to a device from any directory; and a
+    // trailing dot or space is stripped by the filesystem, so the name written
+    // differs from the name checked.
+    //
+    // Enforced on every platform, not behind cfg(windows): the catalog is
+    // shared, so a manifest that would be refused on Windows must be refused
+    // everywhere rather than installing differently per user.
+    anyhow::ensure!(
+        !name.contains(
+            |c: char| matches!(c, ':' | '\\' | '/' | '<' | '>' | '"' | '|' | '?' | '*')
+                || c.is_control()
+        ),
+        "Invalid file name (reserved character): {name}"
+    );
+    anyhow::ensure!(
+        !name.ends_with('.') && !name.ends_with(' '),
+        "Invalid file name (trailing dot or space is silently stripped): {name}"
+    );
+    let stem = name.split('.').next().unwrap_or(name);
+    anyhow::ensure!(
+        !RESERVED_DEVICE_NAMES
+            .iter()
+            .any(|d| stem.eq_ignore_ascii_case(d)),
+        "Invalid file name (reserved device name): {name}"
+    );
     Ok(())
+}
+
+/// Build a URL from a trusted base and remote-controlled path segments,
+/// percent-encoding each segment so it can never be structural.
+///
+/// `format!`-ing a remote string into a URL is not safe even when the string
+/// looks harmless in a JSON diff. `reqwest::Client::get` parses through the
+/// WHATWG URL parser, which collapses `..` segments (and `%2e%2e`) *before* the
+/// request is made: a `colony.json` whose `tag` reads
+/// `v1/../../../../../EvilOrg/EvilRepo/releases/download/v1` shortens the path
+/// into a different account entirely, and Colony would install and trust bytes
+/// that were never published under the org. That is the one containment claim
+/// the whole trust model rests on, and it was reachable from write access to a
+/// single line of a catalog repo - no release-publishing rights needed.
+///
+/// Segments are pushed through `path_segments_mut`, which percent-encodes them,
+/// so a `/` or a `..` inside a segment stays data. Legitimate git tags may
+/// contain `/` (`release/1.0`), so encoding is the honest fix here; rejecting
+/// the value outright would break them.
+pub(crate) fn build_url(base: &str, segments: &[&str]) -> Result<String> {
+    let mut url = reqwest::Url::parse(base)?;
+    {
+        let mut path = url
+            .path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("URL base cannot have path segments: {base}"))?;
+        for segment in segments {
+            anyhow::ensure!(
+                !segment.is_empty(),
+                "empty URL path segment for base {base}"
+            );
+            path.push(segment);
+        }
+    }
+    Ok(url.into())
 }
 
 /// Normalized form of `raw` when it is an absolute `http`/`https` URL with a
@@ -258,6 +360,17 @@ fn create_new_file(path: &std::path::Path) -> Result<std::fs::File> {
         .write(true)
         .create_new(true)
         .open(path)?)
+}
+
+/// `std::fs::write` for the trust path: same result, but through
+/// [`create_new_file`] so a symlink planted at the (entirely predictable)
+/// staging name is never followed.
+fn write_new_file(path: &std::path::Path, contents: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let mut file = create_new_file(path)?;
+    file.write_all(contents)?;
+    file.flush()?;
+    Ok(())
 }
 
 /// Extract a single file from a .zip archive.
@@ -420,9 +533,20 @@ pub async fn download_release_asset(
     // never truncates the currently-installed binary.
     let temp_path = dest_dir.join(format!("{filename}.part"));
 
-    let url = format!(
-        "https://github.com/{GITHUB_ACCOUNT}/{repo_name}/releases/download/{tag}/{filename}"
-    );
+    // Every segment after the host is remote-controlled (`repo_name` from the
+    // API listing, `tag` and `filename` from colony.json), so build the URL
+    // from encoded segments instead of interpolating them.
+    let url = build_url(
+        "https://github.com",
+        &[
+            GITHUB_ACCOUNT,
+            &repo_name,
+            "releases",
+            "download",
+            &tag,
+            &filename,
+        ],
+    )?;
 
     let client = download_client()?;
     download_to_file(&client, &url, token.as_deref(), &temp_path, progress_tx).await?;
@@ -478,9 +602,19 @@ pub async fn download_release_asset(
 
         tokio::task::spawn_blocking(move || -> Result<PathBuf> {
             let was_signed = signature.is_some();
+            // Read the staged file ONCE and check everything against that one
+            // buffer. Each separate read of `<app dir>/<filename>.part` - a
+            // predictable path - is another chance to check one set of bytes
+            // and install a different set; the launcher path already avoids
+            // this by installing the buffer it verified.
+            let staged_bytes = if signature.is_some() || expected_sha256.is_some() {
+                Some(std::fs::read(&temp_path)?)
+            } else {
+                None
+            };
             if let Some(sig) = signature {
-                let bytes = std::fs::read(&temp_path)?;
-                if let Err(e) = crate::signing::verify_release_signature(&bytes, &sig) {
+                let bytes = staged_bytes.as_deref().unwrap_or_default();
+                if let Err(e) = crate::signing::verify_release_signature(bytes, &sig) {
                     let _ = std::fs::remove_file(&temp_path);
                     anyhow::bail!(
                         "Signature verification FAILED for {filename} - refusing to install: {e}"
@@ -489,12 +623,14 @@ pub async fn download_release_asset(
                 tracing::info!("ed25519 signature verified for {filename}");
             }
             if let Some(ref expected) = expected_sha256 {
-                if let Err(e) = verify_sha256(&temp_path, expected) {
+                let bytes = staged_bytes.as_deref().unwrap_or_default();
+                if let Err(e) = verify_sha256_bytes(bytes, expected) {
                     let _ = std::fs::remove_file(&temp_path);
                     return Err(e);
                 }
                 tracing::info!("SHA256 verified for {filename}");
             }
+            drop(staged_bytes);
 
             let final_path = if let Some(ref bin) = binary_name {
                 // Archive install: extract the named binary (atomically renamed
@@ -636,13 +772,13 @@ pub async fn download_launcher_asset(
     // file could be swapped between download and apply. The metadata sidecar is
     // staged for the same reason.
     let sig_path = staged_signature_path(&dest_path);
-    if let Err(e) = std::fs::write(&sig_path, &signature) {
+    if let Err(e) = write_new_file(&sig_path, &signature) {
         let _ = std::fs::remove_file(&dest_path);
         anyhow::bail!("Could not stage update signature: {e}");
     }
     let (meta_path, meta_sig_path) = staged_metadata_paths(&dest_path);
-    if let Err(e) = std::fs::write(&meta_path, &meta_bytes)
-        .and_then(|()| std::fs::write(&meta_sig_path, &meta_sig))
+    if let Err(e) = write_new_file(&meta_path, &meta_bytes)
+        .and_then(|()| write_new_file(&meta_sig_path, &meta_sig))
     {
         let _ = std::fs::remove_file(&dest_path);
         anyhow::bail!("Could not stage update metadata: {e}");
@@ -824,8 +960,14 @@ pub fn apply_launcher_update(new_binary: &std::path::Path) -> Result<PathBuf> {
     }
     // Write the byte buffer that was just VERIFIED - copying the file again
     // would re-read from disk and install bytes the signature check never saw
-    // (a swap between read and copy would slip through).
-    std::fs::write(&staged_next, &staged_bytes)
+    // (a swap between read and copy would slip through). Through
+    // `write_new_file`, because `<exe>.new` is a predictable name in a
+    // user-writable directory: `fs::write` follows a symlink planted there, so
+    // the verified bytes would land at the attacker's path and the rename below
+    // would then move the SYMLINK over the running binary - turning Colony's
+    // own executable into a link to a file rewritable afterwards, cleanly past
+    // every signature check.
+    write_new_file(&staged_next, &staged_bytes)
         .map_err(|e| anyhow::anyhow!("Failed to stage new binary: {e}"))?;
     #[cfg(unix)]
     {
@@ -869,6 +1011,62 @@ pub fn apply_launcher_update(new_binary: &std::path::Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A `tag` from colony.json used to be interpolated straight into the
+    /// release URL. reqwest parses with the WHATWG parser, which collapses
+    /// `..` BEFORE the request is issued, so one line of a catalog repo could
+    /// redirect the install to an account outside the org entirely - defeating
+    /// the only containment claim the trust model has.
+    #[test]
+    fn a_hostile_tag_cannot_walk_the_release_url_out_of_the_org() {
+        let hostile = "v1/../../../../../EvilOrg/EvilRepo/releases/download/v1";
+        let url = build_url(
+            "https://github.com",
+            &[
+                "Project-Colony",
+                "Grape",
+                "releases",
+                "download",
+                hostile,
+                "grape-linux",
+            ],
+        )
+        .expect("segments are encoded, not rejected");
+
+        assert!(
+            url.starts_with("https://github.com/Project-Colony/Grape/releases/download/"),
+            "the request must stay inside the org, got {url}"
+        );
+        assert!(
+            !url.contains("EvilOrg/EvilRepo/releases"),
+            "the traversal must not survive as structure, got {url}"
+        );
+
+        // Reparsing is what reqwest itself does; the collapse must not happen
+        // there either, which is the whole point of encoding the segment.
+        let reparsed = reqwest::Url::parse(&url).expect("valid URL");
+        assert_eq!(
+            reparsed.path_segments().map(|s| s.count()),
+            Some(6),
+            "no segment may be structural: {url}"
+        );
+
+        // A legitimate tag containing a slash (`release/1.0`) still works -
+        // rejecting `/` outright would have broken real repos.
+        let ok = build_url(
+            "https://github.com",
+            &[
+                "Project-Colony",
+                "Grape",
+                "releases",
+                "download",
+                "release/1.0",
+                "grape-linux",
+            ],
+        )
+        .expect("slashes in a tag are encoded, not an error");
+        assert!(ok.contains("release%2F1.0"), "got {ok}");
+    }
 
     /// The raw-binary branch of `extract_binary_from_archive` used to join the
     /// manifest's `binary` field straight into the install dir, so a hostile
@@ -1185,7 +1383,7 @@ mod tests {
 
         // SHA256 of "hello world"
         let expected = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9";
-        assert!(verify_sha256(&file_path, expected).is_ok());
+        assert!(verify_sha256_bytes(&std::fs::read(&file_path).unwrap(), expected).is_ok());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1200,7 +1398,9 @@ mod tests {
         f.write_all(b"hello world").unwrap();
         f.flush().unwrap();
 
-        assert!(verify_sha256(&file_path, "0000000000000000").is_err());
+        assert!(
+            verify_sha256_bytes(&std::fs::read(&file_path).unwrap(), "0000000000000000").is_err()
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

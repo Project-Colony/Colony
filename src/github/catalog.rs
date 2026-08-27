@@ -260,6 +260,20 @@ async fn fetch_license_with_fallback(
     }
 }
 
+/// Build a `contents` API URL with every path segment percent-encoded.
+///
+/// `repo_name` comes from the API listing and `path` can be the manifest's
+/// `icon` field - both remote data, on a request that carries the user's token.
+/// Interpolating them lets a `..` shorten the path onto a different endpoint
+/// before the request is sent. An icon path is legitimately nested
+/// ("assets/icons/icon.png"), so it is split on '/' and each part encoded
+/// rather than rejected wholesale.
+fn contents_url(repo_name: &str, path: &str) -> Result<String> {
+    let mut segments = vec!["repos", GITHUB_ACCOUNT, repo_name, "contents"];
+    segments.extend(path.split('/').filter(|s| !s.is_empty()));
+    crate::download::build_url(GITHUB_API, &segments)
+}
+
 /// Fetch a file from a repo, trying multiple candidate paths.
 /// Returns the decoded UTF-8 content of the first file found, or None if all return 404.
 async fn fetch_repo_file_candidates(
@@ -268,7 +282,13 @@ async fn fetch_repo_file_candidates(
     candidates: &[&str],
 ) -> Result<Option<String>> {
     for path in candidates {
-        let url = format!("{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/contents/{path}");
+        let url = match contents_url(repo_name, path) {
+            Ok(u) => u,
+            Err(e) => {
+                tracing::warn!("skipping unusable path {path:?} for {repo_name}: {e}");
+                continue;
+            }
+        };
         match cached_get(client, &url).await {
             Ok((body, _)) => {
                 let content: GithubContent = serde_json::from_str(&body)?;
@@ -305,7 +325,13 @@ async fn fetch_icon(
         candidates.push("icon.png");
     }
     for path in candidates {
-        let url = format!("{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/contents/{path}");
+        let url = match contents_url(repo_name, path) {
+            Ok(u) => u,
+            Err(e) => {
+                tracing::warn!("skipping unusable path {path:?} for {repo_name}: {e}");
+                continue;
+            }
+        };
         match cached_get(client, &url).await {
             Ok((body, _)) => {
                 let content: GithubContent = serde_json::from_str(&body)?;

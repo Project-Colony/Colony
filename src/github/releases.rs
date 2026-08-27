@@ -67,10 +67,17 @@ pub async fn fetch_release_info(
     repo_name: &str,
     tag: &str,
 ) -> Result<ResolvedRelease> {
+    // `tag` is remote data (colony.json) and this request carries the user's
+    // bearer token, so build the path from encoded segments: interpolating it
+    // lets `..` shorten the path onto a different endpoint entirely. See
+    // `crate::download::build_url`.
     let url = if tag.eq_ignore_ascii_case("latest") {
         format!("{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/releases/latest")
     } else {
-        format!("{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/releases/tags/{tag}")
+        crate::download::build_url(
+            GITHUB_API,
+            &["repos", GITHUB_ACCOUNT, repo_name, "releases", "tags", tag],
+        )?
     };
     let (body, _) = cached_get(client, &url).await?;
 
@@ -103,8 +110,16 @@ pub async fn fetch_release_info(
 const NON_INSTALLABLE_SUFFIXES: &[&str] = &[
     ".sig",
     ".asc",
+    // The signed metadata sidecar (see crate::signing). Colony's own releases
+    // already ship `colony-linux.meta`, so the day an ecosystem app adopts the
+    // sidecar, a documented legacy substring pattern like "linux" would start
+    // matching two assets and fail with "Ambiguous pattern" - which is exactly
+    // what docs/colony-spec.md promises cannot happen.
+    ".meta",
     ".sha256",
     ".sha256sum",
+    // electron-builder publishes one per installer (SphereCord already does).
+    ".blockmap",
     ".txt",
     ".yml",
     ".yaml",

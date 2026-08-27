@@ -12,10 +12,25 @@ const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 const TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 
 /// Stored OAuth session.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct OAuthSession {
     pub access_token: String,
     pub username: Option<String>,
+}
+
+/// Hand-written so the token can never be printed. `Message` derives Debug and
+/// carries an `OAuthSession` in `GitHubLoginCompleted`, so the single most
+/// natural debugging line anyone will ever add to `App::update` -
+/// `tracing::debug!(?message)` - would otherwise put the plaintext token on
+/// stderr and into the log file for any user running with RUST_LOG=debug. The
+/// redaction is inherited by every type that contains a session.
+impl std::fmt::Debug for OAuthSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OAuthSession")
+            .field("access_token", &"<redacted>")
+            .field("username", &self.username)
+            .finish()
+    }
 }
 
 /// Pending device code, returned by the first step of the flow.
@@ -282,16 +297,19 @@ fn write_private(path: &std::path::Path, contents: &[u8]) -> Result<()> {
         // Remove any pre-existing file first so `.mode(0o600)` on create always
         // applies (a truncated-open of a 0644 file would keep the loose bits).
         let _ = std::fs::remove_file(path);
+        // create_new, not create: with `create`, a symlink that wins the race
+        // between the unlink above and this open is FOLLOWED, and `.mode()`
+        // does not apply to an already-existing inode - so the token would be
+        // written through the link, at the link target's permissions. The
+        // unlink makes create_new succeed on the normal path, and because it
+        // guarantees a fresh inode, the mode it sets is the mode that sticks
+        // (the old set_permissions re-assertion chmod'd the link's target).
         let mut f = std::fs::OpenOptions::new()
             .write(true)
-            .create(true)
-            .truncate(true)
+            .create_new(true)
             .mode(0o600)
             .open(path)?;
         f.write_all(contents)?;
-        // Re-assert perms in case the file pre-existed with looser bits.
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
         Ok(())
     }
     #[cfg(not(unix))]
