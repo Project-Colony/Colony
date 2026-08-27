@@ -64,6 +64,7 @@ pub fn section_display_name(name: &str) -> String {
         "favorites" | "favoris" => "section_favorites",
         "windows" => "section_windows",
         "linux" => "section_linux",
+        "macos" => "section_macos",
         "development" => "section_development",
         "graphics" => "section_graphics",
         "network" => "section_network",
@@ -174,6 +175,79 @@ mod tests {
         assert!(
             only_fr.is_empty() && only_en.is_empty(),
             "Locale key mismatch — only in fr: {only_fr:?}; only in en: {only_en:?}"
+        );
+    }
+
+    /// 52 keys (104 entries across the two locales) were dead: settings that
+    /// were never built, a welcome carousel that was replaced, placeholders
+    /// for features that never shipped. Translators had no way to tell them
+    /// from live strings.
+    ///
+    /// Reads the source rather than the runtime map, which is the only way to
+    /// see a key that nothing looks up.
+    #[test]
+    fn no_locale_key_is_unreferenced() {
+        const EN: &str = include_str!("en.rs");
+        // Every .rs in the crate EXCEPT the two locale tables themselves.
+        const SOURCES: &[&str] = &[
+            include_str!("mod.rs"),
+            include_str!("../app.rs"),
+            include_str!("../state.rs"),
+            include_str!("../update/mod.rs"),
+            include_str!("../update/store.rs"),
+            include_str!("../update/github_auth.rs"),
+            include_str!("../update/launcher.rs"),
+            include_str!("../update/preferences.rs"),
+            include_str!("../update/keyboard.rs"),
+            include_str!("../update/onboarding.rs"),
+            include_str!("../ui/app_grid.rs"),
+            include_str!("../ui/detail.rs"),
+            include_str!("../ui/sidebar.rs"),
+            include_str!("../ui/settings.rs"),
+            include_str!("../ui/github_panel.rs"),
+            include_str!("../ui/tutorial.rs"),
+            include_str!("../scan.rs"),
+            include_str!("../sections.rs"),
+            include_str!("../github/http.rs"),
+            include_str!("../github/catalog.rs"),
+            include_str!("../github/releases.rs"),
+            include_str!("../oauth.rs"),
+            include_str!("../download.rs"),
+            include_str!("../persistence.rs"),
+            include_str!("../config.rs"),
+            include_str!("../main.rs"),
+        ];
+
+        let mut dead = Vec::new();
+        for line in EN.lines() {
+            // A KEY is `"snake_case".into(),` - the value on a wrapped insert
+            // is also a quoted string on its own line, so match the shape, not
+            // just "starts with a quote".
+            let Some(rest) = line.trim().strip_prefix('"') else {
+                continue;
+            };
+            let Some(key) = rest.split('"').next() else {
+                continue;
+            };
+            if key.is_empty()
+                || !key
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+                || !rest[key.len()..].starts_with("\".into()")
+            {
+                continue;
+            }
+            let needle = format!("\"{key}\"");
+            if !SOURCES.iter().any(|src| src.contains(&needle)) {
+                dead.push(key.to_string());
+            }
+        }
+        assert!(
+            dead.is_empty(),
+            "locale keys nothing looks up: {dead:?}\n\
+             Either delete them from en.rs and fr.rs, or - if they ARE used - add the \
+             module that uses them to SOURCES above (this list is hand-maintained, and a \
+             missing entry fails LOUDLY here rather than silently letting dead keys back in)."
         );
     }
 

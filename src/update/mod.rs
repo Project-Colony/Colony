@@ -36,17 +36,26 @@ impl App {
         let timeout = level.timeout();
         self.notifications
             .push(Notification::new(id, message, level));
-        // When reduce_motion or animations off, don't auto-dismiss (user must click)
-        if self.reduce_motion || !self.animations {
-            Task::none()
-        } else {
-            Task::perform(
-                async move {
-                    tokio::time::sleep(timeout).await;
-                },
-                |_| Message::TickNotifications,
-            )
+        // The overlay column is anchored to the bottom and grows upward, so an
+        // unbounded stack pushes the OLDEST toasts off the top of the window -
+        // where they can never be clicked, and a toast is only dismissed by
+        // clicking it. Cap it so the overlay can never exceed the window.
+        const MAX_TOASTS: usize = 5;
+        while self.notifications.len() > MAX_TOASTS {
+            self.notifications.remove(0);
         }
+        // Always arm the expiry timer. Gating it on animations meant that with
+        // reduce-motion (or animations off) nothing ever sent TickNotifications,
+        // so the `retain(!is_expired)` branch below was unreachable and toasts
+        // were permanent - the accessibility settings were the ones that
+        // silted the UI up. The animation gate belongs on the FADE, not on the
+        // expiry, and it is already applied there.
+        Task::perform(
+            async move {
+                tokio::time::sleep(timeout).await;
+            },
+            |_| Message::TickNotifications,
+        )
     }
 
     /// Decode any cached app icons that aren't yet in memory into image handles,
@@ -137,6 +146,19 @@ impl App {
         self.detail_md_source = Some(key);
     }
 
+    /// Persist the settings this `App` owns.
+    ///
+    /// Written as an EXHAUSTIVE struct literal with no `..` on purpose: every
+    /// field of `UserPreferences` now corresponds to a field of `App`, so the
+    /// compiler refuses to build if a new preference is added and not saved
+    /// here. That is the guard that was missing - `auto_accent` had a working
+    /// toggle, applied at boot, that was simply never written, and it compiled
+    /// clean. `..Default::default()` or `..load_preferences()` would hide
+    /// exactly that mistake again.
+    ///
+    /// The three keys that used to be hardwired to `None` here
+    /// (`close_behavior`, `update_channel`, `auto_install_updates`) were read
+    /// by nothing and are gone.
     pub fn save_preferences(&self) {
         let prefs = crate::persistence::UserPreferences {
             selected_section: Some(self.selected_section),
@@ -146,14 +168,12 @@ impl App {
             selected_theme: Some(self.selected_theme.clone()),
             selected_variant: Some(self.selected_variant.clone()),
             selected_accent: Some(self.selected_accent.clone()),
+            auto_accent: Some(self.auto_accent),
             // General
             restore_session: Some(self.restore_session),
             default_view: Some(self.default_view.clone()),
-            close_behavior: None,
             language: Some(self.language.clone()),
             auto_check_updates: Some(self.auto_check_updates),
-            update_channel: None,
-            auto_install_updates: None,
             // Appearance
             font_size: Some(self.font_size.clone()),
             animations: Some(self.animations),
@@ -676,6 +696,233 @@ mod tests {
         // ...but a MANUAL check gets explicit feedback.
         let _ = app.update(Message::LauncherUpdateChecked(true, Ok(None)));
         assert_eq!(app.notifications.len(), 1);
+    }
+
+    /// Two of the eight published manifests deliberately set a display name
+    /// that differs from the repo slug, and Colony threw it away everywhere the
+    /// user looks - so a card titled "Lilypad-Vault" carried a button reading
+    /// "Launch Lilypad".
+    /// Typing "firefox" in the default view reported zero results on a machine
+    /// where Firefox was two clicks away: the shipped "All" section filters to
+    /// `origin: colony`, and scanned apps are never AppOrigin::Colony.
+    /// The toggle worked and was applied at boot; it was simply never written,
+    /// so it reset on every restart and nothing caught it because the save
+    /// rebuilt the struct field by field.
+    #[test]
+    fn every_app_preference_survives_a_save_and_load_round_trip() {
+        let mut app = App::new_for_test();
+        app.auto_accent = true;
+        app.high_contrast = true;
+        app.reduce_motion = true;
+        app.selected_accent = "amber".into();
+
+        // Go through the same struct save_preferences builds, without touching
+        // the real config dir (that path is covered by the linux-gated test).
+        let prefs = crate::persistence::UserPreferences {
+            selected_section: Some(app.selected_section),
+            window_width: Some(app.window_size.0),
+            window_height: Some(app.window_size.1),
+            first_launch_done: Some(!app.show_first_launch),
+            selected_theme: Some(app.selected_theme.clone()),
+            selected_variant: Some(app.selected_variant.clone()),
+            selected_accent: Some(app.selected_accent.clone()),
+            auto_accent: Some(app.auto_accent),
+            restore_session: Some(app.restore_session),
+            default_view: Some(app.default_view.clone()),
+            language: Some(app.language.clone()),
+            auto_check_updates: Some(app.auto_check_updates),
+            font_size: Some(app.font_size.clone()),
+            animations: Some(app.animations),
+            high_contrast: Some(app.high_contrast),
+            text_size_a11y: Some(app.text_size_a11y.clone()),
+            reduce_motion: Some(app.reduce_motion),
+            keyboard_nav: Some(app.keyboard_nav),
+            dyslexia_font: Some(app.dyslexia_font),
+            scan_on_startup: Some(app.scan_on_startup),
+        };
+        let json = serde_json::to_string(&prefs).expect("serializes");
+        let back: crate::persistence::UserPreferences =
+            serde_json::from_str(&json).expect("round-trips");
+
+        assert_eq!(back.auto_accent, Some(true), "the field that was lost");
+        assert_eq!(back.selected_accent.as_deref(), Some("amber"));
+        assert_eq!(back.high_contrast, Some(true));
+        assert_eq!(back.reduce_motion, Some(true));
+
+        // Every field carries a value: a None here would mean save_preferences
+        // is dropping something on the floor.
+        let value: serde_json::Value = serde_json::from_str(&json).expect("object");
+        for (key, v) in value.as_object().expect("object") {
+            assert!(!v.is_null(), "preference {key} is written as null");
+        }
+    }
+
+    #[test]
+    fn search_reaches_local_apps_the_section_filter_would_hide() {
+        let mut app = App::new_for_test();
+        app.sections = crate::sections::load_sections();
+        app.selected_section = 0; // "All", origin: colony
+        app.applications = vec![scan::Application {
+            name: "Firefox".into(),
+            exec: "firefox".into(),
+            icon: None,
+            category: scan::AppCategory::Network,
+            origin: scan::AppOrigin::External,
+        }];
+
+        // Browsing the section still hides it - that is what the filter is for.
+        assert!(app.filtered_applications().is_empty());
+
+        // Searching for it must not.
+        app.search_query = "firefox".into();
+        assert_eq!(
+            app.filtered_applications().len(),
+            1,
+            "a search that reports zero results for an installed app is worse than no search"
+        );
+
+        // And a search that matches nothing still matches nothing.
+        app.search_query = "definitely-not-installed".into();
+        assert!(app.filtered_applications().is_empty());
+    }
+
+    /// The .desktop integration exists so store apps land correctly in
+    /// GNOME/KDE/rofi; filing a music player and two games under Utility
+    /// defeats the categorisation the manifest already carries.
+    #[test]
+    fn desktop_categories_follow_the_manifest() {
+        use scan::AppCategory as C;
+        assert_eq!(C::Multimedia.desktop_categories(), "AudioVideo;");
+        assert_eq!(C::Game.desktop_categories(), "Game;");
+        assert_eq!(C::Network.desktop_categories(), "Network;");
+        // Security is not a freedesktop MAIN category, so it must be paired
+        // with one or the entry is invalid.
+        assert_eq!(C::Security.desktop_categories(), "Utility;Security;");
+        for c in [
+            C::Development,
+            C::Graphics,
+            C::Network,
+            C::Office,
+            C::Multimedia,
+            C::System,
+            C::Utility,
+            C::Security,
+            C::Game,
+            C::Other,
+        ] {
+            let v = c.desktop_categories();
+            assert!(v.ends_with(';'), "{v:?} must be ;-terminated per the spec");
+        }
+    }
+
+    #[test]
+    fn the_manifest_display_name_wins_but_never_becomes_the_identity() {
+        let mut declared = repo("Lilypad-Vault", "");
+        declared.manifest.name = "Lilypad".to_string();
+        assert_eq!(declared.display_name(), "Lilypad");
+        assert_eq!(
+            declared.name, "Lilypad-Vault",
+            "the slug stays the identity key for install paths and caches"
+        );
+
+        // A manifest with no usable name falls back to the slug rather than
+        // rendering an empty card title.
+        let mut blank = repo("Grape", "");
+        blank.manifest.name = "   ".to_string();
+        assert_eq!(blank.display_name(), "Grape");
+    }
+
+    #[test]
+    fn the_toast_stack_is_capped_even_with_animations_off() {
+        let mut app = App::new_for_test();
+        // The accessibility settings were the ones that silted the UI up: with
+        // no animation tick, nothing ever expired the toasts, and the overlay
+        // grows upward from the bottom so the oldest scrolled out of clicking
+        // range and could never be dismissed at all.
+        app.animations = false;
+        app.reduce_motion = true;
+        for i in 0..12 {
+            let _ = app.push_notification(format!("toast {i}"), NotificationLevel::Info);
+        }
+        assert!(
+            app.notifications.len() <= 5,
+            "the overlay must never outgrow the window, got {}",
+            app.notifications.len()
+        );
+        assert_eq!(
+            app.notifications.last().map(|n| n.message.as_str()),
+            Some("toast 11"),
+            "the newest toast is the one that must survive the cap"
+        );
+    }
+
+    #[test]
+    fn a_repo_that_left_the_catalog_skips_forward_instead_of_stranding_the_queue() {
+        let mut app = App::new_for_test();
+        // "Gone" was queued by Update All, then a catalog refresh dropped it.
+        app.colony_repo_list = vec![repo("Still", "")];
+        app.update_queue = vec!["Next".to_string()];
+
+        let _ = app.update(Message::DownloadRelease(
+            "Gone".to_string(),
+            github::current_platform_key().to_string(),
+        ));
+
+        assert!(
+            app.update_queue.is_empty(),
+            "the skipped repo must hand the queue on, not park it for the next unrelated install"
+        );
+        assert_eq!(
+            app.notifications.len(),
+            1,
+            "the user must be told which app was skipped"
+        );
+    }
+
+    #[test]
+    fn app_check_failure_never_clears_a_badge_or_claims_up_to_date() {
+        let mut app = App::new_for_test();
+        app.is_checking_updates = true;
+        app.available_updates
+            .insert("Grape".to_string(), "v2.0.0".to_string());
+        app.available_updates
+            .insert("Spotter".to_string(), "v3.0.0".to_string());
+
+        // Grape's check could not run; Spotter's ran and came back current.
+        let _ = app.update(Message::UpdatesChecked(vec![
+            ("Grape".to_string(), Err("rate limited".to_string())),
+            ("Spotter".to_string(), Ok(None)),
+        ]));
+
+        assert!(!app.is_checking_updates);
+        assert_eq!(
+            app.available_updates.get("Grape").map(String::as_str),
+            Some("v2.0.0"),
+            "a check that did not run must leave the existing badge alone"
+        );
+        assert!(
+            !app.available_updates.contains_key("Spotter"),
+            "a check that DID run and found nothing must clear its badge"
+        );
+        assert!(
+            !app.status_message.contains("applications found"),
+            "the all-clear line must not be written when a check failed, got: {}",
+            app.status_message
+        );
+        assert_eq!(
+            app.notifications.len(),
+            1,
+            "the user must be told the check was incomplete"
+        );
+
+        // Every check succeeding and finding nothing IS the all-clear.
+        app.notifications.clear();
+        let _ = app.update(Message::UpdatesChecked(vec![(
+            "Grape".to_string(),
+            Ok(None),
+        )]));
+        assert!(app.available_updates.is_empty());
+        assert!(app.notifications.is_empty());
     }
 
     #[test]

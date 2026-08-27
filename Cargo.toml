@@ -3,8 +3,12 @@ name = "colony"
 version = "0.9.2"
 edition = "2021"
 license = "GPL-3.0-or-later"
-# Enforced floor for the README's "Rust 1.80+" claim (std::sync::LazyLock).
-rust-version = "1.80"
+# The real floor, and it is enforced by CI (see .github/workflows/ci.yml).
+# 1.80 was declared for years and could never have worked: 70 transitive
+# dependencies require more, including iced, zip, image and wgpu at 1.88, so
+# cargo refuses to build at all on it. Nothing checked, because CI only ever
+# ran on stable.
+rust-version = "1.88"
 
 [dependencies]
 anyhow = "1.0.100"
@@ -19,7 +23,18 @@ futures = "0.3"
 open = "5"
 base64 = "0.23"
 dirs = "6"
-keyring = { version = "3", features = ["sync-secret-service", "vendored"] }
+# apple-native / windows-native are REQUIRED, not optional: keyring 3 has no
+# default feature, and without them its macOS and Windows backends resolve to
+# the in-memory `mock`, whose set_password returns Ok while storing nothing.
+# Colony reads that Ok as success and deletes its plaintext fallback on purpose,
+# so the token was written nowhere and every restart logged the user out. Both
+# are target-gated in keyring's manifest, so they add nothing to the Linux build.
+keyring = { version = "3", features = [
+    "apple-native",
+    "windows-native",
+    "sync-secret-service",
+    "vendored",
+] }
 semver = "1"
 sha2 = "0.10"
 # Pure-Rust ed25519 verification for signed launcher self-updates (no openssl).

@@ -33,8 +33,64 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
 
+      # --all-targets, or clippy never sees the 140 tests - the code most
+      # likely to accumulate lint debt, since nobody reads it in review.
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Test
         run: cargo test --verbose
+
+  # The declared MSRV was 1.80 for years and could never have built: 70
+  # transitive dependencies require more. Nothing checked it, because CI only
+  # ever ran on stable. This leg is what stops it drifting again.
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read the declared MSRV
+        id: msrv
+        run: |
+          version=$(grep '^rust-version' Cargo.toml | tr -d ' "' | cut -d= -f2)
+          [ -n "$version" ] || { echo "::error::could not read rust-version from Cargo.toml"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: msrv-${{ steps.msrv.outputs.version }}
+
+      - name: Build on the declared floor
+        run: cargo check --locked --all-targets
+
+  # Colony downloads and executes binaries, so a known-vulnerable dependency is
+  # not an abstract concern. This job GATES: red here means something new and
+  # actionable.
+  #
+  # It gates because the alternative does not work. Left to report without
+  # gating, it is red on every single PR forever - and a check that is always
+  # red is a check nobody reads. So the advisories that genuinely cannot be
+  # acted on from this repository are ignored BY ID, with the reason written
+  # down, and everything else fails the build.
+  #
+  # RUSTSEC-2026-0194 / RUSTSEC-2026-0195 (quick-xml): held at 0.38 by
+  # wayland-scanner, via winit and iced 0.14 - a semver-incompatible bump we
+  # cannot make from here. Both advisories concern parsing untrusted XML;
+  # wayland-scanner is a build-time proc-macro that parses the system's own
+  # Wayland protocol descriptions, so neither is reachable at runtime.
+  # Remove these two the day iced ships a winit new enough to carry
+  # quick-xml >= 0.41.
+  audit:
+    name: Advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ignore: RUSTSEC-2026-0194,RUSTSEC-2026-0195

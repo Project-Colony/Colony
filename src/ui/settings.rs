@@ -696,13 +696,15 @@ impl App {
                 let btn = button(text(label).size(self.sz(13)).font(self.app_font()))
                     .padding([6, 14])
                     .style(|_theme, status| {
-                        let bg = match status {
-                            button::Status::Hovered => Palette::BG_CARD_HOVER(),
-                            _ => iced::Color::TRANSPARENT,
-                        };
+                        let (bg, text_color) = crate::ui::theme::button_colors(
+                            status,
+                            iced::Color::TRANSPARENT,
+                            Palette::BG_CARD_HOVER(),
+                            Palette::TEXT_DIM(),
+                        );
                         button::Style {
                             background: Some(bg.into()),
-                            text_color: Palette::TEXT_DIM(),
+                            text_color,
                             border: iced::Border::default().rounded(6),
                             ..Default::default()
                         }

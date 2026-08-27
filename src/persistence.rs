@@ -18,6 +18,43 @@ pub fn colony_data_dir() -> Result<PathBuf> {
     Ok(base)
 }
 
+/// Write `bytes` to `path` atomically: a temp sibling, then a rename.
+///
+/// Every state writer here used a bare `std::fs::write`, so a crash, an OOM
+/// kill or power loss mid-write left exactly the truncated JSON that the
+/// loaders then treated as "no file" - which the next save overwrote with
+/// defaults, destroying any chance of recovery. The install path already knew
+/// better: it stages and renames precisely so an interrupted write cannot
+/// truncate the target.
+fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Parse JSON from `path`, telling "absent" apart from "corrupt".
+///
+/// On a parse failure the file is moved aside to `<name>.corrupt` before
+/// defaults are returned, so the next save cannot clobber it and the user has
+/// something to attach to a bug report.
+fn load_json_or_quarantine<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Option<T> {
+    let content = std::fs::read_to_string(path).ok()?;
+    match serde_json::from_str(&content) {
+        Ok(value) => Some(value),
+        Err(e) => {
+            let quarantine = path.with_extension("corrupt");
+            tracing::warn!(
+                "{} is not valid JSON ({e}); moving it to {} and starting from defaults",
+                path.display(),
+                quarantine.display()
+            );
+            let _ = std::fs::rename(path, &quarantine);
+            None
+        }
+    }
+}
+
 /// Join a repo name onto `base` as a single directory component.
 ///
 /// `repo_name` is remote data (the `name` field of the GitHub API listing, also
@@ -183,6 +220,34 @@ pub fn load_installed_signed(repo_name: &str) -> bool {
     })
 }
 
+/// Marker recording that this app was installed with a verified signed METADATA
+/// sidecar, not just a bare signature.
+const META_FILE: &str = ".colony_meta";
+
+/// Record that the installed build carried a verified `.meta` sidecar.
+///
+/// Same "only ever raises the bar" contract as [`save_installed_signed`]: a
+/// bare `.sig` proves the bytes came from the org key, but not WHICH artefact
+/// or version they are, so a compromised maintainer can re-upload an old,
+/// genuinely signed, known-vulnerable build under a new tag. Once an app has
+/// been installed with a sidecar, later updates must keep providing one - so
+/// the replay cannot be performed by simply dropping the sidecar.
+///
+/// Never cleared while the app stays installed; uninstalling is the deliberate
+/// way out.
+pub fn save_installed_metadata(repo_name: &str) -> Result<()> {
+    let path = colony_app_dir(repo_name)?.join(META_FILE);
+    std::fs::write(&path, "1")?;
+    Ok(())
+}
+
+/// True when a previous install of this repo carried a verified sidecar.
+pub fn load_installed_metadata(repo_name: &str) -> bool {
+    colony_app_dir(repo_name)
+        .map(|d| d.join(META_FILE).exists())
+        .unwrap_or(false)
+}
+
 /// Save the resolved asset name for a repo (when using filePattern).
 pub fn save_installed_asset(repo_name: &str, filename: &str) -> Result<()> {
     let path = colony_app_dir(repo_name)?.join(ASSET_FILE);
@@ -207,8 +272,7 @@ fn repos_cache_path() -> Result<PathBuf> {
 /// Save Colony repos to local cache for offline use.
 pub fn save_repos_cache(repos: &[ColonyRepo]) -> Result<()> {
     let path = repos_cache_path()?;
-    let json = serde_json::to_string(repos)?;
-    std::fs::write(&path, json)?;
+    write_atomic(&path, serde_json::to_string(repos)?.as_bytes())?;
     tracing::debug!("Saved {} repos to cache", repos.len());
     Ok(())
 }
@@ -222,6 +286,31 @@ pub fn load_repos_cache() -> Option<Vec<ColonyRepo>> {
     Some(repos)
 }
 
+fn http_cache_path() -> Result<PathBuf> {
+    let cache_dir = colony_data_dir()?.join("cache");
+    std::fs::create_dir_all(&cache_dir)?;
+    Ok(cache_dir.join("http_etags.json"))
+}
+
+/// Load the persisted conditional-request cache (see `github::http`).
+///
+/// Generic so the cache's shape stays private to the HTTP layer - this module
+/// only knows where the file goes. A corrupt or older-shaped file simply
+/// deserialises to `None` and the cache starts empty, which costs quota but is
+/// never wrong.
+pub fn load_http_cache_json<T: serde::de::DeserializeOwned>() -> Option<T> {
+    let path = http_cache_path().ok()?;
+    let content = std::fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+/// Persist the conditional-request cache. The caller is responsible for
+/// bounding what it hands over.
+pub fn save_http_cache_json<T: serde::Serialize>(value: &T) -> Result<()> {
+    let path = http_cache_path()?;
+    write_atomic(&path, serde_json::to_string(value)?.as_bytes())
+}
+
 fn favorites_path() -> Result<PathBuf> {
     let dir = colony_data_dir()?.join("preferences");
     std::fs::create_dir_all(&dir)?;
@@ -232,17 +321,14 @@ fn favorites_path() -> Result<PathBuf> {
 pub fn load_favorites() -> Vec<String> {
     favorites_path()
         .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|c| serde_json::from_str(&c).ok())
+        .and_then(|p| load_json_or_quarantine(&p))
         .unwrap_or_default()
 }
 
 /// Save the list of favorite application names.
 pub fn save_favorites(favorites: &[String]) -> Result<()> {
     let path = favorites_path()?;
-    let json = serde_json::to_string(favorites)?;
-    std::fs::write(&path, json)?;
-    Ok(())
+    write_atomic(&path, serde_json::to_string(favorites)?.as_bytes())
 }
 
 /// User preferences saved between sessions.
@@ -255,14 +341,15 @@ pub struct UserPreferences {
     pub selected_theme: Option<String>,
     pub selected_variant: Option<String>,
     pub selected_accent: Option<String>,
+    /// Whether the accent follows the theme. The toggle existed and was
+    /// applied at boot, but was never written, so it silently reset every
+    /// restart.
+    pub auto_accent: Option<bool>,
     // General
     pub restore_session: Option<bool>,
     pub default_view: Option<String>,
-    pub close_behavior: Option<String>,
     pub language: Option<String>,
     pub auto_check_updates: Option<bool>,
-    pub update_channel: Option<String>,
-    pub auto_install_updates: Option<bool>,
     // Appearance
     pub font_size: Option<String>,
     pub animations: Option<bool>,
@@ -286,17 +373,14 @@ fn preferences_path() -> Result<PathBuf> {
 pub fn load_preferences() -> UserPreferences {
     preferences_path()
         .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|c| serde_json::from_str(&c).ok())
+        .and_then(|p| load_json_or_quarantine(&p))
         .unwrap_or_default()
 }
 
 /// Save user preferences.
 pub fn save_preferences(prefs: &UserPreferences) -> Result<()> {
     let path = preferences_path()?;
-    let json = serde_json::to_string_pretty(prefs)?;
-    std::fs::write(&path, json)?;
-    Ok(())
+    write_atomic(&path, serde_json::to_string_pretty(prefs)?.as_bytes())
 }
 
 fn scan_cache_path() -> Result<PathBuf> {
@@ -328,7 +412,12 @@ pub struct CachedApp {
 /// (the app is already represented by its store card). Linux only; no-op
 /// elsewhere.
 #[cfg(target_os = "linux")]
-pub fn write_desktop_entry(repo_name: &str, exec_path: &std::path::Path) -> Result<()> {
+pub fn write_desktop_entry(
+    repo_name: &str,
+    display_name: &str,
+    category: crate::scan::AppCategory,
+    exec_path: &std::path::Path,
+) -> Result<()> {
     let dir = dirs::data_dir()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine data directory"))?
         .join("applications");
@@ -340,7 +429,13 @@ pub fn write_desktop_entry(repo_name: &str, exec_path: &std::path::Path) -> Resu
     // the path closes the Exec quoting to append arguments. The icon path contains
     // repo_name too, so it goes through the same check rather than relying on
     // being emitted last.
-    let name = desktop_value(repo_name)?;
+    // The FILENAME keys off the slug (identity, and what remove_desktop_entry
+    // looks up); the Name= the user reads is the manifest's display name.
+    let name = desktop_value(if display_name.trim().is_empty() {
+        repo_name
+    } else {
+        display_name
+    })?;
     let exec = desktop_value(&exec_path.to_string_lossy())?;
     let icon_line = match repo_icon_dir(repo_name)
         .ok()
@@ -350,8 +445,9 @@ pub fn write_desktop_entry(repo_name: &str, exec_path: &std::path::Path) -> Resu
         Some(p) => format!("Icon={}\n", desktop_value(&p.to_string_lossy())?),
         None => String::new(),
     };
+    let categories = category.desktop_categories();
     let entry = format!(
-        "[Desktop Entry]\nType=Application\nName={name}\nExec=\"{exec}\"\nTerminal=false\nCategories=Utility;\nComment=Installed by Colony\nX-Colony-Managed=true\n{icon_line}"
+        "[Desktop Entry]\nType=Application\nName={name}\nExec=\"{exec}\"\nTerminal=false\nCategories={categories}\nComment=Installed by Colony\nX-Colony-Managed=true\n{icon_line}"
     );
     std::fs::write(dir.join(desktop_entry_filename(repo_name)?), entry)?;
     Ok(())
@@ -375,13 +471,25 @@ fn desktop_value(raw: &str) -> Result<String> {
         if matches!(c, '\\' | '"' | '`' | '$') {
             out.push('\\');
         }
+        // The Desktop Entry spec writes a literal percent as `%%`. Unescaped,
+        // the launcher expands the FIELD CODE instead: a manifest declaring
+        // `binary: "app%f"` yields Exec="/…/app%f", glib substitutes an empty
+        // file list, and the entry silently launches the wrong path.
+        if c == '%' {
+            out.push('%');
+        }
         out.push(c);
     }
     Ok(out)
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn write_desktop_entry(_repo_name: &str, _exec_path: &std::path::Path) -> Result<()> {
+pub fn write_desktop_entry(
+    _repo_name: &str,
+    _display_name: &str,
+    _category: crate::scan::AppCategory,
+    _exec_path: &std::path::Path,
+) -> Result<()> {
     Ok(())
 }
 
@@ -431,6 +539,111 @@ pub fn clear_store_caches() -> usize {
     removed
 }
 
+/// Remove an installed app's directory, coping with a binary that is currently
+/// running.
+///
+/// `remove_dir_all` cannot delete a live executable on Windows, so uninstalling
+/// an app the user had left open failed outright and left it half-removed. A
+/// running image can always be RENAMED though, so fall back to renaming each
+/// file aside: the directory then empties and [`prune_staging`] collects the
+/// leftovers at the next start, once the process holding them has exited.
+pub fn remove_app_dir(app_dir: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::remove_dir_all(app_dir) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(first) => {
+            let Ok(entries) = std::fs::read_dir(app_dir) else {
+                return Err(first);
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && std::fs::remove_file(&path).is_err() {
+                    let _ = std::fs::rename(&path, path.with_extension("old"));
+                }
+            }
+            // Second pass: everything deletable is gone, and anything renamed
+            // aside is now a `.old` the boot sweep will take.
+            std::fs::remove_dir_all(app_dir).or(Err(first))
+        }
+    }
+}
+
+/// Delete staging leftovers from interrupted transfers, and report the bytes
+/// reclaimed.
+///
+/// The only sweep that existed ran inside Cancel, so a crash, an OOM, a SIGKILL
+/// or simply closing the window mid-download left the whole partial asset in
+/// `apps/<repo>/` with no UI that showed or removed it. A `filePattern` app
+/// whose asset name carries the version leaves one per version, so it
+/// accumulates. Run once at boot: any staging file present then is by
+/// definition orphaned, because nothing is in flight yet.
+///
+/// The `update-staging` directory gets the same treatment, plus the `.old`
+/// backup a completed self-update leaves next to the executable - two full
+/// copies of the launcher could otherwise sit on disk indefinitely.
+pub fn prune_staging() -> u64 {
+    fn sweep(dir: &std::path::Path, reclaimed: &mut u64) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !(name.ends_with(".part")
+                || name.ends_with(".part.id")
+                || name.ends_with(".new")
+                || name.ends_with(".old"))
+            {
+                continue;
+            }
+            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            if std::fs::remove_file(&path).is_ok() {
+                tracing::info!("pruned staging leftover {}", path.display());
+                *reclaimed += size;
+            }
+        }
+    }
+
+    let mut reclaimed = 0;
+    if let Ok(apps) = colony_apps_dir() {
+        if let Ok(entries) = std::fs::read_dir(&apps) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() {
+                    sweep(&entry.path(), &mut reclaimed);
+                    // An uninstall that could not delete a running binary
+                    // renames it aside and leaves the shell of the directory;
+                    // once the sweep above has taken the `.old` file, finish
+                    // the job.
+                    if std::fs::read_dir(entry.path())
+                        .map(|mut d| d.next().is_none())
+                        .unwrap_or(false)
+                    {
+                        let _ = std::fs::remove_dir(entry.path());
+                    }
+                }
+            }
+        }
+    }
+    if let Ok(base) = colony_data_dir() {
+        sweep(&base.join("update-staging"), &mut reclaimed);
+    }
+    // Only our OWN backup, by exact path - never a directory sweep here. The
+    // executable may well live in /usr/bin, where an extension-based sweep
+    // would happily delete somebody else's `.old` file.
+    if let Ok(exe) = std::env::current_exe() {
+        for stale in [exe.with_extension("old"), exe.with_extension("new")] {
+            let size = std::fs::metadata(&stale).map(|m| m.len()).unwrap_or(0);
+            if stale.exists() && std::fs::remove_file(&stale).is_ok() {
+                tracing::info!("pruned launcher leftover {}", stale.display());
+                reclaimed += size;
+            }
+        }
+    }
+    reclaimed
+}
+
 /// Remove doc/icon caches for repos that are NO LONGER in the catalog, so a
 /// deleted or renamed repo does not leave its caches behind forever. Runs
 /// after each successful catalog fetch (never on a cache fallback, where a
@@ -478,8 +691,7 @@ pub fn save_scan_cache(apps: &[CachedApp]) -> Result<()> {
         timestamp,
     };
     let path = scan_cache_path()?;
-    let json = serde_json::to_string(&entry)?;
-    std::fs::write(&path, json)?;
+    write_atomic(&path, serde_json::to_string(&entry)?.as_bytes())?;
     Ok(())
 }
 
@@ -517,6 +729,8 @@ mod tests {
         assert!(desktop_value("app\nExec=sh").is_err());
         assert!(desktop_value("app\rExec=sh").is_err());
         assert!(desktop_value("app\0").is_err());
+        // A literal percent must be doubled, or the field code is expanded.
+        assert_eq!(desktop_value("app%f").unwrap(), "app%%f");
     }
 
     #[test]

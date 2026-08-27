@@ -18,6 +18,96 @@ pub use types::*;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A manifest can be structurally perfect and still leave the app listed
+    /// with no Download button, which is what actually happened to Eidos.
+    /// `validation_errors` is the shape check; the resolution check lives in
+    /// the CLI, where the release's real asset names are available.
+    #[test]
+    fn manifest_validation_catches_the_mistakes_that_make_an_app_uninstallable() {
+        fn manifest(json: &str) -> ColonyManifest {
+            serde_json::from_str(json).expect("fixture parses")
+        }
+
+        // The shape the org actually publishes: clean.
+        assert!(manifest(r#"{"name":"Grape","category":"Multimedia"}"#)
+            .validation_errors()
+            .is_empty());
+
+        // Declaring a platform with no entry for it is how an app gets listed
+        // but not installed.
+        let errs = manifest(
+            r#"{"name":"X","category":"Games","platforms":["linux","windows"],
+                "releaseFiles":{"linux":{"tag":"latest","file":"x-linux"}}}"#,
+        )
+        .validation_errors();
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert!(errs[0].contains("windows"), "{errs:?}");
+
+        // Neither `file` nor `filePattern`: nothing can be downloaded.
+        let errs = manifest(
+            r#"{"name":"X","category":"Games","releaseFiles":{"linux":{"tag":"latest"}}}"#,
+        )
+        .validation_errors();
+        assert!(errs.iter().any(|e| e.contains("neither")), "{errs:?}");
+
+        // Both is ambiguous, and `file` silently wins.
+        let errs = manifest(
+            r#"{"name":"X","category":"Games","releaseFiles":{"linux":
+                {"tag":"latest","file":"a","filePattern":"b"}}}"#,
+        )
+        .validation_errors();
+        assert!(
+            errs.iter().any(|e| e.contains("mutually exclusive")),
+            "{errs:?}"
+        );
+
+        // A pinned digest against a moving tag breaks at the next release.
+        let errs = manifest(
+            r#"{"name":"X","category":"Games","releaseFiles":{"linux":
+                {"tag":"latest","file":"a","sha256":"aa"}}}"#,
+        )
+        .validation_errors();
+        assert!(errs.iter().any(|e| e.contains("64-character")), "{errs:?}");
+        assert!(errs.iter().any(|e| e.contains("latest")), "{errs:?}");
+
+        // An unknown platform key is a platform no client will ever select.
+        let errs = manifest(
+            r#"{"name":"X","category":"Games","releaseFiles":{"freebsd":
+                {"tag":"latest","file":"a"}}}"#,
+        )
+        .validation_errors();
+        assert!(errs.iter().any(|e| e.contains("freebsd")), "{errs:?}");
+
+        // Colony ships a PNG decoder and nothing else.
+        let errs = manifest(r#"{"name":"X","category":"Games","icon":"assets/logo.svg"}"#)
+            .validation_errors();
+        assert!(errs.iter().any(|e| e.contains("PNG")), "{errs:?}");
+        let errs = manifest(r#"{"name":"X","category":"Games","icon":"../../etc/passwd.png"}"#)
+            .validation_errors();
+        assert!(errs.iter().any(|e| e.contains("relative")), "{errs:?}");
+    }
+
+    /// The live case the validator exists for: Eidos publishes
+    /// `eidos-1.12.0-x86_64-linux.tar.gz`, which matches no convention, so
+    /// auto-detection yields nothing and the card has no Download button.
+    #[test]
+    fn eidos_shaped_assets_resolve_to_no_platform() {
+        let assets = vec![
+            "eidos-1.12.0-x86_64-linux.tar.gz".to_string(),
+            "eidos-1.12.0-x86_64-linux.tar.gz.sha256".to_string(),
+        ];
+        assert!(
+            detect_platforms_from_assets("Eidos", &assets).is_empty(),
+            "these asset names are exactly why Eidos is listed but uninstallable"
+        );
+        // The convention it would need instead.
+        assert_eq!(
+            detect_platforms_from_assets("Eidos", &["eidos-linux".to_string()]),
+            vec!["linux".to_string()]
+        );
+    }
+
     use base64::Engine as _;
 
     #[test]

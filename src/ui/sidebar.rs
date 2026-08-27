@@ -132,8 +132,17 @@ impl App {
         let update_badge: Element<'_, Message> = if let Some(ref update_info) =
             self.launcher_update_available
         {
-            let (label, msg): (String, Message) =
-                if let Some(ref path) = self.launcher_update_staged {
+            // A package-managed install cannot apply the in-app update: the exe
+            // directory is not writable. Settings > About already replaces the
+            // button with guidance here; the sidebar used to keep offering a
+            // press that only ever produced a warning toast, with no dismiss,
+            // for the whole session.
+            if self.launcher_system_managed {
+                return_system_managed_badge(self, &update_info.0)
+            } else {
+                let (label, msg): (String, Message) = if let Some(ref path) =
+                    self.launcher_update_staged
+                {
                     (
                         crate::i18n::t("launcher_restart_to_update"),
                         Message::ApplyLauncherUpdate(path.clone()),
@@ -146,29 +155,32 @@ impl App {
                     )
                 };
 
-            let is_downloading = self.is_downloading;
-            button(
-                text(label)
-                    .size(self.sz(11))
-                    .font(self.app_font())
-                    .color(Palette::ACCENT()),
-            )
-            .on_press_maybe(if is_downloading { None } else { Some(msg) })
-            .padding([6, 12])
-            .width(Fill)
-            .style(|_theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => Palette::BG_CARD_HOVER(),
-                    _ => Palette::BG_SELECTED(),
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: Palette::ACCENT(),
-                    border: iced::Border::default().rounded(6),
-                    ..Default::default()
-                }
-            })
-            .into()
+                let is_downloading = self.is_downloading;
+                button(
+                    text(label)
+                        .size(self.sz(11))
+                        .font(self.app_font())
+                        .color(Palette::ACCENT()),
+                )
+                .on_press_maybe(if is_downloading { None } else { Some(msg) })
+                .padding([6, 12])
+                .width(Fill)
+                .style(|_theme, status| {
+                    let (bg, text_color) = crate::ui::theme::button_colors(
+                        status,
+                        Palette::BG_SELECTED(),
+                        Palette::BG_CARD_HOVER(),
+                        Palette::ACCENT(),
+                    );
+                    button::Style {
+                        background: Some(bg.into()),
+                        text_color,
+                        border: iced::Border::default().rounded(6),
+                        ..Default::default()
+                    }
+                })
+                .into()
+            }
         } else {
             container(text("")).height(0).into()
         };
@@ -276,4 +288,21 @@ impl App {
 
         btn.into()
     }
+}
+
+/// The sidebar's update badge for an install Colony cannot update itself:
+/// informational text, not a button that is guaranteed to fail.
+fn return_system_managed_badge<'a>(app: &App, version: &str) -> Element<'a, Message> {
+    container(
+        text(crate::i18n::t_fmt(
+            "launcher_update_system_managed",
+            &[("version", version)],
+        ))
+        .size(app.sz(11))
+        .font(app.app_font())
+        .color(Palette::TEXT_DIMMER()),
+    )
+    .padding([6, 12])
+    .width(Fill)
+    .into()
 }

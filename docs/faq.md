@@ -56,7 +56,7 @@ Open the app in Colony → detail view → **Uninstall**. Or delete the app's di
 
 ### How do I uninstall Colony itself?
 
-AUR: `sudo pacman -R colony-bin` (or `colony-git`). Manual install: delete the binary plus `~/.config/colony/`, `~/.cache/colony/`, and `~/.local/share/Colony/`.
+AUR: `sudo pacman -R colony-bin` (or `colony-git`). Manual install: delete the binary plus `~/.config/Colony/Colony/`, `~/.cache/colony/`, and `~/.local/share/Colony/`.
 
 ---
 
@@ -72,7 +72,7 @@ You get a 5000 req/h limit and Colony can read private repos you have access to 
 
 ### Where is the token stored?
 
-In your OS keychain (GNOME keyring, KWallet, macOS Keychain, Windows Credential Manager) via the [keyring](https://crates.io/crates/keyring) crate. If no keychain is available (headless Linux, CI) it falls back to `~/.config/colony/github_token.json` with `chmod 600`.
+In your OS keychain (GNOME keyring, KWallet, macOS Keychain, Windows Credential Manager) via the [keyring](https://crates.io/crates/keyring) crate. If no keychain is available (headless Linux, CI) it falls back to `~/.config/Colony/Colony/auth/github_token.json` with `chmod 600`.
 
 ### How do I disconnect?
 
@@ -87,13 +87,13 @@ Settings → GitHub → **Disconnect**. The token is deleted locally. The app le
 Most common causes:
 
 1. No `colony.json` at the root of the repo.
-2. `colony.json` has an invalid `category` (valid: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Games`, `Other`).
+2. `colony.json` has an invalid `category` (valid: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Security`, `Games`, `Other`).
 3. No GitHub release published (drafts don't count).
 4. Release assets don't match the `<repo>-<platform>` convention (see [colony-spec.md](colony-spec.md)).
 5. The repo is not under the `Project-Colony` org (Colony only scans that org).
 6. GitHub rate limit hit — connect your account.
 
-Cache file to inspect: `~/.cache/colony/repos_cache.json`.
+Cache file to inspect: `~/.config/Colony/Colony/cache/repos_cache.json`.
 
 ### Does Colony support private repos?
 
@@ -121,18 +121,20 @@ If your app is installed but not in any of these (portable binary without `.desk
 
 | What                       | Path                                                    |
 |----------------------------|---------------------------------------------------------|
-| Preferences                | `~/.config/colony/preferences.json`                     |
-| Favorites                  | `~/.config/colony/favorites.json`                       |
-| GitHub token (fallback)    | `~/.config/colony/github_token.json` (`chmod 600`)      |
+| Preferences                | `~/.config/Colony/Colony/preferences/preferences.json`      |
+| Favorites                  | `~/.config/Colony/Colony/preferences/favorites.json`        |
+| GitHub token (fallback)    | `~/.config/Colony/Colony/auth/github_token.json` (`chmod 600`) |
 | Installed app binaries     | `~/.local/share/Colony/apps/<repo>/`                    |
 | Installed version marker   | `~/.local/share/Colony/apps/<repo>/.colony_version`     |
 | Resolved asset filename    | `~/.local/share/Colony/apps/<repo>/.colony_asset`       |
-| Repo list cache            | `~/.cache/colony/repos_cache.json`                      |
-| Manifest docs cache        | `~/.cache/colony/docs/<repo>/`                          |
-| System app scan cache      | `~/.cache/colony/scan_cache.json`                       |
+| Repo list cache            | `~/.config/Colony/Colony/cache/repos_cache.json`            |
+| Manifest docs cache        | `~/.config/Colony/Colony/repo-docs/<repo>/`                 |
+| System app scan cache      | `~/.config/Colony/Colony/cache/scan_cache.json`             |
 | Self-update staging        | `~/.local/share/Colony/update-staging/`                 |
 
-Purging the `~/.cache/colony/` directory forces a full re-scan and re-fetch.
+Purging the `~/.config/Colony/Colony/cache/` directory forces a full re-scan and re-fetch, and Settings > Storage > "Clear caches" does the same from inside the app.
+
+Diagnostics are written to `~/.cache/colony/colony.log`, truncated at every start. Set `RUST_LOG=debug` for more detail.
 
 ### Can I edit `preferences.json` by hand?
 
@@ -140,13 +142,32 @@ Yes. Colony re-reads it on launch. The file is JSON with field names matching wh
 
 ### Can I override the scan directories?
 
-Yes. Edit `~/.config/colony/preferences.json` and add custom paths under the platform-appropriate scan settings. The Settings UI also exposes this for Linux.
+Yes. Edit `~/.config/Colony/Colony/preferences/preferences.json` and add custom paths under the platform-appropriate scan settings. The Settings UI also exposes this for Linux.
 
 ### I changed a theme and don't see it — why?
 
-Themes apply immediately, no restart. If a palette looks off, verify Settings → Theme has the expected family + palette selected. All 50+ palettes are compiled into the binary, so if it's missing you're on an old version — update.
+Themes apply immediately, no restart. If a palette looks off, verify Settings → Theme has the expected family + palette selected. All 57 palettes are compiled into the binary, so if it's missing you're on an old version — update.
 
 ---
+
+
+## Can I rename or reorder the sidebar sections?
+
+Yes. Colony looks for a `categories.json` override before falling back to the
+copy compiled into the binary, in this order:
+
+1. `~/.config/Colony/Colony/categories.json`
+2. next to the `colony` binary
+3. `./config/categories.json`
+
+Copy the shipped [`config/categories.json`](https://github.com/Project-Colony/Colony/blob/main/config/categories.json)
+to the first path and edit it. Each entry takes `name`, `icon` (a Nerd Font
+glyph), `origin` (`colony`, `windows`, `external`), `category`, and an optional
+`platforms` list that hides the section on other operating systems. A Favorites
+section is injected automatically if you leave it out.
+
+The same search order applies to `colony.toml`, which controls the directories
+scanned for locally installed apps.
 
 ## Troubleshooting
 
@@ -160,13 +181,13 @@ colony 2>&1 | tee colony.log
 
 Common causes:
 
-- Missing Linux runtime libs (GTK, dbus, xdo) — on AUR the deps are pulled automatically. For manual downloads, install them via your package manager.
+- A missing D-Bus session (the keyring backend needs one; a bare TTY or a minimal container has none) — on AUR the deps are pulled automatically. For manual downloads, install them via your package manager.
 - Corrupted cache — `rm -rf ~/.cache/colony` and relaunch.
 - Corrupted preferences — `mv ~/.config/colony/preferences.json ~/.config/colony/preferences.json.bak` and relaunch to regenerate defaults.
 
 ### Download stuck / very slow
 
-Colony uses a 300s timeout per download. If you're on slow network this may not be enough; interrupt with Esc and retry.
+Colony uses a 300s timeout per download. If you're on slow network this may not be enough; interrupt with the Cancel button on the download toast.
 
 ### Self-update fails
 

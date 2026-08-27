@@ -24,12 +24,20 @@ Colony is an application launcher written in Rust with Iced 0.14 (Elm architectu
 
 ```
 src/
-├── main.rs          — Bootstrap, App state, boot(), update(), view()
+├── main.rs          — Crate root: modules, CLI flags, logging, entry point
 ├── state.rs         — App struct (global state), GitHubState, UI fields
 ├── message.rs       — Message enum (all events)
-├── update.rs        — Handlers for each Message variant
-├── github.rs        — GitHub API, ETag cache, manifests, release
-│                      asset resolution, platform auto-detection
+├── app.rs           — impl App: boot(), view(), subscription(), theme()
+├── update/          — Message dispatch table (mod.rs) + handlers
+│   ├── store.rs     — install / update / uninstall / notes / favorites
+│   ├── github_auth.rs — device flow, catalog refresh
+│   ├── launcher.rs  — self-update state machine
+│   ├── preferences.rs, keyboard.rs, onboarding.rs
+├── github/          — split by layer, mod.rs re-exports everything
+│   ├── http.rs      — client, conditional-request cache, typed statuses
+│   ├── types.rs     — colony.json / API wire shapes
+│   ├── catalog.rs   — store listing
+│   └── releases.rs  — tags, assets, platform auto-detection
 ├── download.rs      — Asset/archive downloads, extraction, app-signature
 │                      verification, self-update
 ├── signing.rs       — ed25519 verification (launcher AND app releases)
@@ -40,10 +48,10 @@ src/
 ├── oauth.rs         — Device Flow OAuth (login, token, keychain)
 ├── scan.rs          — System application scanning (Linux/Windows/macOS)
 ├── sections.rs      — Categories, origin/category filters, JSON config
-├── i18n.rs          — FR/EN localization with variable substitution
+├── i18n/            — fr.rs, en.rs, and the Locale lookup (mod.rs)
 └── ui/
     ├── mod.rs       — UI module declarations
-    ├── theme.rs     — 24 theme families, 50+ palettes, semantic tokens
+    ├── theme.rs     — 25 theme families, 57 palettes, semantic tokens
     ├── sidebar.rs   — Sidebar (sections, GitHub, rescan, update badge)
     ├── app_grid.rs  — Application card grid with search
     ├── detail.rs    — Detail view (README, changelog, license, actions)
@@ -67,8 +75,9 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
 
 - **OAuth**: Device Flow (no client_secret exposed)
 - **Tokens**: Stored in OS keychain, file fallback (chmod 600)
-- **Downloads**: HTTPS only, optional SHA256 verification
-- **Timeouts**: 30s API requests, 10s connect, 300s downloads
+- **Downloads**: HTTPS only, optional SHA256 verification, resumable via Range with an ETag+length identity check before any partial file is continued
+- **URLs**: every remote-controlled path segment is percent-encoded, never interpolated - the WHATWG parser collapses `..` before the request is sent
+- **Timeouts**: 30s total for API requests, 10s connect, 60s read (inactivity) for downloads - a total deadline on a download makes a large asset impossible to fetch on a slow line
 - **Self-update**: Binary backup before replacement, automatic rollback on failure
 - **Signed updates**: Launcher updates verified against an embedded ed25519 public key (fail-closed) both at download and at apply time; see [release-signing.md](release-signing.md)
 
@@ -76,12 +85,15 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
 
 | Data | Location | Duration |
 |------|----------|----------|
-| Colony repos (cache) | `~/.cache/colony/repos_cache.json` | Offline fallback |
-| Scanned apps (cache) | `~/.cache/colony/scan_cache.json` | Session |
-| Repo docs (cache) | `~/.cache/colony/docs/<repo>/` | Offline fallback |
-| Preferences | `~/.config/colony/preferences.json` | Permanent |
-| Favorites | `~/.config/colony/favorites.json` | Permanent |
-| OAuth token | OS Keychain / `~/.config/colony/github_token.json` | Permanent |
+| Colony repos (cache) | `~/.config/Colony/Colony/cache/repos_cache.json` | Offline fallback |
+| Scanned apps (cache) | `~/.config/Colony/Colony/cache/scan_cache.json` | Session |
+| HTTP ETag cache | `~/.config/Colony/Colony/cache/http_etags.json` | Conditional requests across launches |
+| Repo docs (cache) | `~/.config/Colony/Colony/repo-docs/<repo>/` | Offline fallback |
+| Repo icons (cache) | `~/.config/Colony/Colony/repo-icons/<repo>/` | Offline fallback |
+| Preferences | `~/.config/Colony/Colony/preferences/preferences.json` | Permanent |
+| Favorites | `~/.config/Colony/Colony/preferences/favorites.json` | Permanent |
+| OAuth token | OS Keychain / `~/.config/Colony/Colony/auth/github_token.json` | Permanent |
+| Diagnostics log | `~/.cache/colony/colony.log` | Truncated per run |
 | Installed versions | `~/.local/share/Colony/apps/<repo>/.colony_version` | Permanent |
 | Resolved asset | `~/.local/share/Colony/apps/<repo>/.colony_asset` | Permanent |
 | Colony binaries | `~/.local/share/Colony/apps/<repo>/` | Permanent |
@@ -102,11 +114,11 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
 3. Replacement sequence: backup to `.old` → write the signature-verified
    bytes (never a re-read of the staged file) → chmod 755
 4. Automatic rollback if copy fails
-5. Spawns the new binary → exits the old one
+5. Spawns the new binary → exits the old one ONLY if the spawn succeeded
 
 ## Tests
 
-105 unit tests covering:
+131 unit tests covering:
 - `colony.json` manifest parsing (full, minimal, with pattern, with archives)
 - Platform auto-detection from release assets
 - `release_files` construction from assets
@@ -121,3 +133,7 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
   launcher-check outcomes, cancel semantics) via a hermetic test App
 - filePattern globs with exclusions, signature parsing (strict ed25519),
   typed HTTP-status classification
+- Resumable downloads end to end, against a local Range server that truncates
+  its first response
+- Remote-string URL containment (a hostile `tag` cannot leave the org)
+- Platform-gated sidebar sections, transient vs. permanently-broken manifests

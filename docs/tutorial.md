@@ -82,7 +82,8 @@ When you open Colony for the first time you'll see three zones:
 - **Sidebar** — Categories. The top group (`All` / `Windows` / `Linux`) is
   the *origin* filter: Colony apps, apps already installed on your system, or
   both. The middle group is Colony categories (`Development`, `Graphics`,
-  `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Games`, `Other`).
+  `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Security`, `Games`,
+  `Other`).
 - **App grid** — Cards for every app matching the current filters. Click a
   card to open its detail view.
 - **Search** — A search bar above the grid filters by app name.
@@ -121,7 +122,7 @@ Switch the sidebar origin to **Linux** (or **Windows**) to see only those.
 ## 5. Customize the theme
 
 Click the **gear icon** at the bottom of the sidebar → **Theme**. Colony ships
-24 theme families and 50+ palettes (Catppuccin, Gruvbox, Nord, Dracula, Rosé
+25 theme families and 57 palettes (Catppuccin, Gruvbox, Nord, Dracula, Rosé
 Pine, Tokyo Night, etc.). Theme changes apply instantly, no restart needed.
 
 ## 6. Connect your GitHub account (optional)
@@ -150,6 +151,6 @@ upgraded alongside the rest of your system.
   a published release with assets matching `<repo>-<platform>`. See
   [colony-spec.md](colony-spec.md) for the full manifest reference.
 - **Rate limit hit?** Connect a GitHub account (section 6).
-- **Download fails?** Check your network. Colony retries automatically; logs
-  go to `~/.cache/colony/` if you need to dig in.
+- **Download fails?** Check your network. Colony retries up to three times and resumes where it stopped; logs
+  go to `~/.cache/colony/colony.log` if you need to dig in.
 - **More questions?** See the [FAQ](faq.md).

@@ -95,12 +95,41 @@ openssl pkey -in colony-release.pem -pubout -out colony-release.pub.pem
 openssl pkey -pubin -in colony-release.pub.pem -outform DER | tail -c 32 | xxd -i
 ```
 
-Paste the 32 bytes from step 2 into `RELEASE_PUBLIC_KEY` in
-[`src/signing.rs`](../src/signing.rs), ship a Colony release built with the new
-key, and sign all subsequent assets with the new private key. Note: clients on
-an old build trust only the old key, so keep signing with the old key until
-those clients have updated (or accept that they can no longer self-update and
-must reinstall).
+`src/signing.rs` embeds a **list** of accepted keys (`RELEASE_PUBLIC_KEYS`), and
+a signature is accepted if any listed key validates it. That is what makes a
+rotation possible at all: with a single key, the one `<asset>.sig` a release
+carries is either old-key (refused by every updated client) or new-key (refused
+by every client in the field), and verification is fail-closed, so the refusal
+is permanent either way.
+
+Rotate over three releases:
+
+| Release | `RELEASE_PUBLIC_KEYS` contains | Signed with | Who can update |
+|---|---|---|---|
+| N | `[new, old]` | **old** | everyone in the field; afterwards they trust both |
+| N+1 | `[new, old]` | **new** | everyone on N or later |
+| N+2 | `[new]` | **new** | everyone on N or later; `old` is now revoked |
+
+Two rules make this safe:
+
+- **N must be signed with the OLD key.** Its whole job is to widen the trusted
+  set on machines that only trust `old`. Signing it with `new` is the mistake
+  that strands the install base.
+- **Do not skip to N+2.** Anyone still on N-1 or earlier when `old` is dropped
+  can no longer self-update and must reinstall by hand. Leave N and N+1 in the
+  field long enough for that to be a rounding error, and check the release
+  download counts before shipping N+2.
+
+For an EMERGENCY rotation after a key leak, the same sequence applies but the
+overlap is a liability rather than a courtesy: the attacker holding `old` can
+sign anything the field will accept until N+2 ships. Publish N and N+1 back to
+back, keep the window to hours, and say so publicly - a compromised key is not a
+quiet fix.
+
+The test `any_trusted_key_verifies_and_an_untrusted_one_does_not` in
+`src/signing.rs` asserts both halves: any listed key validates, an unlisted one
+never does. It also asserts the list is length 1, so starting a rotation
+requires deliberately updating that assertion.
 
 ## Verifying a signature by hand
 

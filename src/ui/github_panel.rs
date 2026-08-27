@@ -42,18 +42,13 @@ impl App {
                         },
                     )
                     .padding([12, 24])
-                    .style(|_theme, status| {
-                        let bg = match status {
-                            button::Status::Hovered => Palette::BTN_HOVER(),
-                            button::Status::Pressed => Palette::BTN_PRESSED(),
-                            _ => Palette::BTN_DEFAULT(),
-                        };
-                        button::Style {
-                            background: Some(bg.into()),
-                            text_color: Palette::TEXT_PRIMARY(),
-                            border: iced::Border::default().rounded(8),
-                            ..Default::default()
-                        }
+                    .style(move |_theme, status| {
+                        crate::ui::theme::action_button_style(
+                            status,
+                            Palette::BTN_DEFAULT(),
+                            Palette::BTN_HOVER(),
+                            Palette::BTN_PRESSED(),
+                        )
                     });
 
                 let info = text(crate::i18n::t("github_public_api"))
@@ -61,17 +56,43 @@ impl App {
                     .font(self.app_font())
                     .color(Palette::TEXT_MUTED());
 
+                // Browsing the catalog is anonymous, so a user whose boot fetch
+                // failed (flaky network, VPN, captive portal) is signed out by
+                // definition - and this arm used to offer sign-in as the only
+                // way forward. It is the same anonymous fetch the boot path
+                // already runs; no token, no sign-in required.
+                let retry_btn = button(
+                    text(crate::i18n::t("github_refresh"))
+                        .size(self.sz(13))
+                        .font(self.app_font()),
+                )
+                .on_press_maybe((!self.is_fetching_repos).then_some(Message::GitHubRefreshRepos))
+                .padding([8, 16])
+                .style(move |_theme, status| {
+                    crate::ui::theme::action_button_style(
+                        status,
+                        Palette::BTN_DEFAULT(),
+                        Palette::BTN_HOVER(),
+                        Palette::BTN_PRESSED(),
+                    )
+                });
+
                 column![
                     desc,
                     container(text("")).height(16),
                     login_btn,
                     container(text("")).height(12),
-                    info
+                    info,
+                    container(text("")).height(12),
+                    retry_btn
                 ]
                 .spacing(8)
                 .into()
             }
-            GitHubState::Connecting { user_code } => match user_code {
+            GitHubState::Connecting {
+                user_code,
+                verification_uri,
+            } => match user_code {
                 Some(code) => {
                     let spinner_label = text("\u{f110}  ")
                         .size(self.sz(14))
@@ -105,7 +126,28 @@ impl App {
                         .size(self.sz(12))
                         .font(self.app_font())
                         .color(Palette::TEXT_DIMMEST());
-                    column![spinner_label, label, code_btn, hint]
+
+                    // The browser open is best-effort; if it failed, this line
+                    // is the only thing telling the user where the code goes.
+                    let where_to: Element<'_, Message> = match verification_uri {
+                        Some(uri) => button(
+                            text(uri.as_str())
+                                .size(self.sz(12))
+                                .font(self.app_font())
+                                .color(Palette::ACCENT()),
+                        )
+                        .on_press(Message::OpenUrl(uri.clone()))
+                        .padding(0)
+                        .style(|_theme, _status| button::Style {
+                            background: None,
+                            text_color: Palette::ACCENT(),
+                            ..Default::default()
+                        })
+                        .into(),
+                        None => container(text("")).height(0).into(),
+                    };
+
+                    column![spinner_label, label, code_btn, where_to, hint]
                         .spacing(8)
                         .into()
                 }
@@ -194,13 +236,15 @@ impl App {
                     refresh_btn_base.on_press(Message::GitHubRefreshRepos)
                 }
                 .style(|_theme, status| {
-                    let bg = match status {
-                        button::Status::Hovered => Palette::BG_SELECTED(),
-                        _ => Palette::BG_CARD_HOVER(),
-                    };
+                    let (bg, text_color) = crate::ui::theme::button_colors(
+                        status,
+                        Palette::BG_CARD_HOVER(),
+                        Palette::BG_SELECTED(),
+                        Palette::TEXT_PRIMARY(),
+                    );
                     button::Style {
                         background: Some(bg.into()),
-                        text_color: Palette::TEXT_PRIMARY(),
+                        text_color,
                         border: iced::Border::default().rounded(6),
                         ..Default::default()
                     }
@@ -254,9 +298,24 @@ impl App {
                 .on_press(Message::GitHubLogin)
                 .padding([8, 16]);
 
-                column![err, container(text("")).height(12), retry_btn]
-                    .spacing(8)
-                    .into()
+                // Retrying the sign-in is not the only thing that can go wrong
+                // here; the catalog fetch can fail on its own, and refetching
+                // it needs no account at all.
+                let refresh_btn = button(
+                    text(crate::i18n::t("github_refresh"))
+                        .size(self.sz(13))
+                        .font(self.app_font()),
+                )
+                .on_press_maybe((!self.is_fetching_repos).then_some(Message::GitHubRefreshRepos))
+                .padding([8, 16]);
+
+                column![
+                    err,
+                    container(text("")).height(12),
+                    row![retry_btn, refresh_btn].spacing(8)
+                ]
+                .spacing(8)
+                .into()
             }
         };
 

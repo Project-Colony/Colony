@@ -126,8 +126,17 @@ impl Notification {
 #[derive(Debug, Clone)]
 pub enum GitHubState {
     Disconnected,
-    Connecting { user_code: Option<String> },
-    Connected { session: OAuthSession },
+    Connecting {
+        user_code: Option<String>,
+        /// Where to enter the code. Without it the panel said "Enter this code
+        /// on GitHub" and never named github.com/login/device, so a browser
+        /// that failed to open left the user with a code and nowhere to put it
+        /// while the poll ran on until it expired.
+        verification_uri: Option<String>,
+    },
+    Connected {
+        session: OAuthSession,
+    },
     Error(String),
 }
 
@@ -138,6 +147,16 @@ pub enum DetailTab {
     ReadMe,
     License,
     Changelog,
+}
+
+/// The three facts every app store shows before you commit to a download.
+#[derive(Debug, Clone)]
+pub struct ReleaseFacts {
+    pub tag: String,
+    /// Size of the asset for the CURRENT platform, when the release names one.
+    pub size: Option<u64>,
+    /// ISO-8601 publication timestamp, as returned by the API.
+    pub published_at: Option<String>,
 }
 
 // --- App state ---
@@ -224,6 +243,11 @@ pub struct App {
     pub is_downloading: bool,
     pub is_checking_updates: bool,
     pub is_fetching_repos: bool,
+    /// Whether the catalog fetch in flight was started by the user clicking
+    /// Refresh rather than by boot. A boot fetch failing while a cached catalog
+    /// is on screen is routine and stays in the status line; a click the user
+    /// just made deserves a toast, otherwise the button looks broken.
+    pub repos_refresh_manual: bool,
     // Settings section state persistence
     pub settings_expanded_sections: HashSet<String>,
     // Detail tabs
@@ -250,6 +274,13 @@ pub struct App {
         std::collections::HashMap<String, (String, Vec<crate::ui::markdown_blocks::DetailBlock>)>,
     /// Repos whose release notes are currently being fetched.
     pub fetching_notes: std::collections::HashSet<String>,
+    /// What the store is actually offering, per repo: the resolved tag, the
+    /// download size for THIS platform, and the publication date. The API
+    /// returns all three and Colony used to discard the last two, so the
+    /// product page could not answer which version, how big, or how old -
+    /// the size was learned from Content-Length only once the transfer had
+    /// already started. Populated by the same fetch that gets the notes.
+    pub release_facts: std::collections::HashMap<String, ReleaseFacts>,
     /// Install status per store repo: (installed, installed version). The
     /// grid used to stat the filesystem per card per FRAME; this cache is
     /// refreshed only when it can actually change (catalog load, install
@@ -311,10 +342,21 @@ impl App {
     }
 
     /// Filter local applications by the currently selected section.
+    ///
+    /// A non-empty search query makes the search GLOBAL: the section's
+    /// origin/category filter is bypassed. The shipped "All" section declares
+    /// `origin: colony`, and `AppOrigin::Colony` is effectively unreachable for
+    /// scanned apps (entries Colony wrote are skipped by the X-Colony-Managed
+    /// bail; everything else is External or Windows), so typing "firefox" in
+    /// the default view reported zero results on a machine where Firefox sits
+    /// two clicks away. A search that lies about zero results is worse than no
+    /// search - the user concludes the feature is broken. Favorites stays
+    /// scoped: it is a chosen set, not a browsing filter.
     pub fn filtered_applications(&self) -> Vec<&Application> {
         let query = self.search_query.to_lowercase();
         let selected_section = self.sections.get(self.selected_section);
         let is_favorites = selected_section.map(|s| s.is_favorites).unwrap_or(false);
+        let searching = !query.is_empty();
         self.applications
             .iter()
             .filter(|app| {
@@ -323,7 +365,7 @@ impl App {
                         return false;
                     }
                 } else if let Some(section) = selected_section {
-                    if !section.filter.matches(app) {
+                    if !searching && !section.filter.matches(app) {
                         return false;
                     }
                 }
@@ -341,6 +383,7 @@ impl App {
         let selected_section = self.sections.get(self.selected_section);
         let is_favorites = selected_section.map(|s| s.is_favorites).unwrap_or(false);
 
+        let searching = !query.is_empty();
         self.colony_repos()
             .iter()
             .filter(|repo| {
@@ -349,10 +392,19 @@ impl App {
                         return false;
                     }
                 } else if let Some(section) = selected_section {
-                    if let Some(section_category) = section.category() {
-                        let repo_category = scan::AppCategory::from_name(&repo.manifest.category);
-                        if &repo_category != section_category {
-                            return false;
+                    if !searching {
+                        if let Some(section_category) = section.category() {
+                            let repo_category =
+                                scan::AppCategory::from_name(&repo.manifest.category);
+                            if &repo_category != section_category {
+                                return false;
+                            }
+                        }
+                        // Platform sections filter the store half too.
+                        if let Some(platform) = section.required_platform() {
+                            if !repo.manifest.release_files.contains_key(platform) {
+                                return false;
+                            }
                         }
                     }
                 }
@@ -540,6 +592,7 @@ impl App {
             is_downloading: false,
             is_checking_updates: false,
             is_fetching_repos: false,
+            repos_refresh_manual: false,
             settings_expanded_sections: std::collections::HashSet::new(),
             detail_tab: DetailTab::ReadMe,
             detail_blocks: Vec::new(),
@@ -548,6 +601,7 @@ impl App {
             available_updates: std::collections::HashMap::new(),
             update_queue: Vec::new(),
             release_notes: std::collections::HashMap::new(),
+            release_facts: std::collections::HashMap::new(),
             fetching_notes: std::collections::HashSet::new(),
             install_status: std::collections::HashMap::new(),
             keyboard_cursor: None,
