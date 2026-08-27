@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.1](https://github.com/Project-Colony/Colony/compare/v0.10.0...v0.10.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **release:** give gh the repo, and make a tagged release recoverable ([#71](https://github.com/Project-Colony/Colony/issues/71)) ([836f2e2](https://github.com/Project-Colony/Colony/commit/836f2e2e4884c846d287a956badfb4d82ec0597d))
+* **release:** let a recovery dispatch actually reach the build ([#73](https://github.com/Project-Colony/Colony/issues/73)) ([5e6b9ba](https://github.com/Project-Colony/Colony/commit/5e6b9ba62fb853012efe5d495b0d313bd5b2a550))
+* **release:** suppress the implicit success() that kept skipping the build ([#74](https://github.com/Project-Colony/Colony/issues/74)) ([919500c](https://github.com/Project-Colony/Colony/commit/919500cfe93e35da2f1ea7714f57d20d59f5acb5))
+* **release:** upload with gh, not an action that insists on managing the draft ([#75](https://github.com/Project-Colony/Colony/issues/75)) ([d93b770](https://github.com/Project-Colony/Colony/commit/d93b77096d2122cbaeece64eceeacf0d8950c2d5))
+
 ## [0.10.0](https://github.com/Project-Colony/Colony/compare/v0.9.2...v0.10.0) (2026-08-27)
 
 
