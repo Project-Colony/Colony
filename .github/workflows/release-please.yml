@@ -198,24 +198,22 @@ jobs:
           file "${{ matrix.asset }}" | grep -q 'x86_64' \
             || { echo "::error::${{ matrix.asset }} is not an x86_64 binary"; exit 1; }
 
-      # `draft: true` is LOAD-BEARING, not a preference. Without it this action
-      # calls finalizeRelease() after uploading, which PATCHes draft:false - so
-      # the first matrix leg to finish would publish v0.10.0 as /releases/latest
-      # carrying one of four binaries and zero signatures, and the sign job's
-      # closing `--draft=false` would be a silent no-op. Every check would still
-      # be green. That is the v0.7.0 incident, reached automatically.
+      # Uploaded with `gh`, not softprops/action-gh-release. The action wants
+      # to PATCH the release to manage its draft flag, which returns 403
+      # "Resource not accessible by integration" against this draft - and its
+      # default behaviour is to PUBLISH the release after uploading unless told
+      # otherwise, which is what put an empty v0.10.0 in front of users once
+      # already. `gh release upload` only ever adds assets: it cannot publish
+      # anything, so the draft is safe by construction rather than by flag.
       #
-      # The action's own action.yml says it: "When reusing an existing draft
-      # release, set this to true to keep it draft; omit it to publish after
-      # upload." Verified in the pinned build: an absent input parses to
-      # `undefined`, and the only guard is
-      # `input_draft === true || release.draft === false`.
+      # This is also exactly what the sign job below already does, and has done
+      # successfully since v0.9.2.
       - name: Upload binary to GitHub Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
-        with:
-          tag_name: ${{ needs.target.outputs.tag }}
-          files: ${{ matrix.asset }}
-          draft: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.target.outputs.tag }}
+        run: gh release upload "$TAG" -R "$GITHUB_REPOSITORY" "${{ matrix.asset }}" --clobber
 
       # Assert the hold actually survived, so a future action bump cannot
       # silently reintroduce the above. Cheap, and it fails the leg rather than
