@@ -114,7 +114,13 @@ jobs:
     # clear the skip inherited from `release-please` for the jobs after it.
     # Without this, a recovery dispatch resolves the tag and then silently
     # builds nothing - which is exactly what the first v0.10.0 dispatch did.
-    if: ${{ needs.target.result == 'success' }}
+    # `!cancelled()` is load-bearing, not decoration. A job `if:` containing NO
+    # status-check function gets an implicit `success()` ANDed onto it, and that
+    # `success()` accounts for the whole ancestor graph - so the skipped
+    # `release-please` made it false and this job skipped even though its own
+    # condition was true and its direct dependency had succeeded. Naming any
+    # status function suppresses the implicit one.
+    if: ${{ !cancelled() && needs.target.result == 'success' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -237,7 +243,7 @@ jobs:
     needs: [target, build]
     # Every dependency named explicitly. Guarding on `target` alone would let
     # this run after a FAILED build and try to sign assets that do not exist.
-    if: ${{ needs.target.result == 'success' && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && needs.target.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     env:
       # Single source of truth for the four launcher assets. Declared once so the
@@ -332,7 +338,7 @@ jobs:
     needs: [target, sign]
     # `sign` too: without it, a failed signing job would still bump the AUR
     # package to a release that has no signatures.
-    if: ${{ needs.target.result == 'success' && needs.sign.result == 'success' }}
+    if: ${{ !cancelled() && needs.target.result == 'success' && needs.sign.result == 'success' }}
     uses: ./.github/workflows/aur-publish.yml
     with:
       tag: ${{ needs.target.outputs.tag }}
