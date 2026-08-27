@@ -69,23 +69,28 @@ jobs:
         run: cargo check --locked --all-targets
 
   # Colony downloads and executes binaries, so a known-vulnerable dependency is
-  # not an abstract concern.
+  # not an abstract concern. This job GATES: red here means something new and
+  # actionable.
   #
-  # continue-on-error because this REPORTS rather than gates: most advisories in
-  # this tree arrive through the GUI stack and cannot be fixed here at all. The
-  # standing example is quick-xml (RUSTSEC-2026-0194/0195), held at 0.38 by
-  # wayland-scanner via winit and iced - and reached only as a build-time
-  # proc-macro parsing the system's own Wayland protocol XML, never untrusted
-  # input. Gating on that would block every unrelated fix until iced moves.
+  # It gates because the alternative does not work. Left to report without
+  # gating, it is red on every single PR forever - and a check that is always
+  # red is a check nobody reads. So the advisories that genuinely cannot be
+  # acted on from this repository are ignored BY ID, with the reason written
+  # down, and everything else fails the build.
   #
-  # Read the run output on every PR; act on anything reachable from network
-  # input.
+  # RUSTSEC-2026-0194 / RUSTSEC-2026-0195 (quick-xml): held at 0.38 by
+  # wayland-scanner, via winit and iced 0.14 - a semver-incompatible bump we
+  # cannot make from here. Both advisories concern parsing untrusted XML;
+  # wayland-scanner is a build-time proc-macro that parses the system's own
+  # Wayland protocol descriptions, so neither is reachable at runtime.
+  # Remove these two the day iced ships a winit new enough to carry
+  # quick-xml >= 0.41.
   audit:
     name: Advisories
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          ignore: RUSTSEC-2026-0194,RUSTSEC-2026-0195
