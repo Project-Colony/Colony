@@ -15,15 +15,31 @@ use anyhow::Result;
 use base64::Engine;
 use ed25519_dalek::{Signature, VerifyingKey};
 
-/// Colony release signing public key (ed25519, raw 32 bytes).
+/// Colony release signing public keys (ed25519, raw 32 bytes each).
 ///
-/// To rotate: generate a new key (see `docs/release-signing.md`), replace these
-/// bytes with the new raw public key, and sign all subsequent releases with the
-/// matching private key.
-const RELEASE_PUBLIC_KEY: [u8; 32] = [
+/// A LIST, not a single key, because rotation is otherwise not expressible.
+/// With one embedded key, `sign-release.sh` emits exactly one `<asset>.sig`,
+/// which is either old-key (refused by every updated client) or new-key
+/// (refused by every client in the field) - and verification is fail-closed, so
+/// the refusal is permanent. The documented rotation procedure could not be
+/// carried out in either direction: a planned rotation stranded every existing
+/// install, and an emergency one after a leak left the defender with nothing
+/// anyone could verify while the attacker held a key every client trusts.
+///
+/// Accepting any listed key makes rotation a real three-release sequence:
+///
+/// 1. Ship N embedding `[old, new]`, still SIGNED with `old` - every client in
+///    the field accepts it, and afterwards trusts both.
+/// 2. Sign N+1 with `new` - clients on N accept it; clients still on N-1 do not
+///    update, which is the cost of the overlap window.
+/// 3. Drop `old` from this list in N+2 to complete the revocation.
+///
+/// Order is irrelevant to verification; keep the newest first for readability.
+/// See `docs/release-signing.md`.
+const RELEASE_PUBLIC_KEYS: &[[u8; 32]] = &[[
     0x44, 0xd8, 0xe0, 0xdc, 0xd9, 0xfc, 0x1f, 0xaf, 0xda, 0x06, 0x0d, 0x6e, 0x9f, 0x01, 0xa3, 0x91,
     0x44, 0xdc, 0xad, 0xd4, 0xf1, 0x11, 0x13, 0x5e, 0x7d, 0x56, 0xaa, 0x53, 0xc7, 0x05, 0xbb, 0x4b,
-];
+]];
 
 /// Filename suffix of the detached signature published alongside each asset.
 pub const SIGNATURE_SUFFIX: &str = ".sig";
@@ -82,20 +98,32 @@ impl ReleaseMetadata {
 }
 
 /// Verify a detached ed25519 signature over `data` against the embedded Colony
-/// release key. Returns Ok only if the signature is valid.
+/// release keys. Returns Ok if ANY trusted key validates it.
+///
+/// Every key is tried even after one succeeds is NOT the case here - the loop
+/// short-circuits, which is fine: the key list is public and its length leaks
+/// nothing. What matters is that the signature itself is checked with
+/// `verify_strict`, which is constant-time in the secret-bearing parts.
 pub fn verify_release_signature(data: &[u8], signature_bytes: &[u8]) -> Result<()> {
-    verify_with_key(&RELEASE_PUBLIC_KEY, data, signature_bytes)
+    // Parse once: a malformed signature is a malformed signature whatever key
+    // we would have tried it against, and the error should say so.
+    let sig = parse_signature(signature_bytes)?;
+    for key in RELEASE_PUBLIC_KEYS {
+        if verify_parsed(key, data, &sig).is_ok() {
+            return Ok(());
+        }
+    }
+    anyhow::bail!("signature verification failed (untrusted or corrupt update)")
 }
 
-fn verify_with_key(pubkey: &[u8; 32], data: &[u8], signature_bytes: &[u8]) -> Result<()> {
-    let sig = parse_signature(signature_bytes)?;
+fn verify_parsed(pubkey: &[u8; 32], data: &[u8], sig: &Signature) -> Result<()> {
     let vk = VerifyingKey::from_bytes(pubkey)
         .map_err(|e| anyhow::anyhow!("invalid release public key: {e}"))?;
     // verify_strict: rejects malleable/non-canonical signatures and small-
     // order key components - the recommended verifier for update/security
     // contexts (plain verify() accepts signatures strict verification would
     // refuse).
-    vk.verify_strict(data, &sig)
+    vk.verify_strict(data, sig)
         .map_err(|_| anyhow::anyhow!("signature verification failed (untrusted or corrupt update)"))
 }
 
@@ -122,6 +150,14 @@ fn parse_signature(bytes: &[u8]) -> Result<Signature> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Verify against ONE named key. Production always goes through
+    /// `verify_release_signature`, which parses once and loops over the trusted
+    /// list; tests need to name a key so they can pin down which one accepted.
+    fn verify_with_key(pubkey: &[u8; 32], data: &[u8], signature_bytes: &[u8]) -> Result<()> {
+        let sig = parse_signature(signature_bytes)?;
+        verify_parsed(pubkey, data, &sig)
+    }
 
     // Independent throwaway test key + vector (NOT the release key), generated
     // with `openssl genpkey -algorithm ed25519` + `openssl pkeyutl -sign -rawin`.
@@ -159,8 +195,45 @@ mod tests {
 
     #[test]
     fn wrong_key_rejected() {
-        // The embedded release key must not validate the unrelated test vector.
-        assert!(verify_with_key(&RELEASE_PUBLIC_KEY, TEST_MSG, &TEST_SIG).is_err());
+        // No embedded release key may validate the unrelated test vector.
+        assert!(verify_release_signature(TEST_MSG, &TEST_SIG).is_err());
+        for key in RELEASE_PUBLIC_KEYS {
+            assert!(verify_with_key(key, TEST_MSG, &TEST_SIG).is_err());
+        }
+    }
+
+    /// Rotation depends on a signature from EITHER listed key being accepted -
+    /// that is the whole overlap window. Without it, the documented procedure
+    /// strands one half of the install base whichever key you sign with.
+    #[test]
+    fn any_trusted_key_verifies_and_an_untrusted_one_does_not() {
+        // Stand in for a rotation list: the real release key plus the throwaway
+        // test key, in the shape RELEASE_PUBLIC_KEYS takes during an overlap.
+        let rotating: &[[u8; 32]] = &[RELEASE_PUBLIC_KEYS[0], TEST_PUBKEY];
+
+        let verified = rotating
+            .iter()
+            .any(|k| verify_with_key(k, TEST_MSG, &TEST_SIG).is_ok());
+        assert!(
+            verified,
+            "a signature from the incoming key must be accepted during the overlap"
+        );
+
+        // A key that is NOT on the list still fails: rotation widens trust to a
+        // named set, it does not weaken verification.
+        let mut stranger = TEST_PUBKEY;
+        stranger[0] ^= 0xff;
+        assert!(
+            !std::iter::once(stranger).any(|k| verify_with_key(&k, TEST_MSG, &TEST_SIG).is_ok()),
+            "an unlisted key must never validate"
+        );
+
+        // And the shipped list is a single key today, so nothing is widened yet.
+        assert_eq!(
+            RELEASE_PUBLIC_KEYS.len(),
+            1,
+            "no rotation is in progress; bump this when one starts"
+        );
     }
 
     #[test]

@@ -183,6 +183,34 @@ pub fn load_installed_signed(repo_name: &str) -> bool {
     })
 }
 
+/// Marker recording that this app was installed with a verified signed METADATA
+/// sidecar, not just a bare signature.
+const META_FILE: &str = ".colony_meta";
+
+/// Record that the installed build carried a verified `.meta` sidecar.
+///
+/// Same "only ever raises the bar" contract as [`save_installed_signed`]: a
+/// bare `.sig` proves the bytes came from the org key, but not WHICH artefact
+/// or version they are, so a compromised maintainer can re-upload an old,
+/// genuinely signed, known-vulnerable build under a new tag. Once an app has
+/// been installed with a sidecar, later updates must keep providing one - so
+/// the replay cannot be performed by simply dropping the sidecar.
+///
+/// Never cleared while the app stays installed; uninstalling is the deliberate
+/// way out.
+pub fn save_installed_metadata(repo_name: &str) -> Result<()> {
+    let path = colony_app_dir(repo_name)?.join(META_FILE);
+    std::fs::write(&path, "1")?;
+    Ok(())
+}
+
+/// True when a previous install of this repo carried a verified sidecar.
+pub fn load_installed_metadata(repo_name: &str) -> bool {
+    colony_app_dir(repo_name)
+        .map(|d| d.join(META_FILE).exists())
+        .unwrap_or(false)
+}
+
 /// Save the resolved asset name for a repo (when using filePattern).
 pub fn save_installed_asset(repo_name: &str, filename: &str) -> Result<()> {
     let path = colony_app_dir(repo_name)?.join(ASSET_FILE);

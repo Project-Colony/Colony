@@ -829,6 +829,73 @@ pub async fn download_release_asset(
                 anyhow::bail!("Could not check for a release signature of {filename}: {e}");
             }
         };
+    // Roll the signed metadata sidecar down to apps. A bare `.sig` proves only
+    // that the bytes came from the org key - not WHICH artefact or version they
+    // are - so a compromised maintainer could take an old, genuinely signed,
+    // known-vulnerable build, re-upload it under a new tag, and Colony would
+    // install it with every trust indicator green. The sidecar binds the bytes
+    // to an asset name, a digest and a version; the machinery already existed
+    // and was reachable only from the launcher's own self-update.
+    //
+    // Opportunistic and pinned, exactly like `.sig`: an app that publishes no
+    // sidecar today still installs, but once one has been verified, a later
+    // release cannot silently stop publishing it.
+    let metadata_pinned = crate::persistence::load_installed_metadata(&repo_name);
+    let metadata = match fetch_optional_bytes(
+        &client,
+        &format!("{url}{}", crate::signing::METADATA_SUFFIX),
+        token.as_deref(),
+    )
+    .await
+    {
+        Ok(Some(meta_bytes)) => {
+            // The sidecar is only worth anything signed. A missing signature
+            // for a PRESENT sidecar is not "legacy", it is a broken release.
+            let meta_sig = fetch_optional_bytes(
+                &client,
+                &format!(
+                    "{url}{}{}",
+                    crate::signing::METADATA_SUFFIX,
+                    crate::signing::SIGNATURE_SUFFIX
+                ),
+                token.as_deref(),
+            )
+            .await
+            .map_err(|e| {
+                anyhow::anyhow!("Could not fetch the metadata signature for {filename}: {e}")
+            })
+            .and_then(|sig| {
+                sig.ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "{filename}{} was published without {filename}{}{} - refusing to install",
+                        crate::signing::METADATA_SUFFIX,
+                        crate::signing::METADATA_SUFFIX,
+                        crate::signing::SIGNATURE_SUFFIX
+                    )
+                })
+            });
+            match meta_sig {
+                Ok(meta_sig) => Some((meta_bytes, meta_sig)),
+                Err(e) => {
+                    discard_partial(&temp_path);
+                    return Err(e);
+                }
+            }
+        }
+        Ok(None) => None,
+        Err(e) => {
+            discard_partial(&temp_path);
+            anyhow::bail!("Could not check for release metadata of {filename}: {e}");
+        }
+    };
+    if metadata_pinned && metadata.is_none() {
+        discard_partial(&temp_path);
+        anyhow::bail!(
+            "{repo_name} was previously installed with verified release metadata, but this release publishes no {filename}{} - refusing to install (uninstall it first to opt back out)",
+            crate::signing::METADATA_SUFFIX
+        );
+    }
+
     if require_signature && signature.is_none() {
         let _ = std::fs::remove_file(&temp_path);
         // Say WHICH rule refused, because the two have different remedies: the
@@ -856,18 +923,22 @@ pub async fn download_release_asset(
         let binary_name = binary_name.clone();
         let filename = filename.clone();
 
+        let installed_version = crate::persistence::load_installed_version(&repo_name);
+        let resolved_tag = tag.clone();
         tokio::task::spawn_blocking(move || -> Result<PathBuf> {
             let was_signed = signature.is_some();
+            let had_metadata = metadata.is_some();
             // Read the staged file ONCE and check everything against that one
             // buffer. Each separate read of `<app dir>/<filename>.part` - a
             // predictable path - is another chance to check one set of bytes
             // and install a different set; the launcher path already avoids
             // this by installing the buffer it verified.
-            let staged_bytes = if signature.is_some() || expected_sha256.is_some() {
-                Some(std::fs::read(&temp_path)?)
-            } else {
-                None
-            };
+            let staged_bytes =
+                if signature.is_some() || metadata.is_some() || expected_sha256.is_some() {
+                    Some(std::fs::read(&temp_path)?)
+                } else {
+                    None
+                };
             if let Some(sig) = signature {
                 let bytes = staged_bytes.as_deref().unwrap_or_default();
                 if let Err(e) = crate::signing::verify_release_signature(bytes, &sig) {
@@ -877,6 +948,34 @@ pub async fn download_release_asset(
                     );
                 }
                 tracing::info!("ed25519 signature verified for {filename}");
+            }
+            // The sidecar, verified against the same trusted keys and then
+            // bound to THIS asset, THIS digest and THIS tag - which is what a
+            // bare signature cannot say.
+            if let Some((meta_bytes, meta_sig)) = metadata {
+                let bytes = staged_bytes.as_deref().unwrap_or_default();
+                let checked = crate::signing::verify_release_signature(&meta_bytes, &meta_sig)
+                    .and_then(|()| crate::signing::ReleaseMetadata::parse(&meta_bytes))
+                    .and_then(|meta| {
+                        check_metadata_bindings(
+                            &meta,
+                            bytes,
+                            &filename,
+                            Some(resolved_tag.as_str()),
+                        )?;
+                        // ">=", not ">": an app pinned to a fixed tag
+                        // legitimately reinstalls the same version, so the
+                        // launcher's strictly-newer rule would lock it out.
+                        ensure_not_a_downgrade(&meta, installed_version.as_deref())?;
+                        Ok(())
+                    });
+                if let Err(e) = checked {
+                    let _ = std::fs::remove_file(&temp_path);
+                    anyhow::bail!(
+                        "Release metadata check FAILED for {filename} - refusing to install: {e}"
+                    );
+                }
+                tracing::info!("signed release metadata verified for {filename}");
             }
             if let Some(ref expected) = expected_sha256 {
                 let bytes = staged_bytes.as_deref().unwrap_or_default();
@@ -961,6 +1060,11 @@ pub async fn download_release_asset(
             // the app stays installed.
             if was_signed {
                 crate::persistence::save_installed_signed(&repo_name)?;
+            }
+            // Same one-way ratchet for the sidecar: a repo that binds its
+            // releases today must not be able to stop tomorrow.
+            if had_metadata {
+                crate::persistence::save_installed_metadata(&repo_name)?;
             }
             // Desktop integration (Linux): index the installed app in the
             // desktop environment. Best-effort - a failure here must not fail
@@ -1137,24 +1241,21 @@ fn verify_launcher_metadata(
     crate::signing::verify_release_signature(meta_bytes, meta_sig)
         .map_err(|e| anyhow::anyhow!("update metadata signature invalid: {e}"))?;
     let meta = crate::signing::ReleaseMetadata::parse(meta_bytes)?;
-    check_metadata_bindings(
-        &meta,
-        binary_bytes,
-        expected_asset,
-        expected_tag,
-        APP_VERSION,
-    )
+    check_metadata_bindings(&meta, binary_bytes, expected_asset, expected_tag)?;
+    ensure_strictly_newer(&meta, APP_VERSION)
 }
 
-/// The binding rules of [`verify_launcher_metadata`], split out so they can be
-/// tested without the release private key (`running` is injectable for the same
-/// reason). Assumes the metadata signature has already been verified.
+/// The binding rules shared by the launcher and app install paths, split out so
+/// they can be tested without the release private key. Assumes the metadata
+/// signature has already been verified.
+///
+/// Deliberately does NOT compare versions: that rule differs between the two
+/// callers (see [`ensure_strictly_newer`] and [`ensure_not_a_downgrade`]).
 fn check_metadata_bindings(
     meta: &crate::signing::ReleaseMetadata,
     binary_bytes: &[u8],
     expected_asset: &str,
     expected_tag: Option<&str>,
-    running: &str,
 ) -> Result<()> {
     anyhow::ensure!(
         meta.asset == expected_asset,
@@ -1177,6 +1278,14 @@ fn check_metadata_bindings(
         );
     }
 
+    Ok(())
+}
+
+/// The launcher's extra rule: a self-update must be STRICTLY newer than the
+/// build applying it. Separate from [`check_metadata_bindings`] because apps do
+/// not share it - an app pinned to a fixed tag legitimately reinstalls the same
+/// version, so "strictly newer" would make reinstalling impossible.
+fn ensure_strictly_newer(meta: &crate::signing::ReleaseMetadata, running: &str) -> Result<()> {
     let new = crate::github::parse_version_tag(&meta.version).ok_or_else(|| {
         anyhow::anyhow!(
             "unrecognized version in update metadata: '{}'",
@@ -1188,6 +1297,33 @@ fn check_metadata_bindings(
     anyhow::ensure!(
         new > current,
         "refusing a downgrade: signed update is {new} but the running build is {current}"
+    );
+    Ok(())
+}
+
+/// The app equivalent: never go BACKWARDS from what is installed, but allow the
+/// same version (a reinstall, or an app pinned to a fixed tag).
+///
+/// Non-semver tags are common in the ecosystem and are not orderable, so they
+/// are accepted here rather than refused - the asset, digest and tag bindings
+/// already did the work that matters, and refusing them would lock those apps
+/// out of updates entirely.
+fn ensure_not_a_downgrade(
+    meta: &crate::signing::ReleaseMetadata,
+    installed: Option<&str>,
+) -> Result<()> {
+    let Some(installed) = installed else {
+        return Ok(());
+    };
+    let (Some(new), Some(current)) = (
+        crate::github::parse_version_tag(&meta.version),
+        crate::github::parse_version_tag(installed),
+    ) else {
+        return Ok(());
+    };
+    anyhow::ensure!(
+        new >= current,
+        "refusing a downgrade: signed release is {new} but {current} is installed"
     );
     Ok(())
 }
@@ -1649,7 +1785,8 @@ mod tests {
         let bytes = b"new colony build";
         let meta = meta_for(bytes, "v1.2.0", "colony-linux");
         assert!(
-            check_metadata_bindings(&meta, bytes, "colony-linux", Some("v1.2.0"), "1.1.0").is_ok()
+            check_metadata_bindings(&meta, bytes, "colony-linux", Some("v1.2.0")).is_ok()
+                && ensure_strictly_newer(&meta, "1.1.0").is_ok()
         );
     }
 
@@ -1660,7 +1797,11 @@ mod tests {
         let bytes = b"old colony build";
         for older in ["v1.0.0", "v0.9.0", "v1.1.0"] {
             let meta = meta_for(bytes, older, "colony-linux");
-            let err = check_metadata_bindings(&meta, bytes, "colony-linux", Some(older), "1.1.0")
+            // The BINDINGS pass - the bytes really are that signed artefact.
+            // What refuses the replay is the version rule that sits beside
+            // them, which is why it lives in its own function per caller.
+            assert!(check_metadata_bindings(&meta, bytes, "colony-linux", Some(older)).is_ok());
+            let err = ensure_strictly_newer(&meta, "1.1.0")
                 .unwrap_err()
                 .to_string();
             assert!(
@@ -1676,8 +1817,7 @@ mod tests {
         // Genuine, correctly signed metadata - but for a DIFFERENT asset.
         let meta = meta_for(served, "v1.2.0", "colony-macos");
         assert!(
-            check_metadata_bindings(&meta, served, "colony-linux", Some("v1.2.0"), "1.1.0")
-                .is_err(),
+            check_metadata_bindings(&meta, served, "colony-linux", Some("v1.2.0")).is_err(),
             "metadata naming another asset must not validate this download"
         );
     }
@@ -1686,21 +1826,46 @@ mod tests {
     fn signed_metadata_refuses_mismatched_digest_or_tag() {
         let meta = meta_for(b"expected bytes", "v1.2.0", "colony-linux");
         assert!(
-            check_metadata_bindings(&meta, b"tampered bytes", "colony-linux", None, "1.1.0")
-                .is_err(),
+            check_metadata_bindings(&meta, b"tampered bytes", "colony-linux", None).is_err(),
             "digest mismatch must fail"
         );
         assert!(
-            check_metadata_bindings(
-                &meta,
-                b"expected bytes",
-                "colony-linux",
-                Some("v1.3.0"),
-                "1.1.0"
-            )
-            .is_err(),
+            check_metadata_bindings(&meta, b"expected bytes", "colony-linux", Some("v1.3.0"))
+                .is_err(),
             "metadata for another tag than the one resolved must fail"
         );
+    }
+
+    /// Apps do not share the launcher's strictly-newer rule - an app pinned to
+    /// a fixed tag reinstalls the same version - but they must still refuse a
+    /// genuinely-signed OLDER build replayed under a new tag.
+    #[test]
+    fn an_app_may_reinstall_the_same_version_but_never_an_older_one() {
+        let meta = meta_for(b"bytes", "v1.2.0", "grape-linux");
+
+        assert!(
+            ensure_not_a_downgrade(&meta, Some("v1.2.0")).is_ok(),
+            "reinstalling the pinned version must stay possible"
+        );
+        assert!(ensure_not_a_downgrade(&meta, Some("v1.1.0")).is_ok());
+        assert!(ensure_not_a_downgrade(&meta, None).is_ok(), "first install");
+        assert!(
+            ensure_not_a_downgrade(&meta, Some("v2.0.0")).is_err(),
+            "a signed but older release must not be installable over a newer one"
+        );
+
+        // The launcher rule is the stricter one, and stays that way.
+        assert!(ensure_strictly_newer(&meta, "1.1.0").is_ok());
+        assert!(
+            ensure_strictly_newer(&meta, "1.2.0").is_err(),
+            "the launcher must never reapply its own version"
+        );
+
+        // Non-semver tags are common in the ecosystem and are not orderable:
+        // accepted, because the asset/digest/tag bindings already did the work
+        // and refusing would lock those apps out of updates entirely.
+        let nightly = meta_for(b"bytes", "nightly", "grape-linux");
+        assert!(ensure_not_a_downgrade(&nightly, Some("nightly")).is_ok());
     }
 
     #[test]
