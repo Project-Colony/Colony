@@ -12,12 +12,23 @@ use std::time::Duration;
 use crate::github::{APP_VERSION, CONNECT_TIMEOUT, GITHUB_ACCOUNT, LAUNCHER_OWNER, LAUNCHER_REPO};
 use crate::persistence::colony_data_dir;
 
-/// Build the HTTP client used for large asset downloads (longer read timeout
-/// than the API client).
+/// How long a download may stall before we give up. This is an *inactivity*
+/// budget, not a total one: a slow-but-alive link keeps its transfer, a dead
+/// socket still dies promptly.
+const DOWNLOAD_READ_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Build the HTTP client used for large asset downloads.
+///
+/// Deliberately no `.timeout()`: that is a *total* deadline covering connect,
+/// TLS, redirects and the whole body stream, so a 300 s cap made any asset
+/// larger than the line could carry in five minutes impossible to fetch at all
+/// (a 40 MB binary needed a sustained ~1.2 Mbit/s or it could never finish, on
+/// every attempt, with no partial progress kept). A read timeout bounds the
+/// only thing worth bounding - a connection that has stopped delivering bytes.
 fn download_client() -> Result<reqwest::Client> {
     Ok(reqwest::Client::builder()
         .user_agent(format!("Colony-Launcher/{APP_VERSION}"))
-        .timeout(Duration::from_secs(300))
+        .read_timeout(DOWNLOAD_READ_TIMEOUT)
         .connect_timeout(CONNECT_TIMEOUT)
         .build()?)
 }
