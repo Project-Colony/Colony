@@ -73,7 +73,7 @@ Your app card should appear in the category you declared. If not:
 
 - Make sure the release is **published** (not a draft).
 - Make sure asset names match the convention (lowercase, no version in the name, correct extension).
-- Look in `~/.cache/colony/repos_cache.json` — if your repo is there but without platforms, the `colony.json` or the asset names are wrong. See the [spec](docs/colony-spec.md) for the precise validation rules.
+- Look in `~/.config/Colony/Colony/cache/repos_cache.json` - if your repo is there but without platforms, the `colony.json` or the asset names are wrong. See the [spec](docs/colony-spec.md) for the precise validation rules.
 - Verify you aren't hitting the GitHub rate limit: Settings → GitHub → Connect.
 
 ---
@@ -141,7 +141,7 @@ See [docs/architecture.md](docs/architecture.md) for the full layout. Short vers
 
 ### Reporting bugs / feature requests
 
-Use the templates in `.github/ISSUE_TEMPLATE/` when filing. Include Colony version (`colony --version`), OS, and relevant log excerpts from `~/.cache/colony/`.
+Use the templates in `.github/ISSUE_TEMPLATE/` when filing. Include Colony version (`colony --version`), OS, and relevant log excerpts from `~/.cache/colony/colony.log`.
 
 ---
 

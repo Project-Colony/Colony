@@ -76,8 +76,13 @@ pub fn main() -> iced::Result {
     // Equal to the added one, so add_directive REPLACED it and the user's
     // request was silently discarded. Build the default only when RUST_LOG is
     // absent or unparseable, and otherwise honour it verbatim.
+    //
+    // The default is scoped rather than a bare "info": iced_winit and wgpu are
+    // chatty at info (a full pretty-printed WindowAttributes and adapter dump
+    // per launch), which drowned Colony's own lines in the very file a bug
+    // report is supposed to attach. Their warnings still come through.
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,colony=info"));
 
     // Log to a file as well as stderr: a .desktop launch has no terminal, and
     // on Windows there is no console at all, so stderr-only meant that every
