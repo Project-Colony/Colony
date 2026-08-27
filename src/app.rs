@@ -190,6 +190,8 @@ impl App {
             is_checking_updates: false,
             // A catalog fetch (token'd or anonymous) always starts at boot.
             is_fetching_repos: true,
+            // The boot fetch is not a click.
+            repos_refresh_manual: false,
             // Settings section state persistence
             settings_expanded_sections: HashSet::new(),
             // Detail tabs
@@ -279,7 +281,33 @@ impl App {
 
         let main_layout = row![sidebar, content].spacing(0);
 
-        let page = container(main_layout).width(Fill).height(Fill);
+        // The status line used to render only inside the grid header, which is
+        // three of the four pages short: the detail page returns early, and
+        // settings and the GitHub panel replace the content pane outright. So
+        // "no release for your platform", a failed uninstall, a failed
+        // release-notes fetch and a rate-limited refresh all reported into a
+        // widget that was not on screen. As a footer it is always there, and
+        // it no longer competes with the search input for row width.
+        let page: Element<'_, Message> = if self.status_message.is_empty() {
+            container(main_layout).width(Fill).height(Fill).into()
+        } else {
+            let status_bar = container(
+                text(&self.status_message)
+                    .size(self.sz(12))
+                    .font(self.app_font())
+                    .color(Palette::TEXT_DIMMER()),
+            )
+            .padding([6, 16])
+            .width(Fill)
+            .style(|_theme| container::Style {
+                background: Some(Palette::BG_SIDEBAR().into()),
+                ..Default::default()
+            });
+            container(column![main_layout, status_bar])
+                .width(Fill)
+                .height(Fill)
+                .into()
+        };
 
         // Build overlay toasts (download progress + notifications) anchored to bottom-left
         let mut overlay_items: Vec<Element<'_, Message>> = Vec::new();
@@ -421,7 +449,7 @@ impl App {
 
         // Build the base page with overlays
         let base: Element<'_, Message> = if overlay_items.is_empty() {
-            page.into()
+            page
         } else {
             let overlay = container(Column::with_children(overlay_items).spacing(6))
                 .padding(iced::Padding {

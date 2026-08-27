@@ -36,17 +36,26 @@ impl App {
         let timeout = level.timeout();
         self.notifications
             .push(Notification::new(id, message, level));
-        // When reduce_motion or animations off, don't auto-dismiss (user must click)
-        if self.reduce_motion || !self.animations {
-            Task::none()
-        } else {
-            Task::perform(
-                async move {
-                    tokio::time::sleep(timeout).await;
-                },
-                |_| Message::TickNotifications,
-            )
+        // The overlay column is anchored to the bottom and grows upward, so an
+        // unbounded stack pushes the OLDEST toasts off the top of the window -
+        // where they can never be clicked, and a toast is only dismissed by
+        // clicking it. Cap it so the overlay can never exceed the window.
+        const MAX_TOASTS: usize = 5;
+        while self.notifications.len() > MAX_TOASTS {
+            self.notifications.remove(0);
         }
+        // Always arm the expiry timer. Gating it on animations meant that with
+        // reduce-motion (or animations off) nothing ever sent TickNotifications,
+        // so the `retain(!is_expired)` branch below was unreachable and toasts
+        // were permanent - the accessibility settings were the ones that
+        // silted the UI up. The animation gate belongs on the FADE, not on the
+        // expiry, and it is already applied there.
+        Task::perform(
+            async move {
+                tokio::time::sleep(timeout).await;
+            },
+            |_| Message::TickNotifications,
+        )
     }
 
     /// Decode any cached app icons that aren't yet in memory into image handles,
@@ -676,6 +685,30 @@ mod tests {
         // ...but a MANUAL check gets explicit feedback.
         let _ = app.update(Message::LauncherUpdateChecked(true, Ok(None)));
         assert_eq!(app.notifications.len(), 1);
+    }
+
+    #[test]
+    fn the_toast_stack_is_capped_even_with_animations_off() {
+        let mut app = App::new_for_test();
+        // The accessibility settings were the ones that silted the UI up: with
+        // no animation tick, nothing ever expired the toasts, and the overlay
+        // grows upward from the bottom so the oldest scrolled out of clicking
+        // range and could never be dismissed at all.
+        app.animations = false;
+        app.reduce_motion = true;
+        for i in 0..12 {
+            let _ = app.push_notification(format!("toast {i}"), NotificationLevel::Info);
+        }
+        assert!(
+            app.notifications.len() <= 5,
+            "the overlay must never outgrow the window, got {}",
+            app.notifications.len()
+        );
+        assert_eq!(
+            app.notifications.last().map(|n| n.message.as_str()),
+            Some("toast 11"),
+            "the newest toast is the one that must survive the cap"
+        );
     }
 
     #[test]

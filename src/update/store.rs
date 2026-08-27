@@ -294,8 +294,12 @@ impl App {
             Ok(app_dir) => {
                 if app_dir.exists() {
                     if let Err(e) = std::fs::remove_dir_all(&app_dir) {
-                        self.status_message =
-                            i18n::t_fmt("uninstall_error", &[("error", &e.to_string())]);
+                        // Uninstall is always confirmed from the detail page,
+                        // and the app stays on disk half-removed. Toast it -
+                        // this is not a background condition.
+                        let msg = i18n::t_fmt("uninstall_error", &[("error", &e.to_string())]);
+                        self.status_message = msg.clone();
+                        return self.push_notification(msg, NotificationLevel::Error);
                     } else {
                         self.status_message = i18n::t_fmt("uninstalled", &[("name", &repo_name)]);
                         // AFTER the directory removal, so the cache

@@ -61,12 +61,40 @@ impl App {
                     .font(self.app_font())
                     .color(Palette::TEXT_MUTED());
 
+                // Browsing the catalog is anonymous, so a user whose boot fetch
+                // failed (flaky network, VPN, captive portal) is signed out by
+                // definition - and this arm used to offer sign-in as the only
+                // way forward. It is the same anonymous fetch the boot path
+                // already runs; no token, no sign-in required.
+                let retry_btn = button(
+                    text(crate::i18n::t("github_refresh"))
+                        .size(self.sz(13))
+                        .font(self.app_font()),
+                )
+                .on_press_maybe((!self.is_fetching_repos).then_some(Message::GitHubRefreshRepos))
+                .padding([8, 16])
+                .style(|_theme, status| {
+                    let bg = match status {
+                        button::Status::Hovered => Palette::BTN_HOVER(),
+                        button::Status::Pressed => Palette::BTN_PRESSED(),
+                        _ => Palette::BTN_DEFAULT(),
+                    };
+                    button::Style {
+                        background: Some(bg.into()),
+                        text_color: Palette::TEXT_PRIMARY(),
+                        border: iced::Border::default().rounded(8),
+                        ..Default::default()
+                    }
+                });
+
                 column![
                     desc,
                     container(text("")).height(16),
                     login_btn,
                     container(text("")).height(12),
-                    info
+                    info,
+                    container(text("")).height(12),
+                    retry_btn
                 ]
                 .spacing(8)
                 .into()
@@ -254,9 +282,24 @@ impl App {
                 .on_press(Message::GitHubLogin)
                 .padding([8, 16]);
 
-                column![err, container(text("")).height(12), retry_btn]
-                    .spacing(8)
-                    .into()
+                // Retrying the sign-in is not the only thing that can go wrong
+                // here; the catalog fetch can fail on its own, and refetching
+                // it needs no account at all.
+                let refresh_btn = button(
+                    text(crate::i18n::t("github_refresh"))
+                        .size(self.sz(13))
+                        .font(self.app_font()),
+                )
+                .on_press_maybe((!self.is_fetching_repos).then_some(Message::GitHubRefreshRepos))
+                .padding([8, 16]);
+
+                column![
+                    err,
+                    container(text("")).height(12),
+                    row![retry_btn, refresh_btn].spacing(8)
+                ]
+                .spacing(8)
+                .into()
             }
         };
 

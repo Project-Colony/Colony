@@ -318,8 +318,15 @@ impl App {
             .id(crate::ui::tutorial::ID_SEARCH)
             .width(Fill);
 
-        // Show search result count when query is active
-        let status_text = if !self.search_query.is_empty() {
+        // Only the search result count lives here. `status_message` used to
+        // share this row, which had two problems: it was the ONLY render site
+        // for the status line (so uninstall, platform and release-notes errors
+        // were invisible on the detail, settings and GitHub pages), and a long
+        // raw transport error laid the Fill search input out at width zero.
+        // It now renders as a footer in `App::view`, on every page.
+        let status_text = if self.search_query.is_empty() {
+            String::new()
+        } else {
             let filtered_count =
                 self.filtered_applications().len() + self.filtered_colony_repos().len();
             crate::i18n::t_fmt(
@@ -329,8 +336,6 @@ impl App {
                     ("query", &self.search_query),
                 ],
             )
-        } else {
-            self.status_message.clone()
         };
 
         // Show spinner indicator for async operations
@@ -438,25 +443,56 @@ impl App {
             } else {
                 crate::i18n::t("no_apps_found")
             };
-            return container(
-                column![
-                    text("\u{f002}")
-                        .size(self.sz(32))
-                        .font(self.app_font())
-                        .color(Palette::TEXT_DIMMEST()),
-                    container(text("")).height(12),
-                    text(empty_msg)
-                        .size(self.sz(16))
-                        .font(self.app_font())
-                        .color(Palette::TEXT_PLACEHOLDER()),
-                ]
-                .align_x(iced::Alignment::Center),
-            )
-            .width(Fill)
-            .height(Fill)
-            .center_x(Fill)
-            .center_y(Fill)
-            .into();
+            let mut empty = column![
+                text("\u{f002}")
+                    .size(self.sz(32))
+                    .font(self.app_font())
+                    .color(Palette::TEXT_DIMMEST()),
+                container(text("")).height(12),
+                text(empty_msg)
+                    .size(self.sz(16))
+                    .font(self.app_font())
+                    .color(Palette::TEXT_PLACEHOLDER()),
+            ]
+            .align_x(iced::Alignment::Center);
+
+            // An empty store with no search query means the catalog fetch never
+            // landed. Without a button here the only recovery was to sign in or
+            // restart Colony - on a page whose whole pitch is that browsing
+            // needs no account.
+            if self.search_query.is_empty() && self.colony_repo_list.is_empty() {
+                empty = empty.push(container(text("")).height(16)).push(
+                    button(
+                        text(crate::i18n::t("github_refresh"))
+                            .size(self.sz(13))
+                            .font(self.app_font()),
+                    )
+                    .on_press_maybe(
+                        (!self.is_fetching_repos).then_some(Message::GitHubRefreshRepos),
+                    )
+                    .padding([8, 16])
+                    .style(|_theme, status| {
+                        let bg = match status {
+                            button::Status::Hovered => Palette::BTN_HOVER(),
+                            button::Status::Pressed => Palette::BTN_PRESSED(),
+                            _ => Palette::BTN_DEFAULT(),
+                        };
+                        button::Style {
+                            background: Some(bg.into()),
+                            text_color: Palette::TEXT_PRIMARY(),
+                            border: iced::Border::default().rounded(8),
+                            ..Default::default()
+                        }
+                    }),
+                );
+            }
+
+            return container(empty)
+                .width(Fill)
+                .height(Fill)
+                .center_x(Fill)
+                .center_y(Fill)
+                .into();
         }
 
         // Chunk cards into a grid whose column count adapts to the available

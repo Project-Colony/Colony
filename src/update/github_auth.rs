@@ -107,6 +107,7 @@ impl App {
         &mut self,
         repos: Vec<crate::github::ColonyRepo>,
     ) -> Task<Message> {
+        self.repos_refresh_manual = false;
         self.is_fetching_repos = false;
         let count = repos.len();
         if let Err(e) = crate::persistence::save_repos_cache(&repos) {
@@ -140,6 +141,7 @@ impl App {
 
     pub(super) fn github_error(&mut self, e: String) -> Task<Message> {
         self.is_fetching_repos = false;
+        let was_manual = std::mem::take(&mut self.repos_refresh_manual);
         tracing::error!(error = %e, "GitHub error");
         if self.colony_repo_list.is_empty() {
             if let Some(cached) = crate::persistence::load_repos_cache() {
@@ -150,16 +152,17 @@ impl App {
         // Offline fallback repos may have cached icons on disk.
         self.reload_app_icons();
         self.status_message = i18n::t_fmt("github_api_error", &[("error", &e)]);
-        if self.colony_repo_list.is_empty() {
+        if self.colony_repo_list.is_empty() || was_manual {
+            // The anti-noise rule holds for the BOOT path only: a toast on
+            // every offline start, with a cached catalog already on screen,
+            // would be pure noise. A refresh the user just clicked is the
+            // opposite case - without feedback the button reads as broken,
+            // since the repo count does not move either.
             self.push_notification(
                 i18n::t_fmt("github_api_error", &[("error", &e)]),
                 NotificationLevel::Error,
             )
         } else {
-            // The catalog is showing (cached or previously fetched): a
-            // toast on every offline boot would be pure noise - the
-            // status line already carries the error. Only an EMPTY
-            // catalog warrants interrupting the user.
             Task::none()
         }
     }
@@ -168,6 +171,7 @@ impl App {
         if self.is_fetching_repos {
             return Task::none();
         }
+        self.repos_refresh_manual = true;
         self.is_fetching_repos = true;
         // Anonymous refresh is supported: the token only raises the
         // rate limit (60 req/h unauthenticated vs 5000 signed-in).

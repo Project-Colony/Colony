@@ -224,6 +224,11 @@ pub struct App {
     pub is_downloading: bool,
     pub is_checking_updates: bool,
     pub is_fetching_repos: bool,
+    /// Whether the catalog fetch in flight was started by the user clicking
+    /// Refresh rather than by boot. A boot fetch failing while a cached catalog
+    /// is on screen is routine and stays in the status line; a click the user
+    /// just made deserves a toast, otherwise the button looks broken.
+    pub repos_refresh_manual: bool,
     // Settings section state persistence
     pub settings_expanded_sections: HashSet<String>,
     // Detail tabs
@@ -540,6 +545,7 @@ impl App {
             is_downloading: false,
             is_checking_updates: false,
             is_fetching_repos: false,
+            repos_refresh_manual: false,
             settings_expanded_sections: std::collections::HashSet::new(),
             detail_tab: DetailTab::ReadMe,
             detail_blocks: Vec::new(),
