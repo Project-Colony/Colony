@@ -18,6 +18,43 @@ pub fn colony_data_dir() -> Result<PathBuf> {
     Ok(base)
 }
 
+/// Write `bytes` to `path` atomically: a temp sibling, then a rename.
+///
+/// Every state writer here used a bare `std::fs::write`, so a crash, an OOM
+/// kill or power loss mid-write left exactly the truncated JSON that the
+/// loaders then treated as "no file" - which the next save overwrote with
+/// defaults, destroying any chance of recovery. The install path already knew
+/// better: it stages and renames precisely so an interrupted write cannot
+/// truncate the target.
+fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Parse JSON from `path`, telling "absent" apart from "corrupt".
+///
+/// On a parse failure the file is moved aside to `<name>.corrupt` before
+/// defaults are returned, so the next save cannot clobber it and the user has
+/// something to attach to a bug report.
+fn load_json_or_quarantine<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Option<T> {
+    let content = std::fs::read_to_string(path).ok()?;
+    match serde_json::from_str(&content) {
+        Ok(value) => Some(value),
+        Err(e) => {
+            let quarantine = path.with_extension("corrupt");
+            tracing::warn!(
+                "{} is not valid JSON ({e}); moving it to {} and starting from defaults",
+                path.display(),
+                quarantine.display()
+            );
+            let _ = std::fs::rename(path, &quarantine);
+            None
+        }
+    }
+}
+
 /// Join a repo name onto `base` as a single directory component.
 ///
 /// `repo_name` is remote data (the `name` field of the GitHub API listing, also
@@ -235,8 +272,7 @@ fn repos_cache_path() -> Result<PathBuf> {
 /// Save Colony repos to local cache for offline use.
 pub fn save_repos_cache(repos: &[ColonyRepo]) -> Result<()> {
     let path = repos_cache_path()?;
-    let json = serde_json::to_string(repos)?;
-    std::fs::write(&path, json)?;
+    write_atomic(&path, serde_json::to_string(repos)?.as_bytes())?;
     tracing::debug!("Saved {} repos to cache", repos.len());
     Ok(())
 }
@@ -272,8 +308,7 @@ pub fn load_http_cache_json<T: serde::de::DeserializeOwned>() -> Option<T> {
 /// bounding what it hands over.
 pub fn save_http_cache_json<T: serde::Serialize>(value: &T) -> Result<()> {
     let path = http_cache_path()?;
-    std::fs::write(&path, serde_json::to_string(value)?)?;
-    Ok(())
+    write_atomic(&path, serde_json::to_string(value)?.as_bytes())
 }
 
 fn favorites_path() -> Result<PathBuf> {
@@ -286,17 +321,14 @@ fn favorites_path() -> Result<PathBuf> {
 pub fn load_favorites() -> Vec<String> {
     favorites_path()
         .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|c| serde_json::from_str(&c).ok())
+        .and_then(|p| load_json_or_quarantine(&p))
         .unwrap_or_default()
 }
 
 /// Save the list of favorite application names.
 pub fn save_favorites(favorites: &[String]) -> Result<()> {
     let path = favorites_path()?;
-    let json = serde_json::to_string(favorites)?;
-    std::fs::write(&path, json)?;
-    Ok(())
+    write_atomic(&path, serde_json::to_string(favorites)?.as_bytes())
 }
 
 /// User preferences saved between sessions.
@@ -309,14 +341,15 @@ pub struct UserPreferences {
     pub selected_theme: Option<String>,
     pub selected_variant: Option<String>,
     pub selected_accent: Option<String>,
+    /// Whether the accent follows the theme. The toggle existed and was
+    /// applied at boot, but was never written, so it silently reset every
+    /// restart.
+    pub auto_accent: Option<bool>,
     // General
     pub restore_session: Option<bool>,
     pub default_view: Option<String>,
-    pub close_behavior: Option<String>,
     pub language: Option<String>,
     pub auto_check_updates: Option<bool>,
-    pub update_channel: Option<String>,
-    pub auto_install_updates: Option<bool>,
     // Appearance
     pub font_size: Option<String>,
     pub animations: Option<bool>,
@@ -340,17 +373,14 @@ fn preferences_path() -> Result<PathBuf> {
 pub fn load_preferences() -> UserPreferences {
     preferences_path()
         .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|c| serde_json::from_str(&c).ok())
+        .and_then(|p| load_json_or_quarantine(&p))
         .unwrap_or_default()
 }
 
 /// Save user preferences.
 pub fn save_preferences(prefs: &UserPreferences) -> Result<()> {
     let path = preferences_path()?;
-    let json = serde_json::to_string_pretty(prefs)?;
-    std::fs::write(&path, json)?;
-    Ok(())
+    write_atomic(&path, serde_json::to_string_pretty(prefs)?.as_bytes())
 }
 
 fn scan_cache_path() -> Result<PathBuf> {
@@ -661,8 +691,7 @@ pub fn save_scan_cache(apps: &[CachedApp]) -> Result<()> {
         timestamp,
     };
     let path = scan_cache_path()?;
-    let json = serde_json::to_string(&entry)?;
-    std::fs::write(&path, json)?;
+    write_atomic(&path, serde_json::to_string(&entry)?.as_bytes())?;
     Ok(())
 }
 

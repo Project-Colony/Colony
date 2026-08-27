@@ -32,7 +32,6 @@ pub enum Message {
     GitHubError(String),
     GitHubRefreshRepos,
     DownloadRelease(String, String), // (repo_name, platform_key)
-    #[allow(dead_code)]
     /// (filename, downloaded bytes, total bytes when the server sent
     /// Content-Length) - raw bytes so the UI can show size AND speed, not
     /// just a bare percentage.

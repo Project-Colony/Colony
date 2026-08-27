@@ -600,9 +600,9 @@ fn parse_desktop_file(path: &Path) -> Result<Application> {
     let mut name = None;
     let mut exec = None;
     let mut icon = None;
-    let mut categories = String::new();
-    let mut no_display = false;
-    let mut hidden = false;
+    let mut categories: Option<String> = None;
+    let mut no_display: Option<bool> = None;
+    let mut hidden: Option<bool> = None;
     let mut in_desktop_entry = false;
 
     for line in content.lines() {
@@ -622,12 +622,21 @@ fn parse_desktop_file(path: &Path) -> Result<Application> {
             let value = value.trim();
 
             match key {
+                // FIRST occurrence wins for every key, which is what glib
+                // does - and what Colony's own writer documents and relies on
+                // (it rejects control characters precisely so a second `Exec=`
+                // cannot be injected). Only `Name` had the guard; `Exec`,
+                // `Icon`, `Categories`, `NoDisplay` and `Hidden` took the LAST
+                // one, so a duplicated key made Colony read a different entry
+                // than the desktop environment does.
                 "Name" if name.is_none() => name = Some(value.to_string()),
-                "Exec" => exec = Some(clean_exec(value)),
-                "Icon" => icon = Some(value.to_string()),
-                "Categories" => categories = value.to_string(),
-                "NoDisplay" => no_display = value.eq_ignore_ascii_case("true"),
-                "Hidden" => hidden = value.eq_ignore_ascii_case("true"),
+                "Exec" if exec.is_none() => exec = Some(clean_exec(value)),
+                "Icon" if icon.is_none() => icon = Some(value.to_string()),
+                "Categories" if categories.is_none() => categories = Some(value.to_string()),
+                "NoDisplay" if no_display.is_none() => {
+                    no_display = Some(value.eq_ignore_ascii_case("true"))
+                }
+                "Hidden" if hidden.is_none() => hidden = Some(value.eq_ignore_ascii_case("true")),
                 // Entries Colony itself wrote for installed store apps: real
                 // desktop launchers should show them, but Colony's own scan
                 // must skip them - the app is already represented by its
@@ -640,9 +649,10 @@ fn parse_desktop_file(path: &Path) -> Result<Application> {
         }
     }
 
-    if no_display || hidden {
+    if no_display.unwrap_or(false) || hidden.unwrap_or(false) {
         anyhow::bail!("Application is hidden");
     }
+    let categories = categories.unwrap_or_default();
 
     let name = name.ok_or_else(|| anyhow::anyhow!("No name found"))?;
     let exec = exec.ok_or_else(|| anyhow::anyhow!("No exec found"))?;
@@ -828,6 +838,62 @@ fn categorize_macos_app(name: &str) -> AppCategory {
 
 #[cfg(test)]
 mod tests {
+    /// `parse_desktop_file` had no test at all, and read duplicated keys the
+    /// opposite way round from glib - so Colony could show a different Exec
+    /// than the desktop environment would run.
+    #[cfg(not(windows))]
+    #[test]
+    fn desktop_entries_are_read_first_wins_like_glib() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join("colony_test_desktop_parse");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let write = |name: &str, body: &str| {
+            let path = dir.join(name);
+            let mut f = std::fs::File::create(&path).unwrap();
+            f.write_all(body.as_bytes()).unwrap();
+            path
+        };
+
+        // Duplicated keys: the FIRST of each must win.
+        let p = write(
+            "dup.desktop",
+            "[Desktop Entry]\nType=Application\nName=Real\nName=Shadow\n\
+             Exec=/usr/bin/real\nExec=/usr/bin/evil\nIcon=real\nIcon=evil\n",
+        );
+        let app = parse_desktop_file(&p).expect("parses");
+        assert_eq!(app.name, "Real");
+        assert_eq!(app.exec, "/usr/bin/real");
+        assert_eq!(app.icon.as_deref(), Some("real"));
+
+        // Keys outside [Desktop Entry] are not entry keys.
+        let p = write(
+            "group.desktop",
+            "[Desktop Entry]\nName=Main\nExec=/usr/bin/main\n\
+             [Desktop Action New]\nName=Other\nExec=/usr/bin/other\n",
+        );
+        let app = parse_desktop_file(&p).expect("parses");
+        assert_eq!(app.exec, "/usr/bin/main");
+
+        // Hidden entries are refused, and a later NoDisplay=false must not
+        // resurrect one.
+        let p = write(
+            "hidden.desktop",
+            "[Desktop Entry]\nName=H\nExec=/bin/h\nNoDisplay=true\nNoDisplay=false\n",
+        );
+        assert!(parse_desktop_file(&p).is_err());
+
+        // Colony's own entries are skipped: the app is already a store card.
+        let p = write(
+            "managed.desktop",
+            "[Desktop Entry]\nName=Grape\nExec=/bin/grape\nX-Colony-Managed=true\n",
+        );
+        assert!(parse_desktop_file(&p).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::*;
 
     // --- expand_env_vars tests ---

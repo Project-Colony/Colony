@@ -25,7 +25,7 @@ Minimal form:
 }
 ```
 
-Valid categories: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Games`, `Other`.
+Valid categories: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Security`, `Games`, `Other`.
 
 **App icon (recommended):** put a square PNG at `assets/icons/icon.png` and declare it in the manifest — `"icon": "assets/icons/icon.png"`. Colony shows it in the grid; without it your app gets a generated category tile. The same folder is the standard home for your `icon.ico` (Windows) and `icon.icns` (macOS). See the [App icon](docs/colony-spec.md#app-icon) section of the spec.
 
@@ -96,7 +96,7 @@ cargo build --release    # optimized build
 **Linux runtime dependencies** (for building and running):
 
 ```
-libgtk-3-dev libxdo-dev libdbus-1-dev libasound2-dev libglib2.0-dev pkg-config
+libgtk-3-dev libxdo-dev libdbus-1-dev pkg-config
 ```
 
 ### Code organization
@@ -113,7 +113,7 @@ See [docs/architecture.md](docs/architecture.md) for the full layout. Short vers
 - `src/scan.rs` — system app detection (Linux `.desktop`, Windows Start Menu, macOS `.app`).
 - `src/sections.rs` — categories + filter logic.
 - `src/ui/` — widgets and panels (sidebar, app grid, detail view, settings).
-- `src/ui/theme.rs` — all 24 theme families + 50+ palettes.
+- `src/ui/theme.rs` — all 25 theme families + 57 palettes.
 
 ### Style
 

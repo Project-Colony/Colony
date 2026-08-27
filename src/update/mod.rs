@@ -146,6 +146,19 @@ impl App {
         self.detail_md_source = Some(key);
     }
 
+    /// Persist the settings this `App` owns.
+    ///
+    /// Written as an EXHAUSTIVE struct literal with no `..` on purpose: every
+    /// field of `UserPreferences` now corresponds to a field of `App`, so the
+    /// compiler refuses to build if a new preference is added and not saved
+    /// here. That is the guard that was missing - `auto_accent` had a working
+    /// toggle, applied at boot, that was simply never written, and it compiled
+    /// clean. `..Default::default()` or `..load_preferences()` would hide
+    /// exactly that mistake again.
+    ///
+    /// The three keys that used to be hardwired to `None` here
+    /// (`close_behavior`, `update_channel`, `auto_install_updates`) were read
+    /// by nothing and are gone.
     pub fn save_preferences(&self) {
         let prefs = crate::persistence::UserPreferences {
             selected_section: Some(self.selected_section),
@@ -155,14 +168,12 @@ impl App {
             selected_theme: Some(self.selected_theme.clone()),
             selected_variant: Some(self.selected_variant.clone()),
             selected_accent: Some(self.selected_accent.clone()),
+            auto_accent: Some(self.auto_accent),
             // General
             restore_session: Some(self.restore_session),
             default_view: Some(self.default_view.clone()),
-            close_behavior: None,
             language: Some(self.language.clone()),
             auto_check_updates: Some(self.auto_check_updates),
-            update_channel: None,
-            auto_install_updates: None,
             // Appearance
             font_size: Some(self.font_size.clone()),
             animations: Some(self.animations),
@@ -694,6 +705,58 @@ mod tests {
     /// Typing "firefox" in the default view reported zero results on a machine
     /// where Firefox was two clicks away: the shipped "All" section filters to
     /// `origin: colony`, and scanned apps are never AppOrigin::Colony.
+    /// The toggle worked and was applied at boot; it was simply never written,
+    /// so it reset on every restart and nothing caught it because the save
+    /// rebuilt the struct field by field.
+    #[test]
+    fn every_app_preference_survives_a_save_and_load_round_trip() {
+        let mut app = App::new_for_test();
+        app.auto_accent = true;
+        app.high_contrast = true;
+        app.reduce_motion = true;
+        app.selected_accent = "amber".into();
+
+        // Go through the same struct save_preferences builds, without touching
+        // the real config dir (that path is covered by the linux-gated test).
+        let prefs = crate::persistence::UserPreferences {
+            selected_section: Some(app.selected_section),
+            window_width: Some(app.window_size.0),
+            window_height: Some(app.window_size.1),
+            first_launch_done: Some(!app.show_first_launch),
+            selected_theme: Some(app.selected_theme.clone()),
+            selected_variant: Some(app.selected_variant.clone()),
+            selected_accent: Some(app.selected_accent.clone()),
+            auto_accent: Some(app.auto_accent),
+            restore_session: Some(app.restore_session),
+            default_view: Some(app.default_view.clone()),
+            language: Some(app.language.clone()),
+            auto_check_updates: Some(app.auto_check_updates),
+            font_size: Some(app.font_size.clone()),
+            animations: Some(app.animations),
+            high_contrast: Some(app.high_contrast),
+            text_size_a11y: Some(app.text_size_a11y.clone()),
+            reduce_motion: Some(app.reduce_motion),
+            keyboard_nav: Some(app.keyboard_nav),
+            dyslexia_font: Some(app.dyslexia_font),
+            scan_on_startup: Some(app.scan_on_startup),
+        };
+        let json = serde_json::to_string(&prefs).expect("serializes");
+        let back: crate::persistence::UserPreferences =
+            serde_json::from_str(&json).expect("round-trips");
+
+        assert_eq!(back.auto_accent, Some(true), "the field that was lost");
+        assert_eq!(back.selected_accent.as_deref(), Some("amber"));
+        assert_eq!(back.high_contrast, Some(true));
+        assert_eq!(back.reduce_motion, Some(true));
+
+        // Every field carries a value: a None here would mean save_preferences
+        // is dropping something on the floor.
+        let value: serde_json::Value = serde_json::from_str(&json).expect("object");
+        for (key, v) in value.as_object().expect("object") {
+            assert!(!v.is_null(), "preference {key} is written as null");
+        }
+    }
+
     #[test]
     fn search_reaches_local_apps_the_section_filter_would_hide() {
         let mut app = App::new_for_test();

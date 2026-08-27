@@ -64,7 +64,6 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("launch".into(), "Launch {name}".into());
     strings.insert("update".into(), "Update".into());
     strings.insert("download".into(), "Download".into());
-    strings.insert("no_release".into(), "No release available".into());
     strings.insert("offered_version".into(), "Release {version}".into());
     strings.insert(
         "no_release_unrecognized".into(),
@@ -159,49 +158,12 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
 
     // Favorites
     strings.insert("add_favorite".into(), "Add to favorites".into());
-    strings.insert("remove_favorite".into(), "Remove from favorites".into());
 
     // First launch — carousel (3 steps)
     strings.insert("welcome_title".into(), "Welcome to Colony".into());
     strings.insert("welcome_desc".into(), "The centralized launcher for the Project-Colony ecosystem. Discover, install and launch apps in one click.".into());
     // Step 1 — interface tour
-    strings.insert(
-        "welcome_step1_title".into(),
-        "The interface, in 3 zones".into(),
-    );
-    strings.insert("welcome_step1_tip1_title".into(), "Sidebar".into());
-    strings.insert(
-        "welcome_step1_tip1_desc".into(),
-        "Filter by category or origin (Colony / system apps).".into(),
-    );
-    strings.insert("welcome_step1_tip2_title".into(), "Search".into());
-    strings.insert(
-        "welcome_step1_tip2_desc".into(),
-        "Type an app name in the top bar to filter instantly.".into(),
-    );
-    strings.insert("welcome_step1_tip3_title".into(), "Detail".into());
-    strings.insert(
-        "welcome_step1_tip3_desc".into(),
-        "Click any app to read its README, changelog and install it.".into(),
-    );
     // Step 2 — GitHub + ready
-    strings.insert(
-        "welcome_step2_title".into(),
-        "Connect GitHub (optional)".into(),
-    );
-    strings.insert("welcome_step2_desc".into(), "Without an account: 60 GitHub requests per hour. With an account: 5000/h + access to your private repos. Recommended if you plan to browse a lot.".into());
-    strings.insert(
-        "welcome_step2_hint1".into(),
-        "\u{f005}  Favorites (⭐) for quick access".into(),
-    );
-    strings.insert(
-        "welcome_step2_hint2".into(),
-        "\u{f53f}  24 theme families in the preferences".into(),
-    );
-    strings.insert(
-        "welcome_step2_hint3".into(),
-        "\u{f059}  Full tutorial + FAQ on GitHub".into(),
-    );
     // Navigation
     strings.insert("welcome_start".into(), "Let's go!".into());
     strings.insert("welcome_next".into(), "Next".into());
@@ -229,7 +191,6 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("tut_finish_desc".into(), "The gear icon next to the title opens Preferences: 24 theme families, keyboard shortcuts, accessibility. Enjoy Colony!".into());
 
     // Loading / async feedback
-    strings.insert("loading".into(), "Loading...".into());
     strings.insert("scanning".into(), "Scanning...".into());
     strings.insert("checking_updates".into(), "Checking for updates...".into());
     strings.insert("syncing_repos".into(), "Syncing repositories...".into());
@@ -305,14 +266,6 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert("settings_default_view_all".into(), "All".into());
     strings.insert("settings_default_view_favorites".into(), "Favorites".into());
-    strings.insert("settings_default_view_recent".into(), "Recent".into());
-    strings.insert("settings_close_behavior".into(), "Close behavior".into());
-    strings.insert(
-        "settings_close_behavior_desc".into(),
-        "Choose action on close.".into(),
-    );
-    strings.insert("settings_close_quit".into(), "Quit".into());
-    strings.insert("settings_close_tray".into(), "Minimize to tray".into());
     // Language
     strings.insert("settings_section_language".into(), "Language".into());
     strings.insert(
@@ -326,11 +279,6 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert(
         "settings_current_language_desc".into(),
         "Synced with system.".into(),
-    );
-    strings.insert("settings_time_format".into(), "Time format".into());
-    strings.insert(
-        "settings_time_format_desc".into(),
-        "Format used in the application.".into(),
     );
     // Updates
     strings.insert("settings_section_updates".into(), "Updates".into());
@@ -346,39 +294,8 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "settings_auto_check_updates_desc".into(),
         "Check for new versions on launch.".into(),
     );
-    strings.insert("settings_update_channel".into(), "Channel".into());
-    strings.insert(
-        "settings_update_channel_desc".into(),
-        "Choose version stability.".into(),
-    );
-    strings.insert(
-        "settings_auto_install_updates".into(),
-        "Install automatically".into(),
-    );
-    strings.insert(
-        "settings_auto_install_updates_desc".into(),
-        "Install updates in background.".into(),
-    );
     strings.insert("settings_check_updates".into(), "Check for updates".into());
     // Privacy
-    strings.insert("settings_section_privacy".into(), "Privacy".into());
-    strings.insert(
-        "settings_privacy_desc".into(),
-        "Choose data shared with Colony.".into(),
-    );
-    strings.insert("settings_error_reports".into(), "Send error reports".into());
-    strings.insert(
-        "settings_error_reports_desc".into(),
-        "Helps improve stability.".into(),
-    );
-    strings.insert(
-        "settings_usage_stats".into(),
-        "Anonymous usage statistics".into(),
-    );
-    strings.insert(
-        "settings_usage_stats_desc".into(),
-        "Helps understand Colony usage.".into(),
-    );
     // Appearance
     strings.insert(
         "settings_appearance_title".into(),
@@ -389,16 +306,6 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "Adjust theme, accents and visual effects.".into(),
     );
     strings.insert("settings_section_theme".into(), "Theme".into());
-    strings.insert(
-        "settings_theme_desc".into(),
-        "Choose the interface theme.".into(),
-    );
-    strings.insert("settings_theme_current".into(), "Current theme".into());
-    strings.insert(
-        "settings_theme_current_desc".into(),
-        "Overall application appearance.".into(),
-    );
-    strings.insert("settings_theme_dark".into(), "Dark".into());
     // Theme families
     strings.insert("settings_theme_catppuccin".into(), "Catppuccin".into());
     strings.insert("settings_theme_catppuccin_latte".into(), "Latte".into());
@@ -472,15 +379,6 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("settings_theme_stellar_blade_kaya".into(), "Kaya".into());
     // Colors & accents
     strings.insert("settings_section_colors".into(), "Colors & accents".into());
-    strings.insert(
-        "settings_colors_desc".into(),
-        "Customize the interface accent color.".into(),
-    );
-    strings.insert("settings_accent_color".into(), "Accent color".into());
-    strings.insert(
-        "settings_accent_color_desc".into(),
-        "Color used for interactive elements.".into(),
-    );
     strings.insert("settings_accent_red".into(), "Red".into());
     strings.insert("settings_accent_orange".into(), "Orange".into());
     strings.insert("settings_accent_yellow".into(), "Yellow".into());
@@ -497,17 +395,10 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "settings_auto_accent_desc".into(),
         "Automatically adapts accent to backgrounds.".into(),
     );
-    strings.insert("settings_enabled_label".into(), "Enabled".into());
-    strings.insert("settings_disabled_label".into(), "Disabled".into());
     strings.insert("settings_section_typography".into(), "Typography".into());
     strings.insert(
         "settings_typography_desc".into(),
         "Configure font and text size.".into(),
-    );
-    strings.insert("settings_font".into(), "Font".into());
-    strings.insert(
-        "settings_font_desc".into(),
-        "Font used in the interface.".into(),
     );
     strings.insert("settings_font_size".into(), "Text size".into());
     strings.insert("settings_font_size_desc".into(), "Base text size.".into());
@@ -553,7 +444,6 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "settings_high_contrast_desc".into(),
         "Increase contrast of elements.".into(),
     );
-    strings.insert("settings_disabled".into(), "Disabled".into());
     strings.insert("settings_text_size_a11y".into(), "Text size".into());
     strings.insert(
         "settings_text_size_a11y_desc".into(),
@@ -603,28 +493,19 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "settings_scan_desc".into(),
         "Configure directories scanned at startup.".into(),
     );
-    strings.insert("settings_scan_dirs".into(), "Scan directories".into());
-    strings.insert(
-        "settings_scan_dirs_desc".into(),
-        "Directories scanned for applications.".into(),
-    );
-    strings.insert("settings_scan_dirs_value".into(), "Default".into());
     strings.insert("settings_startup".into(), "Scan on startup".into());
     strings.insert(
         "settings_startup_desc".into(),
         "Updates the library at startup.".into(),
     );
-    strings.insert("settings_enabled".into(), "Enabled".into());
     strings.insert("settings_section_install".into(), "Installation".into());
     strings.insert("settings_local_apps".into(), "Local applications".into());
     strings.insert("settings_colony_repos".into(), "Colony repos".into());
     strings.insert("settings_favorites".into(), "Favorites".into());
     // Placeholders
-    strings.insert("settings_coming_soon".into(), "Coming soon".into());
     // About
     strings.insert("settings_about_title".into(), "About Colony".into());
     strings.insert("settings_about".into(), "About".into());
-    strings.insert("settings_version".into(), "Colony v0.1.0".into());
     // Launcher self-update
     strings.insert(
         "launcher_update_available".into(),
@@ -646,10 +527,6 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "launcher_download_update".into(),
         "Download update {version}".into(),
     );
-    strings.insert(
-        "launcher_update_failed".into(),
-        "Update failed: {error}".into(),
-    );
     strings.insert("check_launcher_updates".into(), "Check for updates".into());
     strings.insert("launcher_up_to_date".into(), "Colony is up to date".into());
     strings.insert("update_all".into(), "Update all ({count})".into());
@@ -667,6 +544,5 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("tab_readme".into(), "ReadMe".into());
     strings.insert("tab_license".into(), "License".into());
     strings.insert("tab_changelog".into(), "Changelog".into());
-    strings.insert("tab_loading".into(), "Loading...".into());
     strings.insert("tab_not_available".into(), "Not available".into());
 }

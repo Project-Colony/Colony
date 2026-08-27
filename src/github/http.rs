@@ -155,19 +155,22 @@ fn url_lock(url: &str) -> std::sync::Arc<TokioMutex<()>> {
 }
 
 /// Rate-limit information from GitHub API response headers.
+///
+/// Private: `cached_get` used to hand this back to every caller and all six
+/// discarded it, so it read like a supported channel while being dead weight.
+/// The values are consumed here - the low-quota warning and the 403/429
+/// exhaustion check. Surfacing the remaining quota in the UI would be a
+/// deliberate feature, not a reason to keep an unread return value.
 #[derive(Debug, Clone)]
-pub struct RateLimitInfo {
+struct RateLimitInfo {
     pub remaining: u64,
     pub limit: u64,
     pub reset: u64,
 }
 
-/// Perform a GET request with ETag caching, per-URL locking, and rate-limit awareness.
-/// Returns (body_string, optional_rate_limit_info).
-pub(crate) async fn cached_get(
-    client: &reqwest::Client,
-    url: &str,
-) -> Result<(String, Option<RateLimitInfo>)> {
+/// Perform a GET request with ETag caching, per-URL locking, and rate-limit
+/// awareness. Returns the body.
+pub(crate) async fn cached_get(client: &reqwest::Client, url: &str) -> Result<String> {
     let lock = url_lock(url);
     let _guard = lock.lock().await;
 
@@ -219,7 +222,7 @@ pub(crate) async fn cached_get(
             if let Ok(cache) = HTTP_CACHE.lock() {
                 if let Some(entry) = cache.entries.get(url) {
                     tracing::debug!("Cache hit (304) for {}", url);
-                    return Ok((entry.body.clone(), rate_limit));
+                    return Ok(entry.body.clone());
                 }
             }
             anyhow::bail!("304 received but no cached body for {url}");
@@ -246,7 +249,7 @@ pub(crate) async fn cached_get(
                     );
                 }
             }
-            Ok((body, rate_limit))
+            Ok(body)
         }
         status => {
             // Only treat an exhausted quota as a rate-limit error on the
@@ -307,7 +310,7 @@ pub fn is_not_found(e: &anyhow::Error) -> bool {
     e.downcast_ref::<HttpStatus>().is_some_and(|s| s.0 == 404)
 }
 
-pub(crate) fn parse_rate_limit(headers: &reqwest::header::HeaderMap) -> Option<RateLimitInfo> {
+fn parse_rate_limit(headers: &reqwest::header::HeaderMap) -> Option<RateLimitInfo> {
     let remaining = headers
         .get("x-ratelimit-remaining")?
         .to_str()

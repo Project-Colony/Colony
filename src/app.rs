@@ -161,7 +161,7 @@ impl App {
                 .selected_accent
                 .clone()
                 .unwrap_or_else(|| "blue".into()),
-            auto_accent: false,
+            auto_accent: prefs.auto_accent.unwrap_or(false),
             // General
             restore_session: prefs.restore_session.unwrap_or(true),
             default_view: prefs.default_view.clone().unwrap_or_else(|| "all".into()),

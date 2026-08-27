@@ -159,7 +159,7 @@ async fn list_repos_paginated(client: &reqwest::Client) -> Result<Vec<GithubRepo
         let url = format!(
             "{GITHUB_API}/orgs/{GITHUB_ACCOUNT}/repos?per_page=100&sort=updated&page={page}"
         );
-        let (body, _) = cached_get(client, &url).await?;
+        let body = cached_get(client, &url).await?;
         let repos: Vec<GithubRepo> = serde_json::from_str(&body)?;
 
         if repos.is_empty() {
@@ -213,7 +213,7 @@ async fn fetch_colony_manifest(
 ) -> Result<Option<ColonyManifest>> {
     let url = format!("{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/contents/colony.json");
     match cached_get(client, &url).await {
-        Ok((body, _)) => {
+        Ok(body) => {
             let content: GithubContent = serde_json::from_str(&body).map_err(|e| {
                 anyhow::anyhow!("Failed to parse GitHub content response for {repo_name}: {e}")
             })?;
@@ -250,7 +250,7 @@ async fn fetch_colony_manifest(
 /// Fetch the README content from a repo, returning the first ~500 chars as plain text.
 async fn fetch_readme(client: &reqwest::Client, repo_name: &str) -> Result<String> {
     let url = format!("{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/readme");
-    let (body, _) = cached_get(client, &url).await?;
+    let body = cached_get(client, &url).await?;
     let readme: GithubReadme = serde_json::from_str(&body)?;
     let raw = readme.content.unwrap_or_default();
     let cleaned: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
@@ -270,7 +270,7 @@ async fn fetch_readme(client: &reqwest::Client, repo_name: &str) -> Result<Strin
 async fn fetch_license(client: &reqwest::Client, repo_name: &str) -> Result<Option<String>> {
     let url = format!("{GITHUB_API}/repos/{GITHUB_ACCOUNT}/{repo_name}/license");
     match cached_get(client, &url).await {
-        Ok((body, _)) => {
+        Ok(body) => {
             let content: GithubContent = serde_json::from_str(&body)?;
             let raw = content.content.unwrap_or_default();
             let cleaned: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
@@ -339,7 +339,7 @@ async fn fetch_repo_file_candidates(
             }
         };
         match cached_get(client, &url).await {
-            Ok((body, _)) => {
+            Ok(body) => {
                 let content: GithubContent = serde_json::from_str(&body)?;
                 let raw = content.content.unwrap_or_default();
                 let cleaned: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
@@ -382,7 +382,7 @@ async fn fetch_icon(
             }
         };
         match cached_get(client, &url).await {
-            Ok((body, _)) => {
+            Ok(body) => {
                 let content: GithubContent = serde_json::from_str(&body)?;
                 let raw = content.content.unwrap_or_default();
                 let cleaned: String = raw.chars().filter(|c| !c.is_whitespace()).collect();

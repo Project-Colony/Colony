@@ -52,7 +52,7 @@ cargo build --release
 ./target/release/colony
 ```
 
-Requires Rust 1.80+ and, on Linux, `libgtk-3-dev`, `libxdo-dev`, `libdbus-1-dev`, `libasound2-dev`, `libglib2.0-dev`, `pkg-config`.
+Requires Rust 1.88+ and, on Linux, `libgtk-3-dev`, `libxdo-dev`, `libdbus-1-dev`, `pkg-config`.
 
 ---
 
@@ -75,7 +75,7 @@ Requires Rust 1.80+ and, on Linux, `libgtk-3-dev`, `libxdo-dev`, `libdbus-1-dev`
 
 ## Theming
 
-Colony ships with **24 theme families and 50+ palettes**, all compiled into the binary with zero runtime cost:
+Colony ships with **25 theme families and 57 palettes**, all compiled into the binary with zero runtime cost:
 
 | | | | |
 |---|---|---|---|
@@ -85,6 +85,7 @@ Colony ships with **24 theme families and 50+ palettes**, all compiled into the 
 | Everforest | Material (Oceanic, Palenight, Deep Ocean) | Flexoki | Nightfox |
 | Sonokai | Oxocarbon | Night Owl | Iceberg |
 | Horizon | Mélange | Synthwave '84 | Modus (Operandi, Vivendi) |
+| Stellar Blade (Eve, Tachy, Lily, Enya, Kaya) | | | |
 
 Each palette includes full semantic tokens: backgrounds, text layers, accents, success/warning/error states, button states, and more.
 

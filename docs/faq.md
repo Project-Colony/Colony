@@ -87,7 +87,7 @@ Settings → GitHub → **Disconnect**. The token is deleted locally. The app le
 Most common causes:
 
 1. No `colony.json` at the root of the repo.
-2. `colony.json` has an invalid `category` (valid: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Games`, `Other`).
+2. `colony.json` has an invalid `category` (valid: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Security`, `Games`, `Other`).
 3. No GitHub release published (drafts don't count).
 4. Release assets don't match the `<repo>-<platform>` convention (see [colony-spec.md](colony-spec.md)).
 5. The repo is not under the `Project-Colony` org (Colony only scans that org).
@@ -146,7 +146,7 @@ Yes. Edit `~/.config/Colony/Colony/preferences/preferences.json` and add custom 
 
 ### I changed a theme and don't see it — why?
 
-Themes apply immediately, no restart. If a palette looks off, verify Settings → Theme has the expected family + palette selected. All 50+ palettes are compiled into the binary, so if it's missing you're on an old version — update.
+Themes apply immediately, no restart. If a palette looks off, verify Settings → Theme has the expected family + palette selected. All 57 palettes are compiled into the binary, so if it's missing you're on an old version — update.
 
 ---
 

@@ -3,8 +3,12 @@ name = "colony"
 version = "0.9.2"
 edition = "2021"
 license = "GPL-3.0-or-later"
-# Enforced floor for the README's "Rust 1.80+" claim (std::sync::LazyLock).
-rust-version = "1.80"
+# The real floor, and it is enforced by CI (see .github/workflows/ci.yml).
+# 1.80 was declared for years and could never have worked: 70 transitive
+# dependencies require more, including iced, zip, image and wgpu at 1.88, so
+# cargo refuses to build at all on it. Nothing checked, because CI only ever
+# ran on stable.
+rust-version = "1.88"
 
 [dependencies]
 anyhow = "1.0.100"

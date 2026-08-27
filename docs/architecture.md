@@ -51,7 +51,7 @@ src/
 ├── i18n/            — fr.rs, en.rs, and the Locale lookup (mod.rs)
 └── ui/
     ├── mod.rs       — UI module declarations
-    ├── theme.rs     — 24 theme families, 50+ palettes, semantic tokens
+    ├── theme.rs     — 25 theme families, 57 palettes, semantic tokens
     ├── sidebar.rs   — Sidebar (sections, GitHub, rescan, update badge)
     ├── app_grid.rs  — Application card grid with search
     ├── detail.rs    — Detail view (README, changelog, license, actions)

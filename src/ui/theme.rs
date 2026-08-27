@@ -25,6 +25,7 @@ pub struct ThemePalette {
 
     // --- Accent ---
     pub accent_blue: Color,
+    #[allow(dead_code)]
     pub accent_icon: Color,
     pub accent_progress: Color,
 
@@ -54,6 +55,7 @@ pub struct ThemePalette {
     pub btn_trash_pressed: Color,
 
     // --- Modal ---
+    #[allow(dead_code)]
     pub bg_modal_section: Color,
     pub border_subtle: Color,
     pub divider: Color,
@@ -256,7 +258,7 @@ pub fn active_palette() -> ThemePalette {
 
 pub struct Palette;
 
-#[allow(non_snake_case, dead_code)]
+#[allow(non_snake_case)]
 impl Palette {
     // Backgrounds
     pub fn BG_PRIMARY() -> Color {
@@ -312,6 +314,11 @@ impl Palette {
     pub fn ACCENT() -> Color {
         effective_accent()
     }
+    /// Part of the palette vocabulary every theme fills in, but not currently
+    /// read by any view. Kept rather than deleted from 50+ palette definitions
+    /// for a two-token saving; the narrow allow is what stops the blanket one
+    /// from hiding the next genuinely dead accessor.
+    #[allow(dead_code)]
     pub fn ACCENT_ICON() -> Color {
         active_palette().accent_icon
     }
@@ -379,6 +386,11 @@ impl Palette {
     }
 
     // Modal
+    /// Part of the palette vocabulary every theme fills in, but not currently
+    /// read by any view. Kept rather than deleted from 50+ palette definitions
+    /// for a two-token saving; the narrow allow is what stops the blanket one
+    /// from hiding the next genuinely dead accessor.
+    #[allow(dead_code)]
     pub fn BG_MODAL_SECTION() -> Color {
         active_palette().bg_modal_section
     }
@@ -2998,5 +3010,53 @@ fn mix(a: iced::Color, b: iced::Color, t: f32) -> iced::Color {
         g: a.g + (b.g - a.g) * t,
         b: a.b + (b.b - a.b) * t,
         a: a.a + (b.a - a.a) * t,
+    }
+}
+
+#[cfg(test)]
+mod doc_parity_tests {
+    /// Five documents state the family and palette counts, and nothing kept
+    /// them true: they said 24 families when there were 25, and the Stellar
+    /// Blade family (five variants) was missing from the README's table
+    /// altogether. Adding a palette should fail here, not go unnoticed.
+    #[test]
+    fn the_documented_theme_counts_match_the_code() {
+        const SRC: &str = include_str!("theme.rs");
+        let body = SRC
+            .split_once("pub fn set_active_theme")
+            .expect("dispatch exists")
+            .1;
+        let body = body.split_once("\n}").expect("dispatch closes").0;
+
+        let mut families = std::collections::BTreeSet::new();
+        let mut palettes = 0usize;
+        for line in body.lines() {
+            let line = line.trim();
+            // `("family", "variant") => ThemePalette::X,`
+            let Some(rest) = line.strip_prefix("(\"") else {
+                continue;
+            };
+            if !line.contains("=> ThemePalette::") {
+                continue;
+            }
+            let Some(family) = rest.split('"').next() else {
+                continue;
+            };
+            families.insert(family.to_string());
+            palettes += 1;
+        }
+
+        assert_eq!(
+            families.len(),
+            25,
+            "the docs say 25 theme families; found {} ({families:?}). Update README.md \
+             (including its table of family names), docs/faq.md, docs/tutorial.md, \
+             docs/architecture.md and CONTRIBUTING.md.",
+            families.len()
+        );
+        assert_eq!(
+            palettes, 57,
+            "the docs say 57 palettes; found {palettes}. Update the same five documents."
+        );
     }
 }

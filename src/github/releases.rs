@@ -32,7 +32,7 @@ pub async fn fetch_latest_release_tag_for(
     repo: &str,
 ) -> Result<String> {
     let url = format!("{GITHUB_API}/repos/{owner}/{repo}/releases/latest");
-    let (body, _) = cached_get(client, &url).await?;
+    let body = cached_get(client, &url).await?;
 
     #[derive(Deserialize)]
     struct Release {
@@ -85,7 +85,7 @@ pub async fn fetch_release_info(
             &["repos", GITHUB_ACCOUNT, repo_name, "releases", "tags", tag],
         )?
     };
-    let (body, _) = cached_get(client, &url).await?;
+    let body = cached_get(client, &url).await?;
 
     #[derive(Deserialize)]
     struct Asset {
