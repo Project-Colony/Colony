@@ -207,6 +207,7 @@ impl App {
             available_updates: std::collections::HashMap::new(),
             update_queue: Vec::new(),
             release_notes: std::collections::HashMap::new(),
+            release_facts: std::collections::HashMap::new(),
             fetching_notes: std::collections::HashSet::new(),
             install_status: std::collections::HashMap::new(),
             keyboard_cursor: None,

@@ -56,7 +56,7 @@ impl App {
         .on_press(Message::ColonyRepoBack)
         .padding([8, 16]);
 
-        let title = text(&repo.name)
+        let title = text(repo.display_name())
             .size(self.sz(24))
             .font(self.app_font_with_weight(Weight::Bold))
             .color(Palette::TEXT_PRIMARY());
@@ -196,6 +196,54 @@ impl App {
                 .color(Palette::TEXT_DIM())
                 .into(),
             );
+        }
+        // What the store is OFFERING, next to what is installed: the three
+        // questions every app store answers on the product page and Colony
+        // could not. The tag comes from the manifest for free; size and date
+        // arrive with the release-notes fetch, so they appear once the user has
+        // asked for the notes rather than costing a request per card.
+        if let Some(entry) = repo
+            .manifest
+            .release_files
+            .get(github::current_platform_key())
+        {
+            let facts = self.release_facts.get(&repo.name);
+            let offered_tag = facts
+                .map(|f| f.tag.as_str())
+                .filter(|t| !t.is_empty())
+                .unwrap_or(entry.tag.as_str());
+            if !offered_tag.eq_ignore_ascii_case("latest") {
+                footer_items.push(
+                    text(crate::i18n::t_fmt(
+                        "offered_version",
+                        &[("version", offered_tag)],
+                    ))
+                    .size(self.sz(12))
+                    .font(self.app_font())
+                    .color(Palette::TEXT_DIM())
+                    .into(),
+                );
+            }
+            if let Some(size) = facts.and_then(|f| f.size) {
+                footer_items.push(
+                    text(crate::state::human_bytes(size))
+                        .size(self.sz(12))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_DIM())
+                        .into(),
+                );
+            }
+            if let Some(date) = facts.and_then(|f| f.published_at.as_deref()) {
+                // ISO-8601 from the API; the date half is what a user reads.
+                let day = date.split('T').next().unwrap_or(date);
+                footer_items.push(
+                    text(day.to_string())
+                        .size(self.sz(12))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_DIM())
+                        .into(),
+                );
+            }
         }
         footer_items.push(container(text("")).width(Fill).into());
         for pt in platform_labels {
@@ -397,8 +445,23 @@ impl App {
         // "What's new" panel when an update is pending: the GitHub release
         // body, fetched on demand and rendered from pre-parsed blocks (zero
         // per-frame markdown parsing).
-        let whats_new: Element<'_, Message> =
-            if let Some(new_tag) = self.available_updates.get(&repo.name) {
+        //
+        // Gated on a PENDING UPDATE, this whole panel was unreachable for an app
+        // the user was evaluating, or for the version they already run - and
+        // `fetch_release_notes` already had a fallback to the manifest's pinned
+        // tag that nothing could ever call. The Changelog tab is not a
+        // substitute: it reads a cached CHANGELOG.md that many repos do not
+        // have. Now it renders for any repo that ships a release here, titled
+        // with the pending tag when there is one and the pinned tag otherwise.
+        let notes_tag: Option<String> =
+            self.available_updates.get(&repo.name).cloned().or_else(|| {
+                repo.manifest
+                    .release_files
+                    .get(current_platform)
+                    .map(|entry| entry.tag.clone())
+            });
+        let whats_new: Element<'_, Message> = if let Some(ref new_tag) = notes_tag {
+            {
                 match self.release_notes.get(&repo.name) {
                     Some((tag, blocks)) if tag == new_tag => {
                         let md_settings = markdown::Settings::with_text_size(
@@ -464,9 +527,10 @@ impl App {
                         container(btn).width(Fill).into()
                     }
                 }
-            } else {
-                container(text("")).into()
-            };
+            }
+        } else {
+            container(text("")).into()
+        };
 
         let detail = column![
             header,

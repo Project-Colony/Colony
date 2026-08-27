@@ -53,6 +53,12 @@ pub async fn fetch_latest_release_tag(client: &reqwest::Client, repo_name: &str)
 pub struct ResolvedRelease {
     pub tag: String,
     pub asset_names: Vec<String>,
+    /// Byte size per asset name, as reported by the API. The store could not
+    /// answer "how big is this download?" before committing to it: the total
+    /// was only learned from Content-Length once the transfer had started.
+    pub asset_sizes: HashMap<String, u64>,
+    /// ISO-8601 publication timestamp of the release, when the API gave one.
+    pub published_at: Option<String>,
     /// The release notes (GitHub release body, markdown). Previously never
     /// fetched anywhere: the detail Changelog tab only showed the repo's
     /// CHANGELOG.md file frozen at catalog-fetch time.
@@ -84,18 +90,29 @@ pub async fn fetch_release_info(
     #[derive(Deserialize)]
     struct Asset {
         name: String,
+        #[serde(default)]
+        size: u64,
     }
     #[derive(Deserialize)]
     struct Release {
         tag_name: String,
         assets: Vec<Asset>,
         body: Option<String>,
+        #[serde(default)]
+        published_at: Option<String>,
     }
 
     let release: Release = serde_json::from_str(&body)?;
+    let asset_sizes: HashMap<String, u64> = release
+        .assets
+        .iter()
+        .map(|a| (a.name.clone(), a.size))
+        .collect();
     Ok(ResolvedRelease {
         tag: release.tag_name,
         asset_names: release.assets.into_iter().map(|a| a.name).collect(),
+        asset_sizes,
+        published_at: release.published_at,
         body: release.body,
     })
 }

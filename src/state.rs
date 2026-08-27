@@ -149,6 +149,16 @@ pub enum DetailTab {
     Changelog,
 }
 
+/// The three facts every app store shows before you commit to a download.
+#[derive(Debug, Clone)]
+pub struct ReleaseFacts {
+    pub tag: String,
+    /// Size of the asset for the CURRENT platform, when the release names one.
+    pub size: Option<u64>,
+    /// ISO-8601 publication timestamp, as returned by the API.
+    pub published_at: Option<String>,
+}
+
 // --- App state ---
 
 pub struct App {
@@ -264,6 +274,13 @@ pub struct App {
         std::collections::HashMap<String, (String, Vec<crate::ui::markdown_blocks::DetailBlock>)>,
     /// Repos whose release notes are currently being fetched.
     pub fetching_notes: std::collections::HashSet<String>,
+    /// What the store is actually offering, per repo: the resolved tag, the
+    /// download size for THIS platform, and the publication date. The API
+    /// returns all three and Colony used to discard the last two, so the
+    /// product page could not answer which version, how big, or how old -
+    /// the size was learned from Content-Length only once the transfer had
+    /// already started. Populated by the same fetch that gets the notes.
+    pub release_facts: std::collections::HashMap<String, ReleaseFacts>,
     /// Install status per store repo: (installed, installed version). The
     /// grid used to stat the filesystem per card per FRAME; this cache is
     /// refreshed only when it can actually change (catalog load, install
@@ -563,6 +580,7 @@ impl App {
             available_updates: std::collections::HashMap::new(),
             update_queue: Vec::new(),
             release_notes: std::collections::HashMap::new(),
+            release_facts: std::collections::HashMap::new(),
             fetching_notes: std::collections::HashSet::new(),
             install_status: std::collections::HashMap::new(),
             keyboard_cursor: None,

@@ -55,6 +55,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("search_placeholder".into(), "Search applications...".into());
     strings.insert("status_installed".into(), "Installed".into());
     strings.insert("status_get".into(), "Get".into());
+    strings.insert("status_unavailable".into(), "Not available".into());
     strings.insert("status_update".into(), "Update".into());
 
     // Detail view
@@ -64,6 +65,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("update".into(), "Update".into());
     strings.insert("download".into(), "Download".into());
     strings.insert("no_release".into(), "No release available".into());
+    strings.insert("offered_version".into(), "Release {version}".into());
     strings.insert(
         "no_release_unrecognized".into(),
         "No installable release found - this app has not published assets Colony recognizes".into(),

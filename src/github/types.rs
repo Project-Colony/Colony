@@ -55,6 +55,30 @@ pub struct ColonyRepo {
     pub manifest: ColonyManifest,
 }
 
+impl ColonyRepo {
+    /// What to SHOW the user: the manifest's declared name, falling back to the
+    /// repo slug.
+    ///
+    /// The spec defines `name` as "Display name in Colony", and two of the
+    /// eight published manifests deliberately set one that differs from the
+    /// slug ("Lilypad" for Lilypad-Vault, "SAM - Colony Edition"). Colony threw
+    /// it away everywhere except the launch button, so a card titled
+    /// "Lilypad-Vault" carried a button reading "Launch Lilypad", and the
+    /// desktop menu got the slug too.
+    ///
+    /// `name` stays the IDENTITY key - install paths, caches, favorites and the
+    /// active-detail-page pointer all key off it, and none of those may follow
+    /// a display name the repo can change at will.
+    pub fn display_name(&self) -> &str {
+        let declared = self.manifest.name.trim();
+        if declared.is_empty() {
+            &self.name
+        } else {
+            declared
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct GithubRepo {
     pub(crate) name: String,

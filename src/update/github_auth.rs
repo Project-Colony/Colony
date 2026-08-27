@@ -124,6 +124,13 @@ impl App {
     ) -> Task<Message> {
         self.repos_refresh_manual = false;
         self.is_fetching_repos = false;
+        // The listing arrives sorted by GitHub push order, so the store
+        // reshuffled between sessions for reasons invisible to the user - a
+        // README typo fix jumped a repo to the top, and muscle memory for "the
+        // third card down" never formed. Local apps were already sorted.
+        let mut repos = repos;
+        repos.sort_by_key(|r| r.display_name().to_lowercase());
+        let repos = repos;
         // The catalog refresh is where the conditional-request cache is at its
         // most complete: persisting it here means the next launch replays those
         // ETags as 304s, which GitHub does not bill.

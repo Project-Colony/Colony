@@ -186,10 +186,27 @@ impl App {
             .cloned()
             .unwrap_or((false, None));
         if !installed {
-            return text(crate::i18n::t("status_get"))
+            // The grid's most prominent per-row signal used to say "Get" for
+            // every uninstalled app, including ones with no build for this
+            // platform - so the user clicked in expecting to install and hit
+            // the detail page's dead end. The card already knows better: it
+            // renders a chip per declared platform right next to it.
+            let available = repo
+                .manifest
+                .release_files
+                .contains_key(crate::github::current_platform_key());
+            let (label, color) = if available {
+                (crate::i18n::t("status_get"), Palette::ACCENT())
+            } else {
+                (
+                    crate::i18n::t("status_unavailable"),
+                    Palette::TEXT_DIMMEST(),
+                )
+            };
+            return text(label)
                 .size(self.sz(12))
                 .font(self.app_font())
-                .color(Palette::ACCENT())
+                .color(color)
                 .into();
         }
         let version = cached_version;
@@ -541,7 +558,7 @@ impl App {
         let tint = theme::app_tint(&repo.name);
         let tile = self.icon_tile(&repo.name, tint, category.glyph());
 
-        let name = text(&repo.name)
+        let name = text(repo.display_name())
             .size(self.sz(15))
             .font(self.app_font_with_weight(Weight::Medium))
             .color(Palette::TEXT_PRIMARY());

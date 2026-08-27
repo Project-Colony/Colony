@@ -742,6 +742,10 @@ fn extract_binary_from_archive(
 /// Everything needed to install one resolved release asset.
 pub struct AssetInstall {
     pub repo_name: String,
+    /// What the desktop menu should call this app: the manifest's declared
+    /// name, which may differ from the repo slug. The slug stays the identity
+    /// key everywhere else (install dir, caches, entry filename).
+    pub display_name: String,
     /// The resolved (never "latest") release tag being installed.
     pub tag: String,
     /// The resolved asset name to download.
@@ -770,6 +774,7 @@ pub async fn download_release_asset(
 ) -> Result<PathBuf> {
     let AssetInstall {
         repo_name,
+        display_name,
         tag,
         filename,
         binary_name,
@@ -1069,7 +1074,9 @@ pub async fn download_release_asset(
             // Desktop integration (Linux): index the installed app in the
             // desktop environment. Best-effort - a failure here must not fail
             // an otherwise complete install.
-            if let Err(e) = crate::persistence::write_desktop_entry(&repo_name, &final_path) {
+            if let Err(e) =
+                crate::persistence::write_desktop_entry(&repo_name, &display_name, &final_path)
+            {
                 tracing::warn!("could not write desktop entry for {repo_name}: {e}");
             }
 

@@ -687,6 +687,27 @@ mod tests {
         assert_eq!(app.notifications.len(), 1);
     }
 
+    /// Two of the eight published manifests deliberately set a display name
+    /// that differs from the repo slug, and Colony threw it away everywhere the
+    /// user looks - so a card titled "Lilypad-Vault" carried a button reading
+    /// "Launch Lilypad".
+    #[test]
+    fn the_manifest_display_name_wins_but_never_becomes_the_identity() {
+        let mut declared = repo("Lilypad-Vault", "");
+        declared.manifest.name = "Lilypad".to_string();
+        assert_eq!(declared.display_name(), "Lilypad");
+        assert_eq!(
+            declared.name, "Lilypad-Vault",
+            "the slug stays the identity key for install paths and caches"
+        );
+
+        // A manifest with no usable name falls back to the slug rather than
+        // rendering an empty card title.
+        let mut blank = repo("Grape", "");
+        blank.manifest.name = "   ".to_string();
+        assert_eq!(blank.display_name(), "Grape");
+    }
+
     #[test]
     fn the_toast_stack_is_capped_even_with_animations_off() {
         let mut app = App::new_for_test();

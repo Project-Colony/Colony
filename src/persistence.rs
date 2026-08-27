@@ -382,7 +382,11 @@ pub struct CachedApp {
 /// (the app is already represented by its store card). Linux only; no-op
 /// elsewhere.
 #[cfg(target_os = "linux")]
-pub fn write_desktop_entry(repo_name: &str, exec_path: &std::path::Path) -> Result<()> {
+pub fn write_desktop_entry(
+    repo_name: &str,
+    display_name: &str,
+    exec_path: &std::path::Path,
+) -> Result<()> {
     let dir = dirs::data_dir()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine data directory"))?
         .join("applications");
@@ -394,7 +398,13 @@ pub fn write_desktop_entry(repo_name: &str, exec_path: &std::path::Path) -> Resu
     // the path closes the Exec quoting to append arguments. The icon path contains
     // repo_name too, so it goes through the same check rather than relying on
     // being emitted last.
-    let name = desktop_value(repo_name)?;
+    // The FILENAME keys off the slug (identity, and what remove_desktop_entry
+    // looks up); the Name= the user reads is the manifest's display name.
+    let name = desktop_value(if display_name.trim().is_empty() {
+        repo_name
+    } else {
+        display_name
+    })?;
     let exec = desktop_value(&exec_path.to_string_lossy())?;
     let icon_line = match repo_icon_dir(repo_name)
         .ok()
@@ -442,7 +452,11 @@ fn desktop_value(raw: &str) -> Result<String> {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn write_desktop_entry(_repo_name: &str, _exec_path: &std::path::Path) -> Result<()> {
+pub fn write_desktop_entry(
+    _repo_name: &str,
+    _display_name: &str,
+    _exec_path: &std::path::Path,
+) -> Result<()> {
     Ok(())
 }
 

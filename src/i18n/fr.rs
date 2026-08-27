@@ -54,6 +54,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert("status_installed".into(), "Installé".into());
     strings.insert("status_get".into(), "À installer".into());
+    strings.insert("status_unavailable".into(), "Indisponible".into());
     strings.insert("status_update".into(), "Mise à jour".into());
 
     // Detail view
@@ -63,6 +64,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("update".into(), "Mettre à jour".into());
     strings.insert("download".into(), "Télécharger".into());
     strings.insert("no_release".into(), "Aucune release disponible".into());
+    strings.insert("offered_version".into(), "Version {version}".into());
     strings.insert(
         "no_release_unrecognized".into(),
         "Aucune version installable - cette application ne publie pas d'assets reconnus par Colony"

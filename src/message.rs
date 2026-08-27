@@ -57,8 +57,8 @@ pub enum Message {
     UpdateAll,
     /// Fetch the release notes ("what's new") for a repo's available update.
     FetchReleaseNotes(String),
-    /// (repo, Ok((tag, body_markdown))) - notes fetched (or failed).
-    ReleaseNotesFetched(String, Result<(String, String), String>),
+    /// (repo, Ok((facts, notes markdown)) | Err(message))
+    ReleaseNotesFetched(String, Result<(crate::state::ReleaseFacts, String), String>),
     /// Manual "clear store caches" from Settings > Storage.
     ClearStoreCaches,
     WindowResized(f32, f32),

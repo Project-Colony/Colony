@@ -31,6 +31,9 @@ impl App {
                 // that rule lives next to the check it feeds.
                 let require_signature = repo.manifest.signed;
                 let repo_name = repo.name.clone();
+                // The app's menu name, distinct from `display_name` below,
+                // which is the FILE being downloaded (shown in the toast).
+                let app_display_name = repo.display_name().to_string();
                 // API calls (release resolution) use the token for
                 // rate limits; the asset download itself is a public
                 // endpoint and gets NO token - no reason to present
@@ -85,6 +88,7 @@ impl App {
                             None,
                             crate::download::AssetInstall {
                                 repo_name: repo_name.clone(),
+                                display_name: app_display_name,
                                 tag: resolved_tag.clone(),
                                 filename: resolved_file.clone(),
                                 binary_name: binary,
@@ -463,6 +467,14 @@ impl App {
         let Some(tag) = tag else {
             return Task::none();
         };
+        // What this platform would actually download, when the manifest names
+        // it outright (the filePattern case is resolved at install time).
+        let asset_hint = self
+            .colony_repos()
+            .iter()
+            .find(|r| r.name == repo_name)
+            .and_then(|r| r.manifest.release_files.get(platform))
+            .and_then(|e| e.file.clone());
         self.fetching_notes.insert(repo_name.clone());
         let token = self.github_token();
         let repo_for_result = repo_name.clone();
@@ -473,9 +485,26 @@ impl App {
                 let info = github::fetch_release_info(&client, &repo_name, &tag)
                     .await
                     .map_err(|e| e.to_string())?;
-                Ok((info.tag, info.body.unwrap_or_default()))
+                // The size of the asset THIS platform would download - not the
+                // release total, which would be four binaries.
+                let size = asset_hint
+                    .as_deref()
+                    .and_then(|name| info.asset_sizes.get(name).copied())
+                    .or_else(|| {
+                        // filePattern, or no declared filename: fall back to the
+                        // single asset if the release has exactly one.
+                        (info.asset_sizes.len() == 1)
+                            .then(|| info.asset_sizes.values().copied().next())
+                            .flatten()
+                    });
+                let facts = crate::state::ReleaseFacts {
+                    tag: info.tag,
+                    size,
+                    published_at: info.published_at,
+                };
+                Ok((facts, info.body.unwrap_or_default()))
             },
-            move |result: Result<(String, String), String>| {
+            move |result: Result<(crate::state::ReleaseFacts, String), String>| {
                 Message::ReleaseNotesFetched(repo_for_result, result)
             },
         )
@@ -484,13 +513,15 @@ impl App {
     pub(super) fn release_notes_fetched(
         &mut self,
         repo_name: String,
-        result: Result<(String, String), String>,
+        result: Result<(crate::state::ReleaseFacts, String), String>,
     ) -> Task<Message> {
         self.fetching_notes.remove(&repo_name);
         match result {
-            Ok((tag, body)) => {
+            Ok((facts, body)) => {
                 let blocks = markdown_blocks::parse(&body);
-                self.release_notes.insert(repo_name, (tag, blocks));
+                self.release_notes
+                    .insert(repo_name.clone(), (facts.tag.clone(), blocks));
+                self.release_facts.insert(repo_name, facts);
             }
             Err(e) => {
                 // Non-blocking feature: a failed fetch surfaces in the
