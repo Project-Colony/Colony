@@ -52,7 +52,10 @@ jobs:
 
       - name: Read the declared MSRV
         id: msrv
-        run: echo "version=$(grep '^rust-version' Cargo.toml | cut -d'\"' -f2)" >> "$GITHUB_OUTPUT"
+        run: |
+          version=$(grep '^rust-version' Cargo.toml | tr -d ' "' | cut -d= -f2)
+          [ -n "$version" ] || { echo "::error::could not read rust-version from Cargo.toml"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch
         with:
@@ -66,11 +69,21 @@ jobs:
         run: cargo check --locked --all-targets
 
   # Colony downloads and executes binaries, so a known-vulnerable dependency is
-  # not an abstract concern. Advisory-only: it reports, it does not gate, so a
-  # new advisory with no patch available cannot block an urgent fix.
+  # not an abstract concern.
+  #
+  # continue-on-error because this REPORTS rather than gates: most advisories in
+  # this tree arrive through the GUI stack and cannot be fixed here at all. The
+  # standing example is quick-xml (RUSTSEC-2026-0194/0195), held at 0.38 by
+  # wayland-scanner via winit and iced - and reached only as a build-time
+  # proc-macro parsing the system's own Wayland protocol XML, never untrusted
+  # input. Gating on that would block every unrelated fix until iced moves.
+  #
+  # Read the run output on every PR; act on anything reachable from network
+  # input.
   audit:
     name: Advisories
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0

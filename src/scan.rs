@@ -75,6 +75,12 @@ impl AppCategory {
     ///
     /// `Security` has no freedesktop MAIN category, so it is paired with the
     /// `Utility` main category as the spec requires of additional categories.
+    ///
+    /// Only `write_desktop_entry` consumes this, and that is Linux-only, so the
+    /// method is genuinely dead in a Windows or macOS build. Allowed narrowly
+    /// there rather than dropping the whole thing behind a `cfg`: the mapping
+    /// is platform-neutral data, and its test runs everywhere.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub fn desktop_categories(&self) -> &'static str {
         match self {
             Self::Development => "Development;",
