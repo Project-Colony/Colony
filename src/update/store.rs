@@ -323,6 +323,9 @@ impl App {
 
     pub(super) fn clear_store_caches(&mut self) -> Task<Message> {
         let removed = crate::persistence::clear_store_caches();
+        // Including the remembered 404s: a user who clears caches because a
+        // repo just added a CHANGELOG should not wait out the negative TTL.
+        crate::github::clear_http_cache();
         self.app_icons.clear();
         self.release_notes.clear();
         self.detail_md_source = None;

@@ -109,6 +109,10 @@ impl App {
     ) -> Task<Message> {
         self.repos_refresh_manual = false;
         self.is_fetching_repos = false;
+        // The catalog refresh is where the conditional-request cache is at its
+        // most complete: persisting it here means the next launch replays those
+        // ETags as 304s, which GitHub does not bill.
+        crate::github::save_http_cache();
         let count = repos.len();
         if let Err(e) = crate::persistence::save_repos_cache(&repos) {
             tracing::warn!("Failed to save repos cache: {e}");

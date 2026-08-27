@@ -222,6 +222,32 @@ pub fn load_repos_cache() -> Option<Vec<ColonyRepo>> {
     Some(repos)
 }
 
+fn http_cache_path() -> Result<PathBuf> {
+    let cache_dir = colony_data_dir()?.join("cache");
+    std::fs::create_dir_all(&cache_dir)?;
+    Ok(cache_dir.join("http_etags.json"))
+}
+
+/// Load the persisted conditional-request cache (see `github::http`).
+///
+/// Generic so the cache's shape stays private to the HTTP layer - this module
+/// only knows where the file goes. A corrupt or older-shaped file simply
+/// deserialises to `None` and the cache starts empty, which costs quota but is
+/// never wrong.
+pub fn load_http_cache_json<T: serde::de::DeserializeOwned>() -> Option<T> {
+    let path = http_cache_path().ok()?;
+    let content = std::fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+/// Persist the conditional-request cache. The caller is responsible for
+/// bounding what it hands over.
+pub fn save_http_cache_json<T: serde::Serialize>(value: &T) -> Result<()> {
+    let path = http_cache_path()?;
+    std::fs::write(&path, serde_json::to_string(value)?)?;
+    Ok(())
+}
+
 fn favorites_path() -> Result<PathBuf> {
     let dir = colony_data_dir()?.join("preferences");
     std::fs::create_dir_all(&dir)?;
