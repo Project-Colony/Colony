@@ -109,6 +109,12 @@ jobs:
   build:
     name: Build ${{ matrix.asset }}
     needs: target
+    # Explicit, because a SKIPPED job propagates transitively: `target` runs on
+    # a dispatch thanks to its own status-function `if:`, but that does not
+    # clear the skip inherited from `release-please` for the jobs after it.
+    # Without this, a recovery dispatch resolves the tag and then silently
+    # builds nothing - which is exactly what the first v0.10.0 dispatch did.
+    if: ${{ needs.target.result == 'success' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -229,6 +235,9 @@ jobs:
   sign:
     name: Sign release assets
     needs: [target, build]
+    # Every dependency named explicitly. Guarding on `target` alone would let
+    # this run after a FAILED build and try to sign assets that do not exist.
+    if: ${{ needs.target.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     env:
       # Single source of truth for the four launcher assets. Declared once so the
@@ -321,6 +330,9 @@ jobs:
   aur:
     name: Publish colony-bin to AUR
     needs: [target, sign]
+    # `sign` too: without it, a failed signing job would still bump the AUR
+    # package to a release that has no signatures.
+    if: ${{ needs.target.result == 'success' && needs.sign.result == 'success' }}
     uses: ./.github/workflows/aur-publish.yml
     with:
       tag: ${{ needs.target.outputs.tag }}
