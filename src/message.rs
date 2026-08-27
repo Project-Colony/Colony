@@ -49,7 +49,10 @@ pub enum Message {
     AnimationTick,
     KeyboardEvent(keyboard::Event),
     CheckUpdates,
-    UpdatesChecked(Vec<(String, String)>), // Vec<(repo_name, latest_tag)>
+    /// One entry per checked repo. `Ok(Some(tag))` = update to `tag`,
+    /// `Ok(None)` = current, `Err(msg)` = the check could not run for that repo
+    /// and its existing badge must be left alone rather than cleared.
+    UpdatesChecked(Vec<(String, Result<Option<String>, String>)>),
     /// One-click sequential update of every app with a pending update.
     UpdateAll,
     /// Fetch the release notes ("what's new") for a repo's available update.

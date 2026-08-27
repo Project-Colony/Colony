@@ -267,8 +267,13 @@ pub fn parse_version_tag(tag: &str) -> Option<semver::Version> {
 }
 
 /// Check if an update is available for a repo whose manifest pins `pinned_tag`
-/// for the current platform. Returns Some(target_tag) if the installed version
-/// differs from what the manifest would install, None otherwise.
+/// for the current platform.
+///
+/// `Ok(Some(tag))` = an update to `tag` is available. `Ok(None)` = the check
+/// RAN and there is nothing to install (either the app is not installed at all,
+/// or it is current). `Err` = the check could NOT run, and the caller must not
+/// turn that into "up to date" — the same fail-loud contract
+/// [`check_launcher_update`] already keeps for the launcher's own check.
 ///
 /// `pinned_tag` is compared directly unless it is "latest", in which case the
 /// repo's latest release is resolved. This avoids a perpetual "update
@@ -279,11 +284,14 @@ pub async fn check_update_available(
     client: &reqwest::Client,
     repo_name: &str,
     pinned_tag: &str,
-) -> Option<String> {
-    let installed = load_installed_version(repo_name)?;
+) -> Result<Option<String>> {
+    // Not installed is a real answer, not a failure: there is nothing to update.
+    let Some(installed) = load_installed_version(repo_name) else {
+        return Ok(None);
+    };
 
     let target = if pinned_tag.eq_ignore_ascii_case("latest") {
-        fetch_latest_release_tag(client, repo_name).await.ok()?
+        fetch_latest_release_tag(client, repo_name).await?
     } else {
         pinned_tag.to_string()
     };
@@ -291,22 +299,18 @@ pub async fn check_update_available(
     // Case-insensitive: "Nightly" vs "nightly" must not read as an update
     // (with non-semver tags the string fallback below would flag it forever).
     if target.eq_ignore_ascii_case(&installed) {
-        return None;
+        return Ok(None);
     }
 
     match (parse_version_tag(&installed), parse_version_tag(&target)) {
         (Some(installed_ver), Some(target_ver)) => {
-            if target_ver > installed_ver {
-                Some(target)
-            } else {
-                None
-            }
+            Ok((target_ver > installed_ver).then_some(target))
         }
         _ => {
             tracing::warn!(
                 "Non-semver tags for {repo_name} (installed '{installed}', target '{target}'); using string comparison"
             );
-            Some(target)
+            Ok(Some(target))
         }
     }
 }

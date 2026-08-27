@@ -679,6 +679,75 @@ mod tests {
     }
 
     #[test]
+    fn a_repo_that_left_the_catalog_skips_forward_instead_of_stranding_the_queue() {
+        let mut app = App::new_for_test();
+        // "Gone" was queued by Update All, then a catalog refresh dropped it.
+        app.colony_repo_list = vec![repo("Still", "")];
+        app.update_queue = vec!["Next".to_string()];
+
+        let _ = app.update(Message::DownloadRelease(
+            "Gone".to_string(),
+            github::current_platform_key().to_string(),
+        ));
+
+        assert!(
+            app.update_queue.is_empty(),
+            "the skipped repo must hand the queue on, not park it for the next unrelated install"
+        );
+        assert_eq!(
+            app.notifications.len(),
+            1,
+            "the user must be told which app was skipped"
+        );
+    }
+
+    #[test]
+    fn app_check_failure_never_clears_a_badge_or_claims_up_to_date() {
+        let mut app = App::new_for_test();
+        app.is_checking_updates = true;
+        app.available_updates
+            .insert("Grape".to_string(), "v2.0.0".to_string());
+        app.available_updates
+            .insert("Spotter".to_string(), "v3.0.0".to_string());
+
+        // Grape's check could not run; Spotter's ran and came back current.
+        let _ = app.update(Message::UpdatesChecked(vec![
+            ("Grape".to_string(), Err("rate limited".to_string())),
+            ("Spotter".to_string(), Ok(None)),
+        ]));
+
+        assert!(!app.is_checking_updates);
+        assert_eq!(
+            app.available_updates.get("Grape").map(String::as_str),
+            Some("v2.0.0"),
+            "a check that did not run must leave the existing badge alone"
+        );
+        assert!(
+            !app.available_updates.contains_key("Spotter"),
+            "a check that DID run and found nothing must clear its badge"
+        );
+        assert!(
+            !app.status_message.contains("applications found"),
+            "the all-clear line must not be written when a check failed, got: {}",
+            app.status_message
+        );
+        assert_eq!(
+            app.notifications.len(),
+            1,
+            "the user must be told the check was incomplete"
+        );
+
+        // Every check succeeding and finding nothing IS the all-clear.
+        app.notifications.clear();
+        let _ = app.update(Message::UpdatesChecked(vec![(
+            "Grape".to_string(),
+            Ok(None),
+        )]));
+        assert!(app.available_updates.is_empty());
+        assert!(app.notifications.is_empty());
+    }
+
+    #[test]
     fn window_resize_bumps_generation_and_stale_saves_are_ignored() {
         let mut app = App::new_for_test();
         let _ = app.update(Message::WindowResized(1280.0, 800.0));

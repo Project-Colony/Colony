@@ -115,6 +115,14 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "updates_available".into(),
         "{count} mise(s) à jour disponible(s) : {names}".into(),
     );
+    strings.insert(
+        "update_skipped".into(),
+        "{name} ignorée : absente du catalogue, ou aucune version pour cette plateforme".into(),
+    );
+    strings.insert(
+        "update_check_failed".into(),
+        "Impossible de vérifier {count} application(s) — elles ne sont peut-être pas à jour".into(),
+    );
 
     // Sidebar section names (localized)
     strings.insert("section_all".into(), "Tout".into());

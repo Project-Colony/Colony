@@ -117,7 +117,18 @@ impl App {
                 self.status_message = i18n::t_fmt("no_release_for", &[("platform", &platform_key)]);
             }
         }
-        Task::none()
+
+        // We got here without starting a download: either the repo vanished
+        // from the catalog (a refresh can land mid-queue and replaces it
+        // wholesale) or it ships nothing for this platform. Say so, and keep
+        // the "Update all" chain moving - the queue is otherwise only advanced
+        // by a completion, so it would sit parked until some later, unrelated
+        // install silently drained it.
+        let skipped = i18n::t_fmt("update_skipped", &[("name", &repo_name)]);
+        Task::batch([
+            self.push_notification(skipped, NotificationLevel::Warning),
+            self.dispatch_next_queued_update(),
+        ])
     }
 
     pub(super) fn download_progress(
@@ -357,7 +368,16 @@ impl App {
             async move {
                 let client = match github::build_update_client(token.as_deref()) {
                     Ok(c) => c,
-                    Err(_) => return Vec::new(),
+                    Err(e) => {
+                        // The check did not run for ANY repo. Report that per
+                        // repo rather than returning an empty list, which the
+                        // handler would read as "everything is current".
+                        let e = e.to_string();
+                        return repos
+                            .into_iter()
+                            .map(|(name, _)| (name, Err(e.clone())))
+                            .collect();
+                    }
                 };
                 let futs: Vec<_> = repos
                     .iter()
@@ -366,17 +386,14 @@ impl App {
                         let n = name.clone();
                         let t = tag.clone();
                         async move {
-                            github::check_update_available(&c, &n, &t)
+                            let outcome = github::check_update_available(&c, &n, &t)
                                 .await
-                                .map(|v| (n, v))
+                                .map_err(|e| e.to_string());
+                            (n, outcome)
                         }
                     })
                     .collect();
-                futures::future::join_all(futs)
-                    .await
-                    .into_iter()
-                    .flatten()
-                    .collect()
+                futures::future::join_all(futs).await
             },
             Message::UpdatesChecked,
         )
@@ -461,24 +478,52 @@ impl App {
         Task::none()
     }
 
-    pub(super) fn updates_checked(&mut self, updates: Vec<(String, String)>) -> Task<Message> {
+    pub(super) fn updates_checked(
+        &mut self,
+        outcomes: Vec<(String, Result<Option<String>, String>)>,
+    ) -> Task<Message> {
         self.is_checking_updates = false;
-        // Record which apps have a pending update so the grid cards can
-        // show an update badge (not just a transient toast).
-        self.available_updates = updates.iter().cloned().collect();
-        let notif_task = if updates.is_empty() {
+
+        // Merge, never replace: a repo whose check could not run keeps the
+        // badge it already had. Replacing the whole map meant that going
+        // offline (or simply hitting the anonymous rate limit on a second
+        // launch) cleared every badge and told the user they were current.
+        let mut failed = 0usize;
+        let mut fresh: Vec<String> = Vec::new();
+        for (name, outcome) in &outcomes {
+            match outcome {
+                Ok(Some(tag)) => {
+                    self.available_updates.insert(name.clone(), tag.clone());
+                    fresh.push(name.clone());
+                }
+                Ok(None) => {
+                    self.available_updates.remove(name);
+                }
+                Err(e) => {
+                    failed += 1;
+                    tracing::warn!("Update check failed for {name}: {e}");
+                }
+            }
+        }
+
+        let notif_task = if failed > 0 {
+            // Never write the all-clear line when part of the check did not
+            // run - say so, and say how many apps we could not speak for.
+            let msg = i18n::t_fmt("update_check_failed", &[("count", &failed.to_string())]);
+            self.status_message = msg.clone();
+            self.push_notification(msg, NotificationLevel::Warning)
+        } else if fresh.is_empty() {
             self.status_message = i18n::t_fmt(
                 "apps_found",
                 &[("count", &self.applications.len().to_string())],
             );
             Task::none()
         } else {
-            let names: Vec<&str> = updates.iter().map(|(n, _)| n.as_str()).collect();
             let msg = i18n::t_fmt(
                 "updates_available",
                 &[
-                    ("count", &updates.len().to_string()),
-                    ("names", &names.join(", ")),
+                    ("count", &fresh.len().to_string()),
+                    ("names", &fresh.join(", ")),
                 ],
             );
             self.push_notification(msg, NotificationLevel::Info)
