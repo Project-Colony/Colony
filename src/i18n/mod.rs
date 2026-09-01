@@ -44,6 +44,9 @@ pub fn init(preferred: Option<String>) {
 /// the whole UI re-labels on the next frame - no restart required (the locale
 /// used to live in a OnceLock, forcing one).
 pub fn set_language(lang: &str) {
+    // Keep the shared label table on the same locale, or the theme picker would
+    // stay English while the rest of the page switched.
+    colony_ui::i18n::set_locale(colony_ui::i18n::Locale::from_tag(lang));
     let lang = if lang == "fr" || lang == "en" {
         lang
     } else {
@@ -86,14 +89,23 @@ pub fn section_display_name(name: &str) -> String {
 
 /// Get a translated string by key.
 pub fn t(key: &str) -> String {
-    LOCALE
+    if let Some(s) = LOCALE
         .read()
         .ok()
         .and_then(|l| l.as_ref().and_then(|l| l.strings.get(key).cloned()))
-        .unwrap_or_else(|| {
-            tracing::warn!("Missing translation key: {key}");
-            key.to_string()
-        })
+    {
+        return s;
+    }
+    // Theme and accent labels are not ours: they name shared design objects and
+    // ship with colony-ui, generated from the same tokens as the palettes. They
+    // used to be copied into en.rs and fr.rs, where they drifted from the
+    // catalog they describe.
+    let shared = colony_ui::i18n::t(key);
+    if shared != key {
+        return shared.to_string();
+    }
+    tracing::warn!("Missing translation key: {key}");
+    key.to_string()
 }
 
 /// Get a translated string with variable substitution.
@@ -133,6 +145,37 @@ fn detect_language() -> String {
 
 #[cfg(test)]
 mod tests {
+    /// The active locale is process-global, so tests that swap it must not run
+    /// concurrently with each other — the failure is a value from whichever
+    /// language the other test happened to set.
+    static LOCALE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_locale<T>(f: impl FnOnce() -> T) -> T {
+        let _guard = LOCALE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        f()
+    }
+
+    /// Theme and accent labels live in colony-ui, not in en.rs / fr.rs. They
+    /// must still resolve through `t()`, and must follow the active locale —
+    /// otherwise the theme picker would sit in English inside a French page.
+    #[test]
+    fn shared_labels_resolve_through_colony_ui_and_follow_the_locale() {
+        with_locale(|| {
+            super::set_language("fr");
+            assert_eq!(super::t("settings_theme_dark_mode"), "Mode sombre");
+            assert_eq!(super::t("settings_accent_violet"), "Violet");
+
+            super::set_language("en");
+            assert_eq!(super::t("settings_theme_dark_mode"), "Dark mode");
+
+            // Proper nouns read the same either way.
+            assert_eq!(super::t("settings_theme_stellar_blade_eve"), "EVE");
+
+            // And a key belonging to neither table still renders as itself.
+            assert_eq!(super::t("no_such_key_anywhere"), "no_such_key_anywhere");
+        });
+    }
+
     use super::*;
 
     #[test]
@@ -253,9 +296,10 @@ mod tests {
 
     #[test]
     fn t_fmt_substitution() {
-        // Initialize with English for test
-        set_language("en");
-        let result = t_fmt("apps_found", &[("count", "42")]);
-        assert_eq!(result, "42 applications found");
+        with_locale(|| {
+            set_language("en");
+            let result = t_fmt("apps_found", &[("count", "42")]);
+            assert_eq!(result, "42 applications found");
+        });
     }
 }

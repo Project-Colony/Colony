@@ -231,13 +231,14 @@ fn token_path() -> PathBuf {
             let _ = std::fs::create_dir_all(&auth_dir);
             auth_dir.join("github_token.json")
         }
-        Err(_) => {
-            let base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-            base.join("Colony")
-                .join("Colony")
-                .join("auth")
-                .join("github_token.json")
-        }
+        // Only the creation failed; ask for the same path without creating it
+        // rather than rebuilding the layout by hand — spelling it out here with
+        // dirs::config_dir() put the token in Roaming on Windows, which is the
+        // one place the shared layout says it must not be.
+        Err(_) => colony_ui::paths::locate::config_dir("Colony")
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("auth")
+            .join("github_token.json"),
     }
 }
 

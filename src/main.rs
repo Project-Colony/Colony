@@ -25,9 +25,10 @@ use state::{default_font, App};
 /// appender: one run's worth of log is what a bug report needs, and it keeps
 /// the dependency set unchanged.
 fn log_file_path() -> Option<std::path::PathBuf> {
-    let dir = dirs::cache_dir()?.join("colony");
-    std::fs::create_dir_all(&dir).ok()?;
-    Some(dir.join("colony.log"))
+    // The shared layout, same as every other cache: <cache>/Colony/Colony/.
+    colony_ui::paths::cache_dir("Colony")
+        .ok()
+        .map(|dir| dir.join("colony.log"))
 }
 
 /// Answer `--version` / `--help` without opening a window. The bug template
@@ -214,6 +215,10 @@ pub fn main() -> iced::Result {
             .init(),
         None => tracing_subscriber::fmt().with_env_filter(filter).init(),
     }
+
+    // Earlier versions wrote to different directories; move them before
+    // anything reads a path. No-op once done, and on a fresh install.
+    crate::persistence::migrate_legacy_paths();
 
     // Honor the saved language preference over environment locale detection,
     // and reopen at the last persisted window size (clamped to sanity).

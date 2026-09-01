@@ -4,18 +4,112 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::github::{current_platform_key, ColonyRepo};
 
-/// Central data directory for all Colony files: `~/.config/Colony/Colony/`
+/// Colony's own name in the shared `Colony/<Program>/` tree.
+const PROGRAM: &str = "Colony";
+
+/// Central config directory for Colony's own files.
+///
+/// The layout — which root on which platform — is defined once in colony-ui;
+/// see `design/filesystem.md` in Project-Colony-Resources. On Linux this is
+/// `~/.config/Colony/Colony/`.
 pub fn colony_data_dir() -> Result<PathBuf> {
-    let base = dirs::config_dir()
-        .ok_or_else(|| anyhow::anyhow!("No config directory"))?
-        .join("Colony")
-        .join("Colony");
-    std::fs::create_dir_all(&base)?;
-    Ok(base)
+    Ok(colony_ui::paths::config_dir(PROGRAM)?)
+}
+
+/// Regenerable state: the repo listing and the scan results.
+pub(crate) fn colony_cache_dir() -> Result<PathBuf> {
+    Ok(colony_ui::paths::cache_dir(PROGRAM)?)
+}
+
+/// Move state written by earlier versions to where the shared layout puts it.
+///
+/// Must run before anything reads a path — `main` calls it first.
+///
+/// Deliberately conservative: it only moves when the old location exists and
+/// the new one does not, and it **never deletes the source**. A user who ends
+/// up with a copy in both places has lost nothing; a user whose preferences
+/// were deleted by a half-finished migration has.
+pub fn migrate_legacy_paths() {
+    // Windows used to resolve config to Roaming (dirs::config_dir), and the
+    // layout is Local. Identical on Linux and macOS, so this is a no-op there.
+    if let (Some(legacy_root), Ok(current)) = (
+        dirs::config_dir(),
+        colony_ui::paths::locate::config_dir(PROGRAM),
+    ) {
+        relocate(
+            &legacy_root.join("Colony").join(PROGRAM),
+            &current,
+            "config directory",
+        );
+    }
+
+    // Everything regenerable used to live inside the config directory. All of
+    // it is re-fetched when missing, so a failure here costs a round trip to
+    // GitHub and nothing more.
+    if let (Ok(config), Ok(cache)) = (
+        colony_ui::paths::locate::config_dir(PROGRAM),
+        colony_ui::paths::locate::cache_dir(PROGRAM),
+    ) {
+        relocate(&config.join("cache"), &cache, "cache");
+        for sub in ["repo-docs", "repo-icons", "update-staging"] {
+            relocate(&config.join(sub), &cache.join(sub), sub);
+        }
+    }
+}
+
+/// Move `from` to `to`, once, without ever destroying `from`.
+fn relocate(from: &Path, to: &Path, what: &str) {
+    if from == to || !from.is_dir() || to.exists() {
+        return;
+    }
+    let Some(parent) = to.parent() else { return };
+    if let Err(e) = std::fs::create_dir_all(parent) {
+        tracing::warn!("cannot prepare {} for the {what}: {e}", parent.display());
+        return;
+    }
+
+    // A rename is atomic and cheap, but fails across filesystems (EXDEV) — and
+    // ~/.config and ~/.cache are not guaranteed to be on the same one.
+    if std::fs::rename(from, to).is_ok() {
+        tracing::info!("moved the {what} to {}", to.display());
+        return;
+    }
+    match copy_tree(from, to) {
+        Ok(()) => tracing::info!(
+            "copied the {what} to {}; the old copy at {} is left in place and can be deleted by hand",
+            to.display(),
+            from.display()
+        ),
+        Err(e) => {
+            // Leave no half-copied directory behind: the next start would see
+            // `to` existing and skip the migration, stranding the real data.
+            let _ = std::fs::remove_dir_all(to);
+            tracing::error!(
+                "could not move the {what} from {}: {e}. Nothing was lost — the old                  location still holds it — but Colony will start with an empty one.",
+                from.display()
+            );
+        }
+    }
+}
+
+/// Recursive copy. Files and directories only; anything else is skipped.
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            copy_tree(&entry.path(), &target)?;
+        } else if kind.is_file() {
+            std::fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
 }
 
 /// Write `bytes` to `path` atomically: a temp sibling, then a rename.
@@ -73,9 +167,10 @@ pub(crate) fn colony_app_dir(repo_name: &str) -> Result<PathBuf> {
     join_repo_component(colony_apps_dir()?, repo_name)
 }
 
-/// Directory for cached repo documentation files: `~/.config/Colony/Colony/repo-docs/{repo_name}/`
+/// Cached repo documentation: `<cache>/repo-docs/{repo_name}/`. Re-fetched from
+/// GitHub when missing, so it is cache rather than config.
 fn repo_docs_dir(repo_name: &str) -> Result<PathBuf> {
-    let base = join_repo_component(colony_data_dir()?.join("repo-docs"), repo_name)?;
+    let base = join_repo_component(colony_cache_dir()?.join("repo-docs"), repo_name)?;
     std::fs::create_dir_all(&base)?;
     Ok(base)
 }
@@ -93,9 +188,10 @@ pub fn read_repo_doc(repo_name: &str, filename: &str) -> Option<String> {
     std::fs::read_to_string(dir.join(filename)).ok()
 }
 
-/// Directory for the cached per-repo app icon: `~/.config/Colony/Colony/repo-icons/{repo_name}/`
+/// Cached per-repo app icon: `<cache>/repo-icons/{repo_name}/`. Re-downloaded
+/// when missing, so it is cache rather than config.
 fn repo_icon_dir(repo_name: &str) -> Result<PathBuf> {
-    let base = join_repo_component(colony_data_dir()?.join("repo-icons"), repo_name)?;
+    let base = join_repo_component(colony_cache_dir()?.join("repo-icons"), repo_name)?;
     std::fs::create_dir_all(&base)?;
     Ok(base)
 }
@@ -113,11 +209,13 @@ pub fn load_repo_icon(repo_name: &str) -> Option<Vec<u8>> {
     std::fs::read(dir.join("icon.png")).ok()
 }
 
-/// Return the Colony apps directory: `<data_local>/Colony/apps/`
+/// The shared install root: `<data>/Colony/apps/`.
+///
+/// Deliberately a sibling of Colony's own directory rather than a child —
+/// installed programs belong to the ecosystem, not to the launcher. Does not
+/// create the directory; callers that write do that themselves.
 pub fn colony_apps_dir() -> Result<PathBuf> {
-    let base = dirs::data_local_dir()
-        .ok_or_else(|| anyhow::anyhow!("Cannot determine local data directory"))?;
-    Ok(base.join("Colony").join("apps"))
+    Ok(colony_ui::paths::locate::apps_dir()?)
 }
 
 /// Check if a Colony app is installed for the current platform.
@@ -264,9 +362,7 @@ pub fn load_installed_asset(repo_name: &str) -> Option<String> {
 }
 
 fn repos_cache_path() -> Result<PathBuf> {
-    let cache_dir = colony_data_dir()?.join("cache");
-    std::fs::create_dir_all(&cache_dir)?;
-    Ok(cache_dir.join("repos_cache.json"))
+    Ok(colony_cache_dir()?.join("repos_cache.json"))
 }
 
 /// Save Colony repos to local cache for offline use.
@@ -287,9 +383,7 @@ pub fn load_repos_cache() -> Option<Vec<ColonyRepo>> {
 }
 
 fn http_cache_path() -> Result<PathBuf> {
-    let cache_dir = colony_data_dir()?.join("cache");
-    std::fs::create_dir_all(&cache_dir)?;
-    Ok(cache_dir.join("http_etags.json"))
+    Ok(colony_cache_dir()?.join("http_etags.json"))
 }
 
 /// Load the persisted conditional-request cache (see `github::http`).
@@ -384,9 +478,7 @@ pub fn save_preferences(prefs: &UserPreferences) -> Result<()> {
 }
 
 fn scan_cache_path() -> Result<PathBuf> {
-    let cache_dir = colony_data_dir()?.join("cache");
-    std::fs::create_dir_all(&cache_dir)?;
-    Ok(cache_dir.join("scan_cache.json"))
+    Ok(colony_cache_dir()?.join("scan_cache.json"))
 }
 
 /// Cached scan entry.
@@ -522,7 +614,7 @@ fn desktop_entry_filename(repo_name: &str) -> Result<String> {
 /// management from Settings > Storage; installs and preferences are NOT
 /// touched. Returns the number of cache directories removed.
 pub fn clear_store_caches() -> usize {
-    let Ok(base) = colony_data_dir() else {
+    let Ok(base) = colony_cache_dir() else {
         return 0;
     };
     let mut removed = 0;
@@ -650,7 +742,7 @@ pub fn prune_staging() -> u64 {
 /// transient absence must not purge anything). Uninstalling a still-listed
 /// app deliberately keeps its caches - they render the catalog entry.
 pub fn prune_orphaned_repo_caches(live_repo_names: &[String]) {
-    let Ok(base) = colony_data_dir() else {
+    let Ok(base) = colony_cache_dir() else {
         return;
     };
     for parent in ["repo-docs", "repo-icons"] {
@@ -761,5 +853,236 @@ mod tests {
         let loaded: UserPreferences = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.selected_section, Some(2));
         assert_eq!(loaded.first_launch_done, Some(true));
+    }
+}
+
+#[cfg(test)]
+mod path_migration_tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("colony_migrate_{name}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    fn seed(dir: &Path, rel: &str, contents: &str) {
+        let path = dir.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, contents).unwrap();
+    }
+
+    #[test]
+    fn moves_a_legacy_directory_and_keeps_its_contents() {
+        let root = scratch("moves");
+        let (from, to) = (root.join("old"), root.join("new"));
+        seed(
+            &from,
+            "preferences/preferences.json",
+            "{\"theme\":\"gruvbox\"}",
+        );
+        seed(&from, "auth/github_token.json", "token");
+
+        relocate(&from, &to, "config directory");
+
+        assert!(!from.exists(), "the source should have been renamed away");
+        assert_eq!(
+            std::fs::read_to_string(to.join("preferences/preferences.json")).unwrap(),
+            "{\"theme\":\"gruvbox\"}"
+        );
+        assert!(to.join("auth/github_token.json").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn never_clobbers_an_existing_destination() {
+        let root = scratch("clobber");
+        let (from, to) = (root.join("old"), root.join("new"));
+        seed(&from, "preferences.json", "old");
+        seed(&to, "preferences.json", "current");
+
+        relocate(&from, &to, "config directory");
+
+        // The current data wins and the old copy is left untouched, not merged.
+        assert_eq!(
+            std::fs::read_to_string(to.join("preferences.json")).unwrap(),
+            "current"
+        );
+        assert_eq!(
+            std::fs::read_to_string(from.join("preferences.json")).unwrap(),
+            "old"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn does_nothing_on_a_fresh_install_or_a_second_run() {
+        let root = scratch("noop");
+        let (from, to) = (root.join("absent"), root.join("new"));
+
+        relocate(&from, &to, "config directory");
+
+        assert!(!to.exists(), "nothing to migrate should create nothing");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_source_equal_to_the_destination_is_left_alone() {
+        // This is the Linux case for the config directory: the old and new
+        // resolvers return the same path, so the migration must be inert.
+        let root = scratch("same");
+        let dir = root.join("config");
+        seed(&dir, "preferences.json", "kept");
+
+        relocate(&dir, &dir, "config directory");
+
+        assert_eq!(
+            std::fs::read_to_string(dir.join("preferences.json")).unwrap(),
+            "kept"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn copy_tree_reproduces_nested_contents() {
+        let root = scratch("copy");
+        let (from, to) = (root.join("src"), root.join("dst"));
+        seed(&from, "a.json", "a");
+        seed(&from, "deep/b.json", "b");
+        seed(&from, "deep/deeper/c.json", "c");
+
+        copy_tree(&from, &to).expect("copy");
+
+        for (rel, want) in [
+            ("a.json", "a"),
+            ("deep/b.json", "b"),
+            ("deep/deeper/c.json", "c"),
+        ] {
+            assert_eq!(
+                std::fs::read_to_string(to.join(rel)).unwrap(),
+                want,
+                "{rel}"
+            );
+        }
+        // The source survives a copy — that is the whole point of the fallback.
+        assert!(from.join("a.json").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The unit tests above cover `relocate` and `copy_tree` in isolation.
+    /// This exercises `migrate_legacy_paths` itself — the thing that actually
+    /// runs on a user's machine — against a planted legacy layout.
+    ///
+    /// Linux only: it drives the XDG variables, and on Linux the config root is
+    /// unchanged by the migration, so what it proves is the cache move, which
+    /// is the part that relocates real files for the majority of users.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn migrating_a_real_legacy_layout_moves_the_caches_and_leaves_config_alone() {
+        // Driving process-wide environment variables; must not race the other
+        // tests that read a path.
+        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        let root = scratch("e2e");
+        let (old_config, old_data, old_cache) = (
+            std::env::var_os("XDG_CONFIG_HOME"),
+            std::env::var_os("XDG_DATA_HOME"),
+            std::env::var_os("XDG_CACHE_HOME"),
+        );
+        std::env::set_var("XDG_CONFIG_HOME", root.join("config"));
+        std::env::set_var("XDG_DATA_HOME", root.join("data"));
+        std::env::set_var("XDG_CACHE_HOME", root.join("cache"));
+
+        // A profile as an older Colony left it: everything under config/.
+        let legacy = root.join("config/Colony/Colony");
+        seed(
+            &legacy,
+            "preferences/preferences.json",
+            "{\"theme\":\"gruvbox\"}",
+        );
+        seed(&legacy, "auth/github_token.json", "token");
+        seed(&legacy, "cache/repos_cache.json", "[]");
+        seed(&legacy, "cache/http_etags.json", "{}");
+        seed(&legacy, "repo-docs/Eidos/README.md", "# Eidos");
+        seed(&legacy, "repo-icons/Grape/icon.png", "png");
+        seed(&legacy, "update-staging/colony-linux", "binary");
+
+        migrate_legacy_paths();
+
+        let cache = root.join("cache/Colony/Colony");
+        for (rel, want) in [
+            ("repos_cache.json", "[]"),
+            ("http_etags.json", "{}"),
+            ("repo-docs/Eidos/README.md", "# Eidos"),
+            ("repo-icons/Grape/icon.png", "png"),
+            ("update-staging/colony-linux", "binary"),
+        ] {
+            assert_eq!(
+                std::fs::read_to_string(cache.join(rel)).unwrap_or_default(),
+                want,
+                "{rel} should have moved to the cache root"
+            );
+        }
+
+        // What the user chose stays put, and stays readable.
+        assert_eq!(
+            std::fs::read_to_string(legacy.join("preferences/preferences.json")).unwrap(),
+            "{\"theme\":\"gruvbox\"}"
+        );
+        assert!(legacy.join("auth/github_token.json").exists());
+
+        // Nothing regenerable is left behind to be read again by mistake.
+        assert!(
+            !legacy.join("cache").exists(),
+            "the old cache dir should be gone"
+        );
+        assert!(!legacy.join("repo-docs").exists());
+
+        // Running twice is inert.
+        migrate_legacy_paths();
+        assert!(cache.join("repos_cache.json").exists());
+
+        for (k, v) in [
+            ("XDG_CONFIG_HOME", old_config),
+            ("XDG_DATA_HOME", old_data),
+            ("XDG_CACHE_HOME", old_cache),
+        ] {
+            match v {
+                Some(v) => std::env::set_var(k, v),
+                None => std::env::remove_var(k),
+            }
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn colony_lives_under_the_shared_tree() {
+        let config = colony_ui::paths::locate::config_dir(PROGRAM).unwrap();
+        assert!(
+            config.ends_with("Colony/Colony") || config.ends_with("Colony\\Colony"),
+            "{config:?}"
+        );
+
+        // apps/ is a SIBLING of Colony's own data directory, not a child of
+        // it: uninstalling the launcher must not look like it takes the
+        // installed programs with it.
+        let apps = colony_apps_dir().unwrap();
+        let data = colony_ui::paths::locate::data_dir(PROGRAM).unwrap();
+        assert!(
+            apps.ends_with("Colony/apps") || apps.ends_with("Colony\\apps"),
+            "{apps:?}"
+        );
+        assert!(
+            !apps.starts_with(&data),
+            "installed programs must not live inside Colony's own directory"
+        );
+        assert_eq!(
+            apps.parent(),
+            data.parent(),
+            "apps/ and Colony/ share a parent"
+        );
     }
 }

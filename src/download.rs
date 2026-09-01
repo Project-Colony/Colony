@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::github::{APP_VERSION, CONNECT_TIMEOUT, GITHUB_ACCOUNT, LAUNCHER_OWNER, LAUNCHER_REPO};
-use crate::persistence::colony_data_dir;
+use crate::persistence::colony_cache_dir;
 
 /// How long a download may stall before we give up. This is an *inactivity*
 /// budget, not a total one: a slow-but-alive link keeps its transfer, a dead
@@ -1109,7 +1109,8 @@ pub async fn download_launcher_asset(
     filename: String,
     progress_tx: Option<futures::channel::mpsc::UnboundedSender<(u64, Option<u64>)>>,
 ) -> Result<PathBuf> {
-    let temp_dir = colony_data_dir()?.join("update-staging");
+    // Transient by definition: staging lives in the cache.
+    let temp_dir = colony_cache_dir()?.join("update-staging");
     std::fs::create_dir_all(&temp_dir)?;
     let dest_path = temp_dir.join(&filename);
     // Stream to `<asset>.part` and only rename onto the apply path once the

@@ -56,7 +56,7 @@ Open the app in Colony → detail view → **Uninstall**. Or delete the app's di
 
 ### How do I uninstall Colony itself?
 
-AUR: `sudo pacman -R colony-bin` (or `colony-git`). Manual install: delete the binary plus `~/.config/Colony/Colony/`, `~/.cache/colony/`, and `~/.local/share/Colony/`.
+AUR: `sudo pacman -R colony-bin` (or `colony-git`). Manual install: delete the binary plus `~/.config/Colony/`, `~/.cache/Colony/`, and `~/.local/share/Colony/`.
 
 ---
 
@@ -93,7 +93,7 @@ Most common causes:
 5. The repo is not under the `Project-Colony` org (Colony only scans that org).
 6. GitHub rate limit hit — connect your account.
 
-Cache file to inspect: `~/.config/Colony/Colony/cache/repos_cache.json`.
+Cache file to inspect: `~/.cache/Colony/Colony/repos_cache.json`.
 
 ### Does Colony support private repos?
 
@@ -119,22 +119,28 @@ If your app is installed but not in any of these (portable binary without `.desk
 
 ### Where does Colony store its stuff?
 
-| What                       | Path                                                    |
-|----------------------------|---------------------------------------------------------|
-| Preferences                | `~/.config/Colony/Colony/preferences/preferences.json`      |
-| Favorites                  | `~/.config/Colony/Colony/preferences/favorites.json`        |
-| GitHub token (fallback)    | `~/.config/Colony/Colony/auth/github_token.json` (`chmod 600`) |
-| Installed app binaries     | `~/.local/share/Colony/apps/<repo>/`                    |
-| Installed version marker   | `~/.local/share/Colony/apps/<repo>/.colony_version`     |
-| Resolved asset filename    | `~/.local/share/Colony/apps/<repo>/.colony_asset`       |
-| Repo list cache            | `~/.config/Colony/Colony/cache/repos_cache.json`            |
-| Manifest docs cache        | `~/.config/Colony/Colony/repo-docs/<repo>/`                 |
-| System app scan cache      | `~/.config/Colony/Colony/cache/scan_cache.json`             |
-| Self-update staging        | `~/.local/share/Colony/update-staging/`                 |
+| What                       | Path (Linux)                                             |
+|----------------------------|----------------------------------------------------------|
+| Preferences                | `~/.config/Colony/Colony/preferences/preferences.json`   |
+| Favorites                  | `~/.config/Colony/Colony/preferences/favorites.json`     |
+| GitHub token (fallback)    | `~/.config/Colony/Colony/auth/github_token.json` (`600`) |
+| Installed app binaries     | `~/.local/share/Colony/apps/<repo>/`                     |
+| Installed version marker   | `~/.local/share/Colony/apps/<repo>/.colony_version`      |
+| Resolved asset filename    | `~/.local/share/Colony/apps/<repo>/.colony_asset`        |
+| Repo list cache            | `~/.cache/Colony/Colony/repos_cache.json`                |
+| Manifest docs cache        | `~/.cache/Colony/Colony/repo-docs/<repo>/`               |
+| App icon cache             | `~/.cache/Colony/Colony/repo-icons/<repo>/icon.png`      |
+| System app scan cache      | `~/.cache/Colony/Colony/scan_cache.json`                 |
+| Self-update staging        | `~/.cache/Colony/Colony/update-staging/`                 |
+| HTTP ETag cache            | `~/.cache/Colony/Colony/http_etags.json`                 |
+| Diagnostics log            | `~/.cache/Colony/Colony/colony.log`                      |
 
-Purging the `~/.config/Colony/Colony/cache/` directory forces a full re-scan and re-fetch, and Settings > Storage > "Clear caches" does the same from inside the app.
+On Windows all three roots are `%LOCALAPPDATA%\Colony\`, and on macOS config
+and data share `~/Library/Application Support/Colony/` while the cache sits in
+`~/Library/Caches/Colony/`. The layout is defined once in
+[Project-Colony-Resources](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/design/filesystem.md).
 
-Diagnostics are written to `~/.cache/colony/colony.log`, truncated at every start. Set `RUST_LOG=debug` for more detail.
+Purging the `~/.cache/Colony/` directory forces a full re-scan and re-fetch.
 
 ### Can I edit `preferences.json` by hand?
 
@@ -182,8 +188,8 @@ colony 2>&1 | tee colony.log
 Common causes:
 
 - A missing D-Bus session (the keyring backend needs one; a bare TTY or a minimal container has none) — on AUR the deps are pulled automatically. For manual downloads, install them via your package manager.
-- Corrupted cache — `rm -rf ~/.cache/colony` and relaunch.
-- Corrupted preferences — `mv ~/.config/colony/preferences.json ~/.config/colony/preferences.json.bak` and relaunch to regenerate defaults.
+- Corrupted cache — `rm -rf ~/.cache/Colony` and relaunch.
+- Corrupted preferences — `mv ~/.config/Colony/Colony/preferences/preferences.json{,.bak}` and relaunch to regenerate defaults.
 
 ### Download stuck / very slow
 

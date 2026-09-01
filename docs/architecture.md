@@ -85,19 +85,19 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
 
 | Data | Location | Duration |
 |------|----------|----------|
-| Colony repos (cache) | `~/.config/Colony/Colony/cache/repos_cache.json` | Offline fallback |
-| Scanned apps (cache) | `~/.config/Colony/Colony/cache/scan_cache.json` | Session |
-| HTTP ETag cache | `~/.config/Colony/Colony/cache/http_etags.json` | Conditional requests across launches |
-| Repo docs (cache) | `~/.config/Colony/Colony/repo-docs/<repo>/` | Offline fallback |
-| Repo icons (cache) | `~/.config/Colony/Colony/repo-icons/<repo>/` | Offline fallback |
+| Colony repos (cache) | `~/.cache/Colony/Colony/repos_cache.json` | Offline fallback |
+| Scanned apps (cache) | `~/.cache/Colony/Colony/scan_cache.json` | Session |
+| HTTP ETag cache | `~/.cache/Colony/Colony/http_etags.json` | Conditional requests across launches |
+| Repo docs (cache) | `~/.cache/Colony/Colony/repo-docs/<repo>/` | Offline fallback |
+| Repo icons (cache) | `~/.cache/Colony/Colony/repo-icons/<repo>/` | Offline fallback |
 | Preferences | `~/.config/Colony/Colony/preferences/preferences.json` | Permanent |
 | Favorites | `~/.config/Colony/Colony/preferences/favorites.json` | Permanent |
 | OAuth token | OS Keychain / `~/.config/Colony/Colony/auth/github_token.json` | Permanent |
-| Diagnostics log | `~/.cache/colony/colony.log` | Truncated per run |
+| Diagnostics log | `~/.cache/Colony/Colony/colony.log` | Truncated per run |
 | Installed versions | `~/.local/share/Colony/apps/<repo>/.colony_version` | Permanent |
 | Resolved asset | `~/.local/share/Colony/apps/<repo>/.colony_asset` | Permanent |
 | Colony binaries | `~/.local/share/Colony/apps/<repo>/` | Permanent |
-| Self-update staging | `~/.local/share/Colony/update-staging/` | Temporary |
+| Self-update staging | `~/.cache/Colony/Colony/update-staging/` | Temporary |
 
 ## GitHub API
 
