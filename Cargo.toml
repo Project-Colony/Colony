@@ -9,10 +9,8 @@ rust-version = "1.80"
 [dependencies]
 anyhow = "1.0.100"
 # The shared theme, palettes, accents, labels and widgets, generated from the
-# design tokens in Project-Colony-Resources. Pinned to a tag rather than
-# tracking main: a change upstream cannot break this build without a deliberate
-# bump here.
-colony-ui = { git = "https://github.com/Project-Colony/Project-Colony-Resources", tag = "v0.1.0" }
+# design tokens in Project-Colony-Resources.
+colony-ui = "0.1.1"
 iced = { version = "0.14.0", features = ["tokio", "markdown", "advanced", "image-without-codecs"] }
 shell-words = "1.1.1"
 serde = { version = "1.0.228", features = ["derive"] }

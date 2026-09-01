@@ -562,8 +562,9 @@ dependencies = [
 
 [[package]]
 name = "colony-ui"
-version = "0.1.0"
-source = "git+https://github.com/Project-Colony/Project-Colony-Resources?tag=v0.1.0#108ee8010997e69e06929ae84e112a4d8b90ae80"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b025e9e878eaf306c7ec74b8917601e19f7455a5e956872beb80df17ed503ae3"
 dependencies = [
  "dirs",
  "iced",
