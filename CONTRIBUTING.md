@@ -113,7 +113,10 @@ See [docs/architecture.md](docs/architecture.md) for the full layout. Short vers
 - `src/scan.rs` — system app detection (Linux `.desktop`, Windows Start Menu, macOS `.app`).
 - `src/sections.rs` — categories + filter logic.
 - `src/ui/` — widgets and panels (sidebar, app grid, detail view, settings).
-- `src/ui/theme.rs` — all 25 theme families + 57 palettes.
+- `src/ui/theme.rs` — a re-export of [colony-ui](https://crates.io/crates/colony-ui)
+  plus Colony's own button styling. The 25 theme families and 57 palettes live
+  in that crate, generated from the design tokens in
+  [Project-Colony-Resources](https://github.com/Project-Colony/Project-Colony-Resources).
 
 ### Style
 
@@ -136,7 +139,8 @@ See [docs/architecture.md](docs/architecture.md) for the full layout. Short vers
 |--------------------------------|----------------------------------------------------------------------|
 | Typo / doc clarification       | PR directly.                                                         |
 | Bug fix                        | PR directly, reference the issue if any.                             |
-| Small feature (new theme, sidebar tweak) | PR directly, include before/after screenshots if UI-visible. |
+| Small feature (sidebar tweak, new setting) | PR directly, include before/after screenshots if UI-visible. |
+| A new theme family                          | Not here — add the TOML to [Project-Colony-Resources](https://github.com/Project-Colony/Project-Colony-Resources), regenerate, and bump `colony-ui`. Colony needs no change at all. |
 | Large feature (new auth mode, protocol change) | Open an issue first to discuss design.              |
 
 ### Reporting bugs / feature requests

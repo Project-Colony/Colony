@@ -77,7 +77,10 @@ Requires Rust 1.88+ and, on Linux, `libgtk-3-dev`, `libxdo-dev`, `libdbus-1-dev`
 
 ## Theming
 
-Colony ships with **25 theme families and 57 palettes**, all compiled into the binary with zero runtime cost:
+Colony ships with **25 theme families and 57 palettes**, compiled into the
+binary with zero runtime cost. They come from
+[colony-ui](https://crates.io/crates/colony-ui) and are shared with every other
+Project Colony program, so a theme looks the same wherever you meet it:
 
 | | | | |
 |---|---|---|---|
