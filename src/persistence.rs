@@ -971,6 +971,93 @@ mod path_migration_tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The unit tests above cover `relocate` and `copy_tree` in isolation.
+    /// This exercises `migrate_legacy_paths` itself — the thing that actually
+    /// runs on a user's machine — against a planted legacy layout.
+    ///
+    /// Linux only: it drives the XDG variables, and on Linux the config root is
+    /// unchanged by the migration, so what it proves is the cache move, which
+    /// is the part that relocates real files for the majority of users.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn migrating_a_real_legacy_layout_moves_the_caches_and_leaves_config_alone() {
+        // Driving process-wide environment variables; must not race the other
+        // tests that read a path.
+        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        let root = scratch("e2e");
+        let (old_config, old_data, old_cache) = (
+            std::env::var_os("XDG_CONFIG_HOME"),
+            std::env::var_os("XDG_DATA_HOME"),
+            std::env::var_os("XDG_CACHE_HOME"),
+        );
+        std::env::set_var("XDG_CONFIG_HOME", root.join("config"));
+        std::env::set_var("XDG_DATA_HOME", root.join("data"));
+        std::env::set_var("XDG_CACHE_HOME", root.join("cache"));
+
+        // A profile as an older Colony left it: everything under config/.
+        let legacy = root.join("config/Colony/Colony");
+        seed(
+            &legacy,
+            "preferences/preferences.json",
+            "{\"theme\":\"gruvbox\"}",
+        );
+        seed(&legacy, "auth/github_token.json", "token");
+        seed(&legacy, "cache/repos_cache.json", "[]");
+        seed(&legacy, "cache/http_etags.json", "{}");
+        seed(&legacy, "repo-docs/Eidos/README.md", "# Eidos");
+        seed(&legacy, "repo-icons/Grape/icon.png", "png");
+        seed(&legacy, "update-staging/colony-linux", "binary");
+
+        migrate_legacy_paths();
+
+        let cache = root.join("cache/Colony/Colony");
+        for (rel, want) in [
+            ("repos_cache.json", "[]"),
+            ("http_etags.json", "{}"),
+            ("repo-docs/Eidos/README.md", "# Eidos"),
+            ("repo-icons/Grape/icon.png", "png"),
+            ("update-staging/colony-linux", "binary"),
+        ] {
+            assert_eq!(
+                std::fs::read_to_string(cache.join(rel)).unwrap_or_default(),
+                want,
+                "{rel} should have moved to the cache root"
+            );
+        }
+
+        // What the user chose stays put, and stays readable.
+        assert_eq!(
+            std::fs::read_to_string(legacy.join("preferences/preferences.json")).unwrap(),
+            "{\"theme\":\"gruvbox\"}"
+        );
+        assert!(legacy.join("auth/github_token.json").exists());
+
+        // Nothing regenerable is left behind to be read again by mistake.
+        assert!(
+            !legacy.join("cache").exists(),
+            "the old cache dir should be gone"
+        );
+        assert!(!legacy.join("repo-docs").exists());
+
+        // Running twice is inert.
+        migrate_legacy_paths();
+        assert!(cache.join("repos_cache.json").exists());
+
+        for (k, v) in [
+            ("XDG_CONFIG_HOME", old_config),
+            ("XDG_DATA_HOME", old_data),
+            ("XDG_CACHE_HOME", old_cache),
+        ] {
+            match v {
+                Some(v) => std::env::set_var(k, v),
+                None => std::env::remove_var(k),
+            }
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn colony_lives_under_the_shared_tree() {
         let config = colony_ui::paths::locate::config_dir(PROGRAM).unwrap();
