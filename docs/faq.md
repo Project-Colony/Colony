@@ -87,7 +87,7 @@ Settings → GitHub → **Disconnect**. The token is deleted locally. The app le
 Most common causes:
 
 1. No `colony.json` at the root of the repo.
-2. `colony.json` has an invalid `category` (valid: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Games`, `Other`).
+2. `colony.json` has an invalid `category` (valid: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Security`, `Games`, `Other`).
 3. No GitHub release published (drafts don't count).
 4. Release assets don't match the `<repo>-<platform>` convention (see [colony-spec.md](colony-spec.md)).
 5. The repo is not under the `Project-Colony` org (Colony only scans that org).
@@ -132,6 +132,8 @@ If your app is installed but not in any of these (portable binary without `.desk
 | App icon cache             | `~/.cache/Colony/Colony/repo-icons/<repo>/icon.png`      |
 | System app scan cache      | `~/.cache/Colony/Colony/scan_cache.json`                 |
 | Self-update staging        | `~/.cache/Colony/Colony/update-staging/`                 |
+| HTTP ETag cache            | `~/.cache/Colony/Colony/http_etags.json`                 |
+| Diagnostics log            | `~/.cache/Colony/Colony/colony.log`                      |
 
 On Windows all three roots are `%LOCALAPPDATA%\Colony\`, and on macOS config
 and data share `~/Library/Application Support/Colony/` while the cache sits in
@@ -150,9 +152,28 @@ Yes. Edit `~/.config/Colony/Colony/preferences/preferences.json` and add custom 
 
 ### I changed a theme and don't see it — why?
 
-Themes apply immediately, no restart. If a palette looks off, verify Settings → Theme has the expected family + palette selected. All 50+ palettes are compiled into the binary, so if it's missing you're on an old version — update.
+Themes apply immediately, no restart. If a palette looks off, verify Settings → Theme has the expected family + palette selected. All 57 palettes are compiled into the binary, so if it's missing you're on an old version — update.
 
 ---
+
+
+## Can I rename or reorder the sidebar sections?
+
+Yes. Colony looks for a `categories.json` override before falling back to the
+copy compiled into the binary, in this order:
+
+1. `~/.config/Colony/Colony/categories.json`
+2. next to the `colony` binary
+3. `./config/categories.json`
+
+Copy the shipped [`config/categories.json`](https://github.com/Project-Colony/Colony/blob/main/config/categories.json)
+to the first path and edit it. Each entry takes `name`, `icon` (a Nerd Font
+glyph), `origin` (`colony`, `windows`, `external`), `category`, and an optional
+`platforms` list that hides the section on other operating systems. A Favorites
+section is injected automatically if you leave it out.
+
+The same search order applies to `colony.toml`, which controls the directories
+scanned for locally installed apps.
 
 ## Troubleshooting
 
@@ -166,13 +187,13 @@ colony 2>&1 | tee colony.log
 
 Common causes:
 
-- Missing Linux runtime libs (GTK, dbus, xdo) — on AUR the deps are pulled automatically. For manual downloads, install them via your package manager.
+- A missing D-Bus session (the keyring backend needs one; a bare TTY or a minimal container has none) — on AUR the deps are pulled automatically. For manual downloads, install them via your package manager.
 - Corrupted cache — `rm -rf ~/.cache/Colony` and relaunch.
 - Corrupted preferences — `mv ~/.config/Colony/Colony/preferences/preferences.json{,.bak}` and relaunch to regenerate defaults.
 
 ### Download stuck / very slow
 
-Colony uses a 300s timeout per download. If you're on slow network this may not be enough; interrupt with Esc and retry.
+Colony uses a 300s timeout per download. If you're on slow network this may not be enough; interrupt with the Cancel button on the download toast.
 
 ### Self-update fails
 

@@ -25,7 +25,7 @@ Minimal form:
 }
 ```
 
-Valid categories: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Games`, `Other`.
+Valid categories: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Security`, `Games`, `Other`.
 
 **App icon (recommended):** put a square PNG at `assets/icons/icon.png` and declare it in the manifest — `"icon": "assets/icons/icon.png"`. Colony shows it in the grid; without it your app gets a generated category tile. The same folder is the standard home for your `icon.ico` (Windows) and `icon.icns` (macOS). See the [App icon](docs/colony-spec.md#app-icon) section of the spec.
 
@@ -46,7 +46,7 @@ You can upload any subset — Colony only advertises the platforms whose asset i
 
 ### Step 3 — Wire up a release workflow (Rust apps)
 
-A ready-to-use GitHub Actions template is in this repo at [`.github/workflows/colony-rust-release.yml.template`](.github/workflows/colony-rust-release.yml.template). Copy it to your own repo as `.github/workflows/release.yml` and replace `{{APP_NAME}}` with your binary/repo name (lowercase).
+The ready-to-use GitHub Actions template lives in Project-Colony-Resources at [`templates/release.yml`](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/release.yml), next to the shared signing script it calls. Copy it to your own repo as `.github/workflows/release.yml` and replace `{{APP_NAME}}` with your binary/repo name (lowercase).
 
 It uses [`release-please`](https://github.com/googleapis/release-please) so every merged PR tagged with a conventional-commit prefix (`feat:`, `fix:`, etc.) opens a release PR; merging that PR tags the version, builds the matrix of 4 platforms, and uploads the assets under the convention above. Zero manual release work afterwards.
 
@@ -73,7 +73,7 @@ Your app card should appear in the category you declared. If not:
 
 - Make sure the release is **published** (not a draft).
 - Make sure asset names match the convention (lowercase, no version in the name, correct extension).
-- Look in `~/.cache/colony/repos_cache.json` — if your repo is there but without platforms, the `colony.json` or the asset names are wrong. See the [spec](docs/colony-spec.md) for the precise validation rules.
+- Look in `~/.config/Colony/Colony/cache/repos_cache.json` - if your repo is there but without platforms, the `colony.json` or the asset names are wrong. See the [spec](docs/colony-spec.md) for the precise validation rules.
 - Verify you aren't hitting the GitHub rate limit: Settings → GitHub → Connect.
 
 ---
@@ -96,7 +96,7 @@ cargo build --release    # optimized build
 **Linux runtime dependencies** (for building and running):
 
 ```
-libgtk-3-dev libxdo-dev libdbus-1-dev libasound2-dev libglib2.0-dev pkg-config
+libgtk-3-dev libxdo-dev libdbus-1-dev pkg-config
 ```
 
 ### Code organization
@@ -113,7 +113,7 @@ See [docs/architecture.md](docs/architecture.md) for the full layout. Short vers
 - `src/scan.rs` — system app detection (Linux `.desktop`, Windows Start Menu, macOS `.app`).
 - `src/sections.rs` — categories + filter logic.
 - `src/ui/` — widgets and panels (sidebar, app grid, detail view, settings).
-- `src/ui/theme.rs` — all 24 theme families + 50+ palettes.
+- `src/ui/theme.rs` — all 25 theme families + 57 palettes.
 
 ### Style
 
@@ -141,7 +141,7 @@ See [docs/architecture.md](docs/architecture.md) for the full layout. Short vers
 
 ### Reporting bugs / feature requests
 
-Use the templates in `.github/ISSUE_TEMPLATE/` when filing. Include Colony version (`colony --version`), OS, and relevant log excerpts from `~/.cache/colony/`.
+Use the templates in `.github/ISSUE_TEMPLATE/` when filing. Include Colony version (`colony --version`), OS, and relevant log excerpts from `~/.cache/colony/colony.log`.
 
 ---
 

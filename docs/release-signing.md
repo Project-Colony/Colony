@@ -51,15 +51,63 @@ The private key never lives in the repo. Point `COLONY_SIGNING_KEY` at the
 ed25519 private key (PEM), set `COLONY_RELEASE_VERSION` to the release tag (it is
 bound into each sidecar), and run:
 
+**Sign the PUBLISHED bytes, never a local rebuild.** Download the assets from
+the release first:
+
 ```sh
+gh release download v1.2.3 --dir dist \
+  --pattern colony-linux --pattern colony-windows.exe \
+  --pattern colony-macos --pattern colony-macos-x86
+
 COLONY_SIGNING_KEY=/path/to/colony-release.pem \
 COLONY_RELEASE_VERSION=v1.2.3 \
-  ./scripts/sign-release.sh colony-linux colony-windows.exe colony-macos colony-macos-x86
+  ./scripts/sign-release.sh dist/colony-linux dist/colony-windows.exe \
+                            dist/colony-macos dist/colony-macos-x86
+
+gh release upload v1.2.3 dist/*.sig dist/*.meta --clobber
 ```
+
+The download step is not optional. `sign-release.sh` hashes whatever local file
+you hand it into the `.meta` sidecar, and the client then enforces that digest
+against the bytes it downloaded. Rust release builds are not bit-reproducible
+across machines, so signing a fresh `cargo build --release` produces a sidecar
+whose digest does not match what users receive - and every install fails
+verification, which is worse than being unsigned because it also fails
+fail-closed.
 
 For each asset this writes `<asset>.sig`, `<asset>.meta` and `<asset>.meta.sig`,
 every signature self-verified before it is kept. Upload all of them as release
-assets.
+assets, then confirm the count:
+
+```sh
+gh release view v1.2.3 --json assets --jq '.assets|length'   # must be 16
+```
+
+### If a release goes wrong
+
+`gh release view <tag> --json isDraft,assets --jq '{draft:.isDraft, n:(.assets|length)}'`
+tells you which state you are in.
+
+**Still a draft, incomplete.** Nobody is affected: `/releases/latest` still
+points at the previous version and no client has been offered anything. Fix the
+cause and use **"Re-run failed jobs"**.
+
+**Never "Re-run all jobs".** release-please re-runs against a `main` whose
+release already exists, emits an empty `release_created`, and every downstream
+job skips - while the run reports green. That looks like a successful recovery
+and is the opposite of one.
+
+**Published but unsigned or partial.** Clients are being offered an update that
+cannot be applied. Take it out of `latest` first, then complete it:
+
+```sh
+gh release edit <tag> --prerelease          # assets exist; keeps their URLs alive
+# or: gh release edit <tag> --draft=true    # release is empty anyway
+gh api repos/Project-Colony/Colony/releases/latest --jq .tag_name   # confirm the fallback
+```
+
+then follow the manual signing procedure above and re-publish with
+`gh release edit <tag> --draft=false --prerelease=false`.
 
 ### In CI (the normal path)
 
@@ -95,12 +143,41 @@ openssl pkey -in colony-release.pem -pubout -out colony-release.pub.pem
 openssl pkey -pubin -in colony-release.pub.pem -outform DER | tail -c 32 | xxd -i
 ```
 
-Paste the 32 bytes from step 2 into `RELEASE_PUBLIC_KEY` in
-[`src/signing.rs`](../src/signing.rs), ship a Colony release built with the new
-key, and sign all subsequent assets with the new private key. Note: clients on
-an old build trust only the old key, so keep signing with the old key until
-those clients have updated (or accept that they can no longer self-update and
-must reinstall).
+`src/signing.rs` embeds a **list** of accepted keys (`RELEASE_PUBLIC_KEYS`), and
+a signature is accepted if any listed key validates it. That is what makes a
+rotation possible at all: with a single key, the one `<asset>.sig` a release
+carries is either old-key (refused by every updated client) or new-key (refused
+by every client in the field), and verification is fail-closed, so the refusal
+is permanent either way.
+
+Rotate over three releases:
+
+| Release | `RELEASE_PUBLIC_KEYS` contains | Signed with | Who can update |
+|---|---|---|---|
+| N | `[new, old]` | **old** | everyone in the field; afterwards they trust both |
+| N+1 | `[new, old]` | **new** | everyone on N or later |
+| N+2 | `[new]` | **new** | everyone on N or later; `old` is now revoked |
+
+Two rules make this safe:
+
+- **N must be signed with the OLD key.** Its whole job is to widen the trusted
+  set on machines that only trust `old`. Signing it with `new` is the mistake
+  that strands the install base.
+- **Do not skip to N+2.** Anyone still on N-1 or earlier when `old` is dropped
+  can no longer self-update and must reinstall by hand. Leave N and N+1 in the
+  field long enough for that to be a rounding error, and check the release
+  download counts before shipping N+2.
+
+For an EMERGENCY rotation after a key leak, the same sequence applies but the
+overlap is a liability rather than a courtesy: the attacker holding `old` can
+sign anything the field will accept until N+2 ships. Publish N and N+1 back to
+back, keep the window to hours, and say so publicly - a compromised key is not a
+quiet fix.
+
+The test `any_trusted_key_verifies_and_an_untrusted_one_does_not` in
+`src/signing.rs` asserts both halves: any listed key validates, an unlisted one
+never does. It also asserts the list is length 1, so starting a rotation
+requires deliberately updating that assertion.
 
 ## Verifying a signature by hand
 

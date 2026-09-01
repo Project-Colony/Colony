@@ -44,6 +44,9 @@ pub fn init(preferred: Option<String>) {
 /// the whole UI re-labels on the next frame - no restart required (the locale
 /// used to live in a OnceLock, forcing one).
 pub fn set_language(lang: &str) {
+    // Keep the shared label table on the same locale, or the theme picker would
+    // stay English while the rest of the page switched.
+    colony_ui::i18n::set_locale(colony_ui::i18n::Locale::from_tag(lang));
     let lang = if lang == "fr" || lang == "en" {
         lang
     } else {
@@ -64,6 +67,7 @@ pub fn section_display_name(name: &str) -> String {
         "favorites" | "favoris" => "section_favorites",
         "windows" => "section_windows",
         "linux" => "section_linux",
+        "macos" => "section_macos",
         "development" => "section_development",
         "graphics" => "section_graphics",
         "network" => "section_network",
@@ -85,14 +89,23 @@ pub fn section_display_name(name: &str) -> String {
 
 /// Get a translated string by key.
 pub fn t(key: &str) -> String {
-    LOCALE
+    if let Some(s) = LOCALE
         .read()
         .ok()
         .and_then(|l| l.as_ref().and_then(|l| l.strings.get(key).cloned()))
-        .unwrap_or_else(|| {
-            tracing::warn!("Missing translation key: {key}");
-            key.to_string()
-        })
+    {
+        return s;
+    }
+    // Theme and accent labels are not ours: they name shared design objects and
+    // ship with colony-ui, generated from the same tokens as the palettes. They
+    // used to be copied into en.rs and fr.rs, where they drifted from the
+    // catalog they describe.
+    let shared = colony_ui::i18n::t(key);
+    if shared != key {
+        return shared.to_string();
+    }
+    tracing::warn!("Missing translation key: {key}");
+    key.to_string()
 }
 
 /// Get a translated string with variable substitution.
@@ -132,6 +145,37 @@ fn detect_language() -> String {
 
 #[cfg(test)]
 mod tests {
+    /// The active locale is process-global, so tests that swap it must not run
+    /// concurrently with each other — the failure is a value from whichever
+    /// language the other test happened to set.
+    static LOCALE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_locale<T>(f: impl FnOnce() -> T) -> T {
+        let _guard = LOCALE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        f()
+    }
+
+    /// Theme and accent labels live in colony-ui, not in en.rs / fr.rs. They
+    /// must still resolve through `t()`, and must follow the active locale —
+    /// otherwise the theme picker would sit in English inside a French page.
+    #[test]
+    fn shared_labels_resolve_through_colony_ui_and_follow_the_locale() {
+        with_locale(|| {
+            super::set_language("fr");
+            assert_eq!(super::t("settings_theme_dark_mode"), "Mode sombre");
+            assert_eq!(super::t("settings_accent_violet"), "Violet");
+
+            super::set_language("en");
+            assert_eq!(super::t("settings_theme_dark_mode"), "Dark mode");
+
+            // Proper nouns read the same either way.
+            assert_eq!(super::t("settings_theme_stellar_blade_eve"), "EVE");
+
+            // And a key belonging to neither table still renders as itself.
+            assert_eq!(super::t("no_such_key_anywhere"), "no_such_key_anywhere");
+        });
+    }
+
     use super::*;
 
     #[test]
@@ -177,11 +221,85 @@ mod tests {
         );
     }
 
+    /// 52 keys (104 entries across the two locales) were dead: settings that
+    /// were never built, a welcome carousel that was replaced, placeholders
+    /// for features that never shipped. Translators had no way to tell them
+    /// from live strings.
+    ///
+    /// Reads the source rather than the runtime map, which is the only way to
+    /// see a key that nothing looks up.
+    #[test]
+    fn no_locale_key_is_unreferenced() {
+        const EN: &str = include_str!("en.rs");
+        // Every .rs in the crate EXCEPT the two locale tables themselves.
+        const SOURCES: &[&str] = &[
+            include_str!("mod.rs"),
+            include_str!("../app.rs"),
+            include_str!("../state.rs"),
+            include_str!("../update/mod.rs"),
+            include_str!("../update/store.rs"),
+            include_str!("../update/github_auth.rs"),
+            include_str!("../update/launcher.rs"),
+            include_str!("../update/preferences.rs"),
+            include_str!("../update/keyboard.rs"),
+            include_str!("../update/onboarding.rs"),
+            include_str!("../ui/app_grid.rs"),
+            include_str!("../ui/detail.rs"),
+            include_str!("../ui/sidebar.rs"),
+            include_str!("../ui/settings.rs"),
+            include_str!("../ui/github_panel.rs"),
+            include_str!("../ui/tutorial.rs"),
+            include_str!("../scan.rs"),
+            include_str!("../sections.rs"),
+            include_str!("../github/http.rs"),
+            include_str!("../github/catalog.rs"),
+            include_str!("../github/releases.rs"),
+            include_str!("../oauth.rs"),
+            include_str!("../download.rs"),
+            include_str!("../persistence.rs"),
+            include_str!("../config.rs"),
+            include_str!("../main.rs"),
+        ];
+
+        let mut dead = Vec::new();
+        for line in EN.lines() {
+            // A KEY is `"snake_case".into(),` - the value on a wrapped insert
+            // is also a quoted string on its own line, so match the shape, not
+            // just "starts with a quote".
+            let Some(rest) = line.trim().strip_prefix('"') else {
+                continue;
+            };
+            let Some(key) = rest.split('"').next() else {
+                continue;
+            };
+            if key.is_empty()
+                || !key
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+                || !rest[key.len()..].starts_with("\".into()")
+            {
+                continue;
+            }
+            let needle = format!("\"{key}\"");
+            if !SOURCES.iter().any(|src| src.contains(&needle)) {
+                dead.push(key.to_string());
+            }
+        }
+        assert!(
+            dead.is_empty(),
+            "locale keys nothing looks up: {dead:?}\n\
+             Either delete them from en.rs and fr.rs, or - if they ARE used - add the \
+             module that uses them to SOURCES above (this list is hand-maintained, and a \
+             missing entry fails LOUDLY here rather than silently letting dead keys back in)."
+        );
+    }
+
     #[test]
     fn t_fmt_substitution() {
-        // Initialize with English for test
-        set_language("en");
-        let result = t_fmt("apps_found", &[("count", "42")]);
-        assert_eq!(result, "42 applications found");
+        with_locale(|| {
+            set_language("en");
+            let result = t_fmt("apps_found", &[("count", "42")]);
+            assert_eq!(result, "42 applications found");
+        });
     }
 }

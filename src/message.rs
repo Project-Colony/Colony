@@ -32,7 +32,6 @@ pub enum Message {
     GitHubError(String),
     GitHubRefreshRepos,
     DownloadRelease(String, String), // (repo_name, platform_key)
-    #[allow(dead_code)]
     /// (filename, downloaded bytes, total bytes when the server sent
     /// Content-Length) - raw bytes so the UI can show size AND speed, not
     /// just a bare percentage.
@@ -49,13 +48,16 @@ pub enum Message {
     AnimationTick,
     KeyboardEvent(keyboard::Event),
     CheckUpdates,
-    UpdatesChecked(Vec<(String, String)>), // Vec<(repo_name, latest_tag)>
+    /// One entry per checked repo. `Ok(Some(tag))` = update to `tag`,
+    /// `Ok(None)` = current, `Err(msg)` = the check could not run for that repo
+    /// and its existing badge must be left alone rather than cleared.
+    UpdatesChecked(Vec<(String, Result<Option<String>, String>)>),
     /// One-click sequential update of every app with a pending update.
     UpdateAll,
     /// Fetch the release notes ("what's new") for a repo's available update.
     FetchReleaseNotes(String),
-    /// (repo, Ok((tag, body_markdown))) - notes fetched (or failed).
-    ReleaseNotesFetched(String, Result<(String, String), String>),
+    /// (repo, Ok((facts, notes markdown)) | Err(message))
+    ReleaseNotesFetched(String, Result<(crate::state::ReleaseFacts, String), String>),
     /// Manual "clear store caches" from Settings > Storage.
     ClearStoreCaches,
     WindowResized(f32, f32),

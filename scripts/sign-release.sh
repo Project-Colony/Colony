@@ -15,7 +15,14 @@
 #   <asset>.meta.sig  ed25519 signature over the .meta bytes
 #
 # The launcher verifies the sidecar and refuses anything that is not strictly
-# newer than itself, which is what stops a replay of an older org-signed build.
+# newer than itself; app installs verify the same sidecar and refuse anything
+# OLDER than what is already installed (equal is fine - an app pinned to a fixed
+# tag must stay reinstallable). Either way, that is what stops a replay of an
+# older org-signed build.
+#
+# Emitting sidecars for an app repo is safe to adopt at any time: Colony treats
+# them as opportunistic, and only makes them mandatory for a given app once it
+# has verified one (so a repo cannot silently stop publishing them).
 #
 # Usage:
 #   COLONY_SIGNING_KEY=/path/to/colony-release.pem \

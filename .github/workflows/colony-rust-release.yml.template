@@ -1,94 +1,36 @@
-# Colony Rust App — Release Workflow Template
+# Colony Rust program — release workflow
 #
-# Copy this file to your repo as .github/workflows/release.yml
-# Replace {{APP_NAME}} with your binary/repo name (lowercase).
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  THIS FILE IS NOT THE TEMPLATE. The canonical one lives in              │
+# │                                                                         │
+# │    Project-Colony-Resources / templates/release.yml                     │
+# │    https://github.com/Project-Colony/Project-Colony-Resources           │
+# │                                                                         │
+# │  Copy THAT file to your repo as .github/workflows/release.yml.          │
+# └─────────────────────────────────────────────────────────────────────────┘
 #
-# Assets follow the Colony naming convention:
-#   {{APP_NAME}}-linux, {{APP_NAME}}-windows.exe,
-#   {{APP_NAME}}-macos, {{APP_NAME}}-macos-x86
+# Why this is a pointer and not a copy: it used to be a copy, and the two
+# drifted. The Resources template referenced a secret named
+# COLONY_SIGNING_KEY while every real repo uses COLONY_SIGNING_KEY_PEM, and it
+# skipped signing on Windows entirely - so a program following it shipped an
+# unsigned .exe that Colony then refused to install, because the manifest said
+# "signed": true. Neither mistake was visible from either side. One canonical
+# file, kept next to the shared script it calls, is what stops that recurring.
 #
-# Colony auto-detects platforms from these asset names, so your
-# colony.json only needs: { "name": "...", "category": "..." }
-
-name: Release
-
-on:
-  push:
-    branches: [main]
-
-permissions:
-  contents: write
-  pull-requests: write
-
-env:
-  CARGO_TERM_COLOR: always
-
-jobs:
-  release-please:
-    runs-on: ubuntu-latest
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      upload_url: ${{ steps.release.outputs.upload_url }}
-    steps:
-      - uses: googleapis/release-please-action@v4
-        id: release
-        with:
-          release-type: rust
-
-  build:
-    name: Build ${{ matrix.asset }}
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            asset: "{{APP_NAME}}-linux"
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            asset: "{{APP_NAME}}-windows.exe"
-          - target: aarch64-apple-darwin
-            os: macos-latest
-            asset: "{{APP_NAME}}-macos"
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            asset: "{{APP_NAME}}-macos-x86"
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
-
-      # Uncomment if your app needs GTK/X11 dependencies on Linux:
-      # - name: Install Linux dependencies
-      #   if: runner.os == 'Linux'
-      #   run: |
-      #     sudo apt-get update
-      #     sudo apt-get install -y libgtk-3-dev libxdo-dev libdbus-1-dev
-
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Rename binary (Unix)
-        if: runner.os != 'Windows'
-        run: cp target/${{ matrix.target }}/release/{{APP_NAME}} ${{ matrix.asset }}
-
-      - name: Rename binary (Windows)
-        if: runner.os == 'Windows'
-        run: copy target\${{ matrix.target }}\release\{{APP_NAME}}.exe ${{ matrix.asset }}
-
-      - name: Upload binary to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.release-please.outputs.tag_name }}
-          files: ${{ matrix.asset }}
+# What you need, in short:
+#
+#   1. colony.json at your repo root (name + category is usually the whole
+#      file). Validate it with:  colony validate-manifest colony.json
+#   2. templates/release.yml   -> .github/workflows/release.yml
+#   3. templates/sign-release.sh -> scripts/sign-release.sh   (only if you set
+#      "signed": true; the workflow calls it from there)
+#   4. The COLONY_SIGNING_KEY_PEM organisation secret, which is restricted to
+#      Project-Colony repositories.
+#
+# The full contract - asset naming, the manifest, signing, the .meta sidecar,
+# key rotation, and how to adopt signatures in a program that already ships -
+# is in Project-Colony-Resources / design/releases.md.
+#
+# Colony's own release pipeline (.github/workflows/release-please.yml) is the
+# reference implementation and stays separate: it self-updates, so its
+# signature verification is mandatory rather than opt-in.

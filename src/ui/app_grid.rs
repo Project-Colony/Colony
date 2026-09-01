@@ -186,10 +186,27 @@ impl App {
             .cloned()
             .unwrap_or((false, None));
         if !installed {
-            return text(crate::i18n::t("status_get"))
+            // The grid's most prominent per-row signal used to say "Get" for
+            // every uninstalled app, including ones with no build for this
+            // platform - so the user clicked in expecting to install and hit
+            // the detail page's dead end. The card already knows better: it
+            // renders a chip per declared platform right next to it.
+            let available = repo
+                .manifest
+                .release_files
+                .contains_key(crate::github::current_platform_key());
+            let (label, color) = if available {
+                (crate::i18n::t("status_get"), Palette::ACCENT())
+            } else {
+                (
+                    crate::i18n::t("status_unavailable"),
+                    Palette::TEXT_DIMMEST(),
+                )
+            };
+            return text(label)
                 .size(self.sz(12))
                 .font(self.app_font())
-                .color(Palette::ACCENT())
+                .color(color)
                 .into();
         }
         let version = cached_version;
@@ -318,8 +335,15 @@ impl App {
             .id(crate::ui::tutorial::ID_SEARCH)
             .width(Fill);
 
-        // Show search result count when query is active
-        let status_text = if !self.search_query.is_empty() {
+        // Only the search result count lives here. `status_message` used to
+        // share this row, which had two problems: it was the ONLY render site
+        // for the status line (so uninstall, platform and release-notes errors
+        // were invisible on the detail, settings and GitHub pages), and a long
+        // raw transport error laid the Fill search input out at width zero.
+        // It now renders as a footer in `App::view`, on every page.
+        let status_text = if self.search_query.is_empty() {
+            String::new()
+        } else {
             let filtered_count =
                 self.filtered_applications().len() + self.filtered_colony_repos().len();
             crate::i18n::t_fmt(
@@ -329,8 +353,6 @@ impl App {
                     ("query", &self.search_query),
                 ],
             )
-        } else {
-            self.status_message.clone()
         };
 
         // Show spinner indicator for async operations
@@ -366,13 +388,15 @@ impl App {
             )
             .padding([8, 14])
             .style(|_theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => Palette::BG_CARD_HOVER(),
-                    _ => Palette::BG_SELECTED(),
-                };
+                let (bg, text_color) = theme::button_colors(
+                    status,
+                    Palette::BG_SELECTED(),
+                    Palette::BG_CARD_HOVER(),
+                    Palette::ACCENT(),
+                );
                 button::Style {
                     background: Some(bg.into()),
-                    text_color: Palette::ACCENT(),
+                    text_color,
                     border: iced::Border::default().rounded(6),
                     ..Default::default()
                 }
@@ -438,25 +462,51 @@ impl App {
             } else {
                 crate::i18n::t("no_apps_found")
             };
-            return container(
-                column![
-                    text("\u{f002}")
-                        .size(self.sz(32))
-                        .font(self.app_font())
-                        .color(Palette::TEXT_DIMMEST()),
-                    container(text("")).height(12),
-                    text(empty_msg)
-                        .size(self.sz(16))
-                        .font(self.app_font())
-                        .color(Palette::TEXT_PLACEHOLDER()),
-                ]
-                .align_x(iced::Alignment::Center),
-            )
-            .width(Fill)
-            .height(Fill)
-            .center_x(Fill)
-            .center_y(Fill)
-            .into();
+            let mut empty = column![
+                text("\u{f002}")
+                    .size(self.sz(32))
+                    .font(self.app_font())
+                    .color(Palette::TEXT_DIMMEST()),
+                container(text("")).height(12),
+                text(empty_msg)
+                    .size(self.sz(16))
+                    .font(self.app_font())
+                    .color(Palette::TEXT_PLACEHOLDER()),
+            ]
+            .align_x(iced::Alignment::Center);
+
+            // An empty store with no search query means the catalog fetch never
+            // landed. Without a button here the only recovery was to sign in or
+            // restart Colony - on a page whose whole pitch is that browsing
+            // needs no account.
+            if self.search_query.is_empty() && self.colony_repo_list.is_empty() {
+                empty = empty.push(container(text("")).height(16)).push(
+                    button(
+                        text(crate::i18n::t("github_refresh"))
+                            .size(self.sz(13))
+                            .font(self.app_font()),
+                    )
+                    .on_press_maybe(
+                        (!self.is_fetching_repos).then_some(Message::GitHubRefreshRepos),
+                    )
+                    .padding([8, 16])
+                    .style(move |_theme, status| {
+                        crate::ui::theme::action_button_style(
+                            status,
+                            Palette::BTN_DEFAULT(),
+                            Palette::BTN_HOVER(),
+                            Palette::BTN_PRESSED(),
+                        )
+                    }),
+                );
+            }
+
+            return container(empty)
+                .width(Fill)
+                .height(Fill)
+                .center_x(Fill)
+                .center_y(Fill)
+                .into();
         }
 
         // Chunk cards into a grid whose column count adapts to the available
@@ -508,7 +558,7 @@ impl App {
         let tint = theme::app_tint(&repo.name);
         let tile = self.icon_tile(&repo.name, tint, category.glyph());
 
-        let name = text(&repo.name)
+        let name = text(repo.display_name())
             .size(self.sz(15))
             .font(self.app_font_with_weight(Weight::Medium))
             .color(Palette::TEXT_PRIMARY());
@@ -669,18 +719,13 @@ impl App {
         )
         .on_press(Message::LaunchApp(app.exec.clone()))
         .padding([8, 14])
-        .style(|_theme, status| {
-            let bg = match status {
-                button::Status::Hovered => Palette::BTN_SUCCESS_HOVER(),
-                button::Status::Pressed => Palette::BTN_SUCCESS_PRESSED(),
-                _ => Palette::BG_SELECTED(),
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: Palette::TEXT_PRIMARY(),
-                border: iced::Border::default().rounded(8),
-                ..Default::default()
-            }
+        .style(move |_theme, status| {
+            crate::ui::theme::action_button_style(
+                status,
+                Palette::BG_SELECTED(),
+                Palette::BTN_SUCCESS_HOVER(),
+                Palette::BTN_SUCCESS_PRESSED(),
+            )
         });
 
         let status = container(

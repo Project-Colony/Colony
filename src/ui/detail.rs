@@ -56,7 +56,7 @@ impl App {
         .on_press(Message::ColonyRepoBack)
         .padding([8, 16]);
 
-        let title = text(&repo.name)
+        let title = text(repo.display_name())
             .size(self.sz(24))
             .font(self.app_font_with_weight(Weight::Bold))
             .color(Palette::TEXT_PRIMARY());
@@ -197,6 +197,54 @@ impl App {
                 .into(),
             );
         }
+        // What the store is OFFERING, next to what is installed: the three
+        // questions every app store answers on the product page and Colony
+        // could not. The tag comes from the manifest for free; size and date
+        // arrive with the release-notes fetch, so they appear once the user has
+        // asked for the notes rather than costing a request per card.
+        if let Some(entry) = repo
+            .manifest
+            .release_files
+            .get(github::current_platform_key())
+        {
+            let facts = self.release_facts.get(&repo.name);
+            let offered_tag = facts
+                .map(|f| f.tag.as_str())
+                .filter(|t| !t.is_empty())
+                .unwrap_or(entry.tag.as_str());
+            if !offered_tag.eq_ignore_ascii_case("latest") {
+                footer_items.push(
+                    text(crate::i18n::t_fmt(
+                        "offered_version",
+                        &[("version", offered_tag)],
+                    ))
+                    .size(self.sz(12))
+                    .font(self.app_font())
+                    .color(Palette::TEXT_DIM())
+                    .into(),
+                );
+            }
+            if let Some(size) = facts.and_then(|f| f.size) {
+                footer_items.push(
+                    text(crate::state::human_bytes(size))
+                        .size(self.sz(12))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_DIM())
+                        .into(),
+                );
+            }
+            if let Some(date) = facts.and_then(|f| f.published_at.as_deref()) {
+                // ISO-8601 from the API; the date half is what a user reads.
+                let day = date.split('T').next().unwrap_or(date);
+                footer_items.push(
+                    text(day.to_string())
+                        .size(self.sz(12))
+                        .font(self.app_font())
+                        .color(Palette::TEXT_DIM())
+                        .into(),
+                );
+            }
+        }
         footer_items.push(container(text("")).width(Fill).into());
         for pt in platform_labels {
             footer_items.push(pt);
@@ -228,18 +276,13 @@ impl App {
                 Some(Message::LaunchColonyApp(app_path))
             })
             .padding([12, 24])
-            .style(|_theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => Palette::BTN_SUCCESS_HOVER(),
-                    button::Status::Pressed => Palette::BTN_SUCCESS_PRESSED(),
-                    _ => Palette::BTN_SUCCESS(),
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: Palette::TEXT_PRIMARY(),
-                    border: iced::Border::default().rounded(8),
-                    ..Default::default()
-                }
+            .style(move |_theme, status| {
+                crate::ui::theme::action_button_style(
+                    status,
+                    Palette::BTN_SUCCESS(),
+                    Palette::BTN_SUCCESS_HOVER(),
+                    Palette::BTN_SUCCESS_PRESSED(),
+                )
             });
 
             let repo_name = repo.name.clone();
@@ -255,18 +298,13 @@ impl App {
                 Some(Message::DownloadRelease(repo_name, platform_key))
             })
             .padding([10, 20])
-            .style(|_theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => Palette::BTN_HOVER(),
-                    button::Status::Pressed => Palette::BTN_PRESSED(),
-                    _ => Palette::BTN_DEFAULT(),
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: Palette::TEXT_PRIMARY(),
-                    border: iced::Border::default().rounded(8),
-                    ..Default::default()
-                }
+            .style(move |_theme, status| {
+                crate::ui::theme::action_button_style(
+                    status,
+                    Palette::BTN_DEFAULT(),
+                    Palette::BTN_HOVER(),
+                    Palette::BTN_PRESSED(),
+                )
             });
 
             // Uninstall now triggers confirmation dialog
@@ -277,25 +315,26 @@ impl App {
                     .font(self.app_font())
                     .center(),
             )
-            .on_press(Message::ConfirmUninstall(uninstall_repo_name))
+            // The only action here that was not gated on a running download.
+            // Uninstalling mid-install remove_dir_all's the directory the
+            // detached blocking install is still renaming into, and the install
+            // then fails with a bare ENOENT.
+            .on_press_maybe(
+                (!self.is_downloading).then_some(Message::ConfirmUninstall(uninstall_repo_name)),
+            )
             .padding(iced::Padding {
                 top: 10.0,
                 right: 14.0,
                 bottom: 10.0,
                 left: 12.0,
             })
-            .style(|_theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => Palette::BTN_TRASH_HOVER(),
-                    button::Status::Pressed => Palette::BTN_TRASH_PRESSED(),
-                    _ => Palette::BTN_DEFAULT(),
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: Palette::TEXT_PRIMARY(),
-                    border: iced::Border::default().rounded(8),
-                    ..Default::default()
-                }
+            .style(move |_theme, status| {
+                crate::ui::theme::action_button_style(
+                    status,
+                    Palette::BTN_DEFAULT(),
+                    Palette::BTN_TRASH_HOVER(),
+                    Palette::BTN_TRASH_PRESSED(),
+                )
             });
 
             let spacer: Element<'_, Message> = container(text("")).width(Fill).into();
@@ -324,18 +363,13 @@ impl App {
                     Some(Message::DownloadRelease(repo_name, platform_key))
                 })
                 .padding([12, 24])
-                .style(|_theme, status| {
-                    let bg = match status {
-                        button::Status::Hovered => Palette::BTN_HOVER(),
-                        button::Status::Pressed => Palette::BTN_PRESSED(),
-                        _ => Palette::BTN_DEFAULT(),
-                    };
-                    button::Style {
-                        background: Some(bg.into()),
-                        text_color: Palette::TEXT_PRIMARY(),
-                        border: iced::Border::default().rounded(8),
-                        ..Default::default()
-                    }
+                .style(move |_theme, status| {
+                    crate::ui::theme::action_button_style(
+                        status,
+                        Palette::BTN_DEFAULT(),
+                        Palette::BTN_HOVER(),
+                        Palette::BTN_PRESSED(),
+                    )
                 });
                 Row::new()
                     .push(spacer)
@@ -343,7 +377,20 @@ impl App {
                     .spacing(12)
                     .align_y(iced::Alignment::Center)
             } else {
-                let no_release = text(crate::i18n::t("no_release_platform"))
+                // Two very different situations wore the same label. A manifest
+                // that declares platforms, none of them yours, genuinely has no
+                // build for you. A manifest that declares NONE at all means
+                // Colony could not match the repo's release assets to any
+                // convention - which is the app author's problem, not the
+                // user's, and reads as "Colony is broken" when it says only
+                // "not available for your platform". (Eidos is the live case:
+                // its assets are named eidos-1.12.0-x86_64-linux.tar.gz.)
+                let key = if repo.manifest.release_files.is_empty() {
+                    "no_release_unrecognized"
+                } else {
+                    "no_release_platform"
+                };
+                let no_release = text(crate::i18n::t(key))
                     .size(self.sz(12))
                     .font(self.app_font())
                     .color(Palette::TEXT_MUTED());
@@ -398,8 +445,23 @@ impl App {
         // "What's new" panel when an update is pending: the GitHub release
         // body, fetched on demand and rendered from pre-parsed blocks (zero
         // per-frame markdown parsing).
-        let whats_new: Element<'_, Message> =
-            if let Some(new_tag) = self.available_updates.get(&repo.name) {
+        //
+        // Gated on a PENDING UPDATE, this whole panel was unreachable for an app
+        // the user was evaluating, or for the version they already run - and
+        // `fetch_release_notes` already had a fallback to the manifest's pinned
+        // tag that nothing could ever call. The Changelog tab is not a
+        // substitute: it reads a cached CHANGELOG.md that many repos do not
+        // have. Now it renders for any repo that ships a release here, titled
+        // with the pending tag when there is one and the pinned tag otherwise.
+        let notes_tag: Option<String> =
+            self.available_updates.get(&repo.name).cloned().or_else(|| {
+                repo.manifest
+                    .release_files
+                    .get(current_platform)
+                    .map(|entry| entry.tag.clone())
+            });
+        let whats_new: Element<'_, Message> = if let Some(ref new_tag) = notes_tag {
+            {
                 match self.release_notes.get(&repo.name) {
                     Some((tag, blocks)) if tag == new_tag => {
                         let md_settings = markdown::Settings::with_text_size(
@@ -465,9 +527,10 @@ impl App {
                         container(btn).width(Fill).into()
                     }
                 }
-            } else {
-                container(text("")).into()
-            };
+            }
+        } else {
+            container(text("")).into()
+        };
 
         let detail = column![
             header,

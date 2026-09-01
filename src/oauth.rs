@@ -12,17 +12,32 @@ const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 const TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 
 /// Stored OAuth session.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct OAuthSession {
     pub access_token: String,
     pub username: Option<String>,
+}
+
+/// Hand-written so the token can never be printed. `Message` derives Debug and
+/// carries an `OAuthSession` in `GitHubLoginCompleted`, so the single most
+/// natural debugging line anyone will ever add to `App::update` -
+/// `tracing::debug!(?message)` - would otherwise put the plaintext token on
+/// stderr and into the log file for any user running with RUST_LOG=debug. The
+/// redaction is inherited by every type that contains a session.
+impl std::fmt::Debug for OAuthSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OAuthSession")
+            .field("access_token", &"<redacted>")
+            .field("username", &self.username)
+            .finish()
+    }
 }
 
 /// Pending device code, returned by the first step of the flow.
 #[derive(Debug, Clone)]
 pub struct DeviceCode {
     pub user_code: String,
-    #[allow(dead_code)]
+    /// Shown in the panel so the flow survives a browser that would not open.
     pub verification_uri: String,
     pub(crate) device_code: String,
     pub(crate) expires_in: u64,
@@ -73,7 +88,11 @@ pub async fn request_device_code() -> Result<DeviceCode> {
     let url = format!("{}?user_code={}", device.verification_uri, device.user_code);
     match crate::download::web_url(&url) {
         Some(safe) => {
-            let _ = open::that(&safe);
+            if let Err(e) = open::that(&safe) {
+                // Not fatal: the panel shows the URL and the code, and the poll
+                // keeps running until the device code expires.
+                tracing::warn!("could not open the verification page: {e}");
+            }
         }
         None => tracing::warn!("refusing to open non-http(s) verification uri {url:?}"),
     }
@@ -282,16 +301,19 @@ fn write_private(path: &std::path::Path, contents: &[u8]) -> Result<()> {
         // Remove any pre-existing file first so `.mode(0o600)` on create always
         // applies (a truncated-open of a 0644 file would keep the loose bits).
         let _ = std::fs::remove_file(path);
+        // create_new, not create: with `create`, a symlink that wins the race
+        // between the unlink above and this open is FOLLOWED, and `.mode()`
+        // does not apply to an already-existing inode - so the token would be
+        // written through the link, at the link target's permissions. The
+        // unlink makes create_new succeed on the normal path, and because it
+        // guarantees a fresh inode, the mode it sets is the mode that sticks
+        // (the old set_permissions re-assertion chmod'd the link's target).
         let mut f = std::fs::OpenOptions::new()
             .write(true)
-            .create(true)
-            .truncate(true)
+            .create_new(true)
             .mode(0o600)
             .open(path)?;
         f.write_all(contents)?;
-        // Re-assert perms in case the file pre-existed with looser bits.
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
         Ok(())
     }
     #[cfg(not(unix))]
@@ -329,16 +351,44 @@ pub fn load_saved_token() -> Option<OAuthSession> {
 }
 
 /// Delete the stored token (logout).
+/// Forget the stored credential, reporting whether it actually went away.
+///
+/// `save_token` checks and logs every keyring outcome, and deliberately deletes
+/// the plaintext fallback once the keychain accepted the secret. The delete path
+/// used to get none of that care: the keyring result was dropped on the floor,
+/// so a failed deletion still reported "Disconnected" and the next launch
+/// silently restored the session from the credential the user just revoked.
 pub fn delete_saved_token() -> Result<()> {
-    // Remove from keychain
-    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
-        let _ = entry.delete_credential();
+    let mut failure: Option<String> = None;
+
+    match keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+        Ok(entry) => match entry.delete_credential() {
+            // Nothing stored is the desired end state, not an error.
+            Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Err(e) => {
+                tracing::warn!("could not delete the keychain credential: {e}");
+                failure = Some(e.to_string());
+            }
+        },
+        Err(e) => {
+            tracing::warn!("could not open the keychain entry to delete it: {e}");
+            failure = Some(e.to_string());
+        }
     }
-    // Remove file too
+
     let path = token_path();
     if path.exists() {
-        std::fs::remove_file(&path)?;
+        if let Err(e) = std::fs::remove_file(&path) {
+            tracing::warn!("could not delete the token file: {e}");
+            failure = Some(e.to_string());
+        }
     }
-    tracing::info!("Token deleted");
-    Ok(())
+
+    match failure {
+        None => {
+            tracing::info!("Token deleted");
+            Ok(())
+        }
+        Some(e) => anyhow::bail!("{e}"),
+    }
 }

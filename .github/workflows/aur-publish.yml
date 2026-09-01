@@ -19,6 +19,14 @@ on:
         description: 'Release tag to publish to AUR (e.g. v0.7.0)'
         required: true
         type: string
+    secrets:
+      # Declared explicitly so the caller passes THIS secret and nothing else.
+      # Under `secrets: inherit` this job also received COLONY_SIGNING_KEY_PEM,
+      # which it has no use for - and that is the one secret whose compromise
+      # is unrecoverable, since every install in the field trusts the key it
+      # signs with.
+      AUR_SSH_PRIVATE_KEY:
+        required: true
   workflow_dispatch:
     inputs:
       tag:
@@ -64,7 +72,25 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/aur_bot
           chmod 600 ~/.ssh/aur_bot
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+          # Pin the host key rather than trusting whatever answers today:
+          # a bare ssh-keyscan is trust-on-first-use on every single run.
+          # Fingerprint SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4,
+          # cross-checkable against the AUR entry on the Arch wiki.
+          AUR_HOSTKEY='aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN'
+          printf '%s\n' "$AUR_HOSTKEY" > ~/.ssh/known_hosts
+          # A mismatch means either a legitimate rotation (update the pin) or
+          # something worth stopping the release for.
+          # Distinguish "the scan failed" from "the key changed". Piping
+          # straight into grep reports a compromise for any network blip, and
+          # the exit code of ssh-keyscan is swallowed - a scary message for the
+          # wrong reason is worse than no message.
+          scanned=$(ssh-keyscan -t ed25519 aur.archlinux.org 2>/dev/null || true)
+          if [ -z "$scanned" ]; then
+            echo "::warning::could not reach aur.archlinux.org to cross-check the host key; continuing with the pinned one"
+          elif ! printf '%s\n' "$scanned" | grep -qxF "$AUR_HOSTKEY"; then
+            echo "::error::aur.archlinux.org presented a DIFFERENT host key than the pinned one. Either it rotated (update the pin) or something is wrong. Stopping."
+            exit 1
+          fi
 
       - name: Clone AUR colony-bin repo
         run: |

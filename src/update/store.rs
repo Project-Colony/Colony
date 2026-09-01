@@ -31,6 +31,10 @@ impl App {
                 // that rule lives next to the check it feeds.
                 let require_signature = repo.manifest.signed;
                 let repo_name = repo.name.clone();
+                // The app's menu name, distinct from `display_name` below,
+                // which is the FILE being downloaded (shown in the toast).
+                let app_display_name = repo.display_name().to_string();
+                let app_category = crate::scan::AppCategory::from_name(&repo.manifest.category);
                 // API calls (release resolution) use the token for
                 // rate limits; the asset download itself is a public
                 // endpoint and gets NO token - no reason to present
@@ -85,6 +89,8 @@ impl App {
                             None,
                             crate::download::AssetInstall {
                                 repo_name: repo_name.clone(),
+                                display_name: app_display_name,
+                                category: app_category,
                                 tag: resolved_tag.clone(),
                                 filename: resolved_file.clone(),
                                 binary_name: binary,
@@ -117,7 +123,18 @@ impl App {
                 self.status_message = i18n::t_fmt("no_release_for", &[("platform", &platform_key)]);
             }
         }
-        Task::none()
+
+        // We got here without starting a download: either the repo vanished
+        // from the catalog (a refresh can land mid-queue and replaces it
+        // wholesale) or it ships nothing for this platform. Say so, and keep
+        // the "Update all" chain moving - the queue is otherwise only advanced
+        // by a completion, so it would sit parked until some later, unrelated
+        // install silently drained it.
+        let skipped = i18n::t_fmt("update_skipped", &[("name", &repo_name)]);
+        Task::batch([
+            self.push_notification(skipped, NotificationLevel::Warning),
+            self.dispatch_next_queued_update(),
+        ])
     }
 
     pub(super) fn download_progress(
@@ -210,14 +227,16 @@ impl App {
         if let Some(handle) = self.download_abort.take() {
             handle.abort();
         }
-        // The aborted task cannot clean up its staging file: sweep
-        // the cancelled repo's *.part leftovers here.
+        // The aborted task cannot clean up its staging file: sweep the
+        // cancelled repo's leftovers here, including the `.part.id` sidecar
+        // that would otherwise invite a resume of a transfer the user stopped
+        // on purpose.
         if let Some(repo) = self.downloading_repo.take() {
             if let Ok(app_dir) = crate::persistence::colony_app_dir(&repo) {
                 if let Ok(entries) = std::fs::read_dir(&app_dir) {
                     for entry in entries.flatten() {
                         let name = entry.file_name().to_string_lossy().to_string();
-                        if name.ends_with(".part") {
+                        if name.ends_with(".part") || name.ends_with(".part.id") {
                             let _ = std::fs::remove_file(entry.path());
                         }
                     }
@@ -229,6 +248,11 @@ impl App {
         self.download_speed = 0.0;
         self.last_progress_sample = None;
         self.is_downloading = false;
+        // The install itself runs in a DETACHED blocking task that runs to
+        // completion, so a cancel landing after the rename and marker writes
+        // leaves the app genuinely installed while install_status - the only
+        // source the grid and detail views read - still says otherwise.
+        self.refresh_install_status();
         self.status_message = i18n::t("download_cancelled");
         self.push_notification(i18n::t("download_cancelled"), NotificationLevel::Warning)
     }
@@ -271,6 +295,33 @@ impl App {
 
     pub(super) fn uninstall_colony_app(&mut self, repo_name: String) -> Task<Message> {
         self.confirm_uninstall = None;
+
+        let app_dir = match crate::persistence::colony_app_dir(&repo_name) {
+            Ok(dir) => dir,
+            Err(e) => {
+                let msg = i18n::t_fmt("scan_error", &[("error", &e.to_string())]);
+                self.status_message = msg.clone();
+                return self.push_notification(msg, NotificationLevel::Error);
+            }
+        };
+
+        // Do the thing that can FAIL first. The teardown used to run in the
+        // opposite order - drop the update badge, drop the release notes, delete
+        // the desktop entry, and only then try the removal - so a directory that
+        // could not be deleted (a running binary on Windows, a busy or read-only
+        // path on Unix) left the app on disk with its integration already ripped
+        // out, and nothing said so.
+        if app_dir.exists() {
+            if let Err(e) = crate::persistence::remove_app_dir(&app_dir) {
+                let msg = i18n::t_fmt("uninstall_error", &[("error", &e.to_string())]);
+                self.status_message = msg.clone();
+                // The card must reflect what is actually on disk either way.
+                self.refresh_install_status();
+                return self.push_notification(msg, NotificationLevel::Error);
+            }
+        }
+
+        // Committed: now the state that cannot be undone.
         // An uninstalled app has no meaningful "update available".
         self.available_updates.remove(&repo_name);
         // Stale notes describe the version that was just removed.
@@ -279,35 +330,24 @@ impl App {
         // cleanup happens on catalog refresh instead.)
         self.release_notes.remove(&repo_name);
         crate::persistence::remove_desktop_entry(&repo_name);
-        match crate::persistence::colony_app_dir(&repo_name) {
-            Ok(app_dir) => {
-                if app_dir.exists() {
-                    if let Err(e) = std::fs::remove_dir_all(&app_dir) {
-                        self.status_message =
-                            i18n::t_fmt("uninstall_error", &[("error", &e.to_string())]);
-                    } else {
-                        self.status_message = i18n::t_fmt("uninstalled", &[("name", &repo_name)]);
-                        // AFTER the directory removal, so the cache
-                        // records the app as gone.
-                        self.refresh_install_status();
-                        return Task::perform(
-                            async {
-                                tokio::time::sleep(Duration::from_secs(4)).await;
-                            },
-                            |_| Message::ClearStatus,
-                        );
-                    }
-                }
-            }
-            Err(e) => {
-                self.status_message = i18n::t_fmt("scan_error", &[("error", &e.to_string())]);
-            }
-        }
-        Task::none()
+        // AFTER the directory removal, so the cache records the app as gone.
+        self.refresh_install_status();
+        // Removing something already absent is a success, not a silent skip:
+        // the confirm dialog used to just close with no message at all.
+        self.status_message = i18n::t_fmt("uninstalled", &[("name", &repo_name)]);
+        Task::perform(
+            async {
+                tokio::time::sleep(Duration::from_secs(4)).await;
+            },
+            |_| Message::ClearStatus,
+        )
     }
 
     pub(super) fn clear_store_caches(&mut self) -> Task<Message> {
         let removed = crate::persistence::clear_store_caches();
+        // Including the remembered 404s: a user who clears caches because a
+        // repo just added a CHANGELOG should not wait out the negative TTL.
+        crate::github::clear_http_cache();
         self.app_icons.clear();
         self.release_notes.clear();
         self.detail_md_source = None;
@@ -357,7 +397,16 @@ impl App {
             async move {
                 let client = match github::build_update_client(token.as_deref()) {
                     Ok(c) => c,
-                    Err(_) => return Vec::new(),
+                    Err(e) => {
+                        // The check did not run for ANY repo. Report that per
+                        // repo rather than returning an empty list, which the
+                        // handler would read as "everything is current".
+                        let e = e.to_string();
+                        return repos
+                            .into_iter()
+                            .map(|(name, _)| (name, Err(e.clone())))
+                            .collect();
+                    }
                 };
                 let futs: Vec<_> = repos
                     .iter()
@@ -366,17 +415,14 @@ impl App {
                         let n = name.clone();
                         let t = tag.clone();
                         async move {
-                            github::check_update_available(&c, &n, &t)
+                            let outcome = github::check_update_available(&c, &n, &t)
                                 .await
-                                .map(|v| (n, v))
+                                .map_err(|e| e.to_string());
+                            (n, outcome)
                         }
                     })
                     .collect();
-                futures::future::join_all(futs)
-                    .await
-                    .into_iter()
-                    .flatten()
-                    .collect()
+                futures::future::join_all(futs).await
             },
             Message::UpdatesChecked,
         )
@@ -423,6 +469,14 @@ impl App {
         let Some(tag) = tag else {
             return Task::none();
         };
+        // What this platform would actually download, when the manifest names
+        // it outright (the filePattern case is resolved at install time).
+        let asset_hint = self
+            .colony_repos()
+            .iter()
+            .find(|r| r.name == repo_name)
+            .and_then(|r| r.manifest.release_files.get(platform))
+            .and_then(|e| e.file.clone());
         self.fetching_notes.insert(repo_name.clone());
         let token = self.github_token();
         let repo_for_result = repo_name.clone();
@@ -433,9 +487,26 @@ impl App {
                 let info = github::fetch_release_info(&client, &repo_name, &tag)
                     .await
                     .map_err(|e| e.to_string())?;
-                Ok((info.tag, info.body.unwrap_or_default()))
+                // The size of the asset THIS platform would download - not the
+                // release total, which would be four binaries.
+                let size = asset_hint
+                    .as_deref()
+                    .and_then(|name| info.asset_sizes.get(name).copied())
+                    .or_else(|| {
+                        // filePattern, or no declared filename: fall back to the
+                        // single asset if the release has exactly one.
+                        (info.asset_sizes.len() == 1)
+                            .then(|| info.asset_sizes.values().copied().next())
+                            .flatten()
+                    });
+                let facts = crate::state::ReleaseFacts {
+                    tag: info.tag,
+                    size,
+                    published_at: info.published_at,
+                };
+                Ok((facts, info.body.unwrap_or_default()))
             },
-            move |result: Result<(String, String), String>| {
+            move |result: Result<(crate::state::ReleaseFacts, String), String>| {
                 Message::ReleaseNotesFetched(repo_for_result, result)
             },
         )
@@ -444,13 +515,15 @@ impl App {
     pub(super) fn release_notes_fetched(
         &mut self,
         repo_name: String,
-        result: Result<(String, String), String>,
+        result: Result<(crate::state::ReleaseFacts, String), String>,
     ) -> Task<Message> {
         self.fetching_notes.remove(&repo_name);
         match result {
-            Ok((tag, body)) => {
+            Ok((facts, body)) => {
                 let blocks = markdown_blocks::parse(&body);
-                self.release_notes.insert(repo_name, (tag, blocks));
+                self.release_notes
+                    .insert(repo_name.clone(), (facts.tag.clone(), blocks));
+                self.release_facts.insert(repo_name, facts);
             }
             Err(e) => {
                 // Non-blocking feature: a failed fetch surfaces in the
@@ -461,24 +534,52 @@ impl App {
         Task::none()
     }
 
-    pub(super) fn updates_checked(&mut self, updates: Vec<(String, String)>) -> Task<Message> {
+    pub(super) fn updates_checked(
+        &mut self,
+        outcomes: Vec<(String, Result<Option<String>, String>)>,
+    ) -> Task<Message> {
         self.is_checking_updates = false;
-        // Record which apps have a pending update so the grid cards can
-        // show an update badge (not just a transient toast).
-        self.available_updates = updates.iter().cloned().collect();
-        let notif_task = if updates.is_empty() {
+
+        // Merge, never replace: a repo whose check could not run keeps the
+        // badge it already had. Replacing the whole map meant that going
+        // offline (or simply hitting the anonymous rate limit on a second
+        // launch) cleared every badge and told the user they were current.
+        let mut failed = 0usize;
+        let mut fresh: Vec<String> = Vec::new();
+        for (name, outcome) in &outcomes {
+            match outcome {
+                Ok(Some(tag)) => {
+                    self.available_updates.insert(name.clone(), tag.clone());
+                    fresh.push(name.clone());
+                }
+                Ok(None) => {
+                    self.available_updates.remove(name);
+                }
+                Err(e) => {
+                    failed += 1;
+                    tracing::warn!("Update check failed for {name}: {e}");
+                }
+            }
+        }
+
+        let notif_task = if failed > 0 {
+            // Never write the all-clear line when part of the check did not
+            // run - say so, and say how many apps we could not speak for.
+            let msg = i18n::t_fmt("update_check_failed", &[("count", &failed.to_string())]);
+            self.status_message = msg.clone();
+            self.push_notification(msg, NotificationLevel::Warning)
+        } else if fresh.is_empty() {
             self.status_message = i18n::t_fmt(
                 "apps_found",
                 &[("count", &self.applications.len().to_string())],
             );
             Task::none()
         } else {
-            let names: Vec<&str> = updates.iter().map(|(n, _)| n.as_str()).collect();
             let msg = i18n::t_fmt(
                 "updates_available",
                 &[
-                    ("count", &updates.len().to_string()),
-                    ("names", &names.join(", ")),
+                    ("count", &fresh.len().to_string()),
+                    ("names", &fresh.join(", ")),
                 ],
             );
             self.push_notification(msg, NotificationLevel::Info)

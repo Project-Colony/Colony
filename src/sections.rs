@@ -74,15 +74,58 @@ impl SectionFilter {
     }
 }
 
+impl Section {
+    /// The platform key a section restricts the STORE half of the grid to, if
+    /// any.
+    ///
+    /// The platform sections consulted only the category filter, which is None
+    /// for them, so "Windows" listed every store repo - including linux-only
+    /// ones - right beside the locally scanned Windows apps. They are
+    /// advertised as platform views, so they should filter both halves, using
+    /// the manifest's own `platforms` data.
+    pub fn required_platform(&self) -> Option<&'static str> {
+        match self.filter.origin {
+            OriginFilter::WindowsOnly => Some("windows"),
+            OriginFilter::ExternalOnly => Some(crate::github::current_platform_key()),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct SectionConfig {
     name: String,
     icon: String,
     origin: Option<String>,
     category: Option<String>,
+    /// Platform keys this section applies to ("linux", "windows", "macos",
+    /// "macos-x86"). Absent means every platform, which is how every existing
+    /// config keeps working unchanged.
+    ///
+    /// Without this, the shipped config gave a Windows user a permanently empty
+    /// "Linux" section, a Linux user a permanently empty "Windows" one, and a
+    /// macOS user their /Applications filed under a section labelled "Linux" -
+    /// the first thing anyone sees, saying loudly that the app was never run on
+    /// their platform.
+    #[serde(default)]
+    platforms: Option<Vec<String>>,
 }
 
 impl SectionConfig {
+    /// Whether this section belongs in the sidebar on the running platform.
+    fn applies_here(&self) -> bool {
+        let Some(ref platforms) = self.platforms else {
+            return true;
+        };
+        let here = crate::github::current_platform_key();
+        platforms.iter().any(|p| {
+            // "macos" matches the Intel key too: a section is about the OS,
+            // not the CPU.
+            p.eq_ignore_ascii_case(here)
+                || (p.eq_ignore_ascii_case("macos") && here.starts_with("macos"))
+        })
+    }
+
     fn into_section(self) -> Section {
         let is_favorites = self.name.to_lowercase().contains("favor");
         Section {
@@ -148,6 +191,7 @@ fn parse_sections(contents: &str) -> Option<Vec<Section>> {
         Ok(configs) => {
             let sections: Vec<Section> = configs
                 .into_iter()
+                .filter(SectionConfig::applies_here)
                 .map(SectionConfig::into_section)
                 .collect();
             if sections.is_empty() {
@@ -499,6 +543,7 @@ mod tests {
     #[test]
     fn section_config_into_section() {
         let config = SectionConfig {
+            platforms: None,
             name: "Test".to_string(),
             icon: "\u{f00a}".to_string(),
             origin: Some("colony".to_string()),
@@ -521,8 +566,52 @@ mod tests {
     fn embedded_categories_has_expected_names() {
         let sections = parse_sections(EMBEDDED_CATEGORIES).expect("embedded parses");
         let names: Vec<&str> = sections.iter().map(|s| s.name.as_str()).collect();
-        for expected in ["All", "Windows", "Linux", "Development", "Other"] {
+        // Platform-neutral sections are present everywhere; the per-OS ones are
+        // asserted by `platform_sections_are_gated_to_their_own_os` below.
+        for expected in ["All", "Development", "Other"] {
             assert!(names.contains(&expected), "missing section {expected}");
+        }
+    }
+
+    /// The shipped config gave a Windows user a permanently empty "Linux"
+    /// section, a Linux user a permanently empty "Windows" one, and a macOS
+    /// user their /Applications filed under a section labelled "Linux".
+    #[test]
+    fn platform_sections_are_gated_to_their_own_os() {
+        let sections = parse_sections(EMBEDDED_CATEGORIES).expect("embedded parses");
+        let names: Vec<&str> = sections.iter().map(|s| s.name.as_str()).collect();
+
+        let here = crate::github::current_platform_key();
+        let expected = match here {
+            "windows" => "Windows",
+            "linux" => "Linux",
+            _ => "macOS",
+        };
+        assert!(
+            names.contains(&expected),
+            "the running platform's section must be present, got {names:?}"
+        );
+        for other in ["Windows", "Linux", "macOS"] {
+            if other != expected {
+                assert!(
+                    !names.contains(&other),
+                    "{other} must not appear on {here}, got {names:?}"
+                );
+            }
+        }
+    }
+
+    /// Every section a user actually sees needs a glyph. The shipped config had
+    /// regressed all of them to the empty string while the (unreachable)
+    /// built-in fallback kept the real ones.
+    #[test]
+    fn every_shipped_section_has_an_icon() {
+        for section in parse_sections(EMBEDDED_CATEGORIES).expect("embedded parses") {
+            assert!(
+                !section.icon.trim().is_empty(),
+                "section {} ships without an icon",
+                section.name
+            );
         }
     }
 
