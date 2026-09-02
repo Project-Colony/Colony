@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/Project-Colony/Colony/compare/v0.10.1...v0.10.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* **ui:** make the selected settings category legible ([#78](https://github.com/Project-Colony/Colony/issues/78)) ([ba70cc0](https://github.com/Project-Colony/Colony/commit/ba70cc0f7b77b60ea95a2874360a5f1545952c77))
+
 ## [0.10.1](https://github.com/Project-Colony/Colony/compare/v0.10.0...v0.10.1) (2026-08-27)
 
 
