@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.10.3](https://github.com/Project-Colony/Colony/compare/v0.10.2...v0.10.3) (2026-09-02)
+
+
+### Bug Fixes
+
+* **ui:** the selected settings category is now legible on the green accent too. 0.10.2 made it take its foreground from `contrast_on`, but colony-ui 0.1.4 still chose that foreground from a luminance threshold which mis-sorts green — 2.34:1 where the other end gives 7.45:1. colony-ui 0.1.5 compares both ends, so every accent improves. ([#80](https://github.com/Project-Colony/Colony/issues/80))
+* **ui:** progress bars have a visible track on the Catppuccin themes. Their `bg_progress` was the same colour as the card behind it, so the track disappeared into it. ([#80](https://github.com/Project-Colony/Colony/issues/80))
+* **ui:** the accent picker's check mark is legible on every accent. It was drawn in white, which falls below 3:1 on yellow, amber, green and orange. ([#80](https://github.com/Project-Colony/Colony/issues/80))
+
+
+### Miscellaneous Chores
+
+* release 0.10.3 ([#81](https://github.com/Project-Colony/Colony/issues/81)) ([19cebfa](https://github.com/Project-Colony/Colony/commit/19cebfa8106a7b818a76e183b5826f96fe8072cc))
+
 ## [0.10.2](https://github.com/Project-Colony/Colony/compare/v0.10.1...v0.10.2) (2026-09-02)
 
 
