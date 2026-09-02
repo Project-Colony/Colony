@@ -152,7 +152,7 @@ Yes. Edit `~/.config/Colony/Colony/preferences/preferences.json` and add custom 
 
 ### I changed a theme and don't see it — why?
 
-Themes apply immediately, no restart. If a palette looks off, verify Settings → Theme has the expected family + palette selected. All 57 palettes are compiled into the binary, so if it's missing you're on an old version — update.
+Themes apply immediately, no restart. If a palette looks off, verify Settings → Theme has the expected family + palette selected. All 59 palettes are compiled into the binary, so if it's missing you're on an old version — update.
 
 ---
 

@@ -114,7 +114,7 @@ See [docs/architecture.md](docs/architecture.md) for the full layout. Short vers
 - `src/sections.rs` — categories + filter logic.
 - `src/ui/` — widgets and panels (sidebar, app grid, detail view, settings).
 - `src/ui/theme.rs` — a re-export of [colony-ui](https://crates.io/crates/colony-ui)
-  plus Colony's own button styling. The 25 theme families and 57 palettes live
+  plus Colony's own button styling. The 26 theme families and 59 palettes live
   in that crate, generated from the design tokens in
   [Project-Colony-Resources](https://github.com/Project-Colony/Project-Colony-Resources).
 
