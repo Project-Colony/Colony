@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.3](https://github.com/Project-Colony/Colony/compare/v0.10.2...v0.10.3) (2026-09-02)
+
+
+### Miscellaneous Chores
+
+* release 0.10.3 ([#81](https://github.com/Project-Colony/Colony/issues/81)) ([19cebfa](https://github.com/Project-Colony/Colony/commit/19cebfa8106a7b818a76e183b5826f96fe8072cc))
+
 ## [0.10.2](https://github.com/Project-Colony/Colony/compare/v0.10.1...v0.10.2) (2026-09-02)
 
 
