@@ -122,7 +122,7 @@ Switch the sidebar origin to **Linux** (or **Windows**) to see only those.
 ## 5. Customize the theme
 
 Click the **gear icon** at the bottom of the sidebar → **Theme**. Colony ships
-25 theme families and 57 palettes (Catppuccin, Gruvbox, Nord, Dracula, Rosé
+26 theme families and 59 palettes (Catppuccin, Gruvbox, Nord, Dracula, Rosé
 Pine, Tokyo Night, etc.). Theme changes apply instantly, no restart needed.
 
 ## 6. Connect your GitHub account (optional)

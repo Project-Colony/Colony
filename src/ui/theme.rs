@@ -90,14 +90,14 @@ mod doc_parity_tests {
             .sum();
 
         assert_eq!(
-            families, 25,
-            "the docs say 25 theme families; colony-ui ships {families}. Update README.md \
+            families, 26,
+            "the docs say 26 theme families; colony-ui ships {families}. Update README.md \
              (including its table of family names), docs/faq.md, docs/tutorial.md, \
              docs/architecture.md and CONTRIBUTING.md."
         );
         assert_eq!(
-            palettes, 57,
-            "the docs say 57 palettes; colony-ui ships {palettes}. Update the same five documents."
+            palettes, 59,
+            "the docs say 59 palettes; colony-ui ships {palettes}. Update the same five documents."
         );
     }
 }

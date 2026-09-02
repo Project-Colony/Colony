@@ -6,7 +6,7 @@ use iced::{Element, Fill, Length};
 use crate::i18n;
 use crate::message::Message;
 use crate::state::App;
-use crate::ui::theme::Palette;
+use crate::ui::theme::{self, Palette};
 
 /// Settings category names (keys for i18n).
 const SETTINGS_CATEGORIES: &[&str] = &[
@@ -67,8 +67,15 @@ impl App {
                         };
                         button::Style {
                             background: Some(bg.into()),
+                            // Not TEXT_PRIMARY: on an accent fill that pairing
+                            // is below 4.5:1 on fifty-eight of the fifty-nine
+                            // themes and reaches 1.01:1 on Ayu Dark, where the
+                            // selected category was invisible. `contrast_on`
+                            // picks the legible end for whatever accent the
+                            // user has chosen — app_grid.rs already uses it for
+                            // exactly this.
                             text_color: if is_selected {
-                                Palette::TEXT_PRIMARY()
+                                theme::contrast_on(Palette::ACCENT())
                             } else {
                                 Palette::TEXT_MUTED()
                             },
@@ -1226,7 +1233,9 @@ impl App {
                 radius: 6.0.into(),
             },
             text_color: Palette::TEXT_PRIMARY(),
-            selected_text_color: Palette::TEXT_PRIMARY(),
+            // The highlighted row of an open dropdown is an accent fill, and
+            // has the same problem as the category button above.
+            selected_text_color: theme::contrast_on(Palette::ACCENT()),
             selected_background: Palette::ACCENT().into(),
             shadow: iced::Shadow::default(),
         });

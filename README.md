@@ -77,20 +77,20 @@ Requires Rust 1.88+ and, on Linux, `libgtk-3-dev`, `libxdo-dev`, `libdbus-1-dev`
 
 ## Theming
 
-Colony ships with **25 theme families and 57 palettes**, compiled into the
+Colony ships with **26 theme families and 59 palettes**, compiled into the
 binary with zero runtime cost. They come from
 [colony-ui](https://crates.io/crates/colony-ui) and are shared with every other
 Project Colony program, so a theme looks the same wherever you meet it:
 
 | | | | |
 |---|---|---|---|
-| Catppuccin (Latte, Frappé, Macchiato, Mocha) | Gruvbox | Everblush | Kanagawa (Wave, Dragon, Lotus) |
+| Catppuccin (Latte, Frappé, Macchiato, Mocha) | Gruvbox | Everblush | Kanagawa (Lotus, Wave, Journal, Dragon) |
 | Nord | Dracula | Solarized | Tokyo Night |
 | Rosé Pine (Main, Moon, Dawn) | One Dark | Monokai Pro (Pro, Classic, Spectrum) | Ayu (Dark, Mirage, Light) |
 | Everforest | Material (Oceanic, Palenight, Deep Ocean) | Flexoki | Nightfox |
 | Sonokai | Oxocarbon | Night Owl | Iceberg |
 | Horizon | Mélange | Synthwave '84 | Modus (Operandi, Vivendi) |
-| Stellar Blade (Eve, Tachy, Lily, Enya, Kaya) | | | |
+| Stellar Blade (Eve, Tachy, Lily, Enya, Kaya) | Parchment | | |
 
 Each palette includes full semantic tokens: backgrounds, text layers, accents, success/warning/error states, button states, and more.
 
