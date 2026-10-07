@@ -133,7 +133,8 @@ impl App {
         let repos = repos;
         // The catalog refresh is where the conditional-request cache is at its
         // most complete: persisting it here means the next launch replays those
-        // ETags as 304s, which GitHub does not bill.
+        // ETags as 304s, which GitHub does not bill on authenticated requests
+        // (anonymous 304s still count against the quota).
         crate::github::save_http_cache();
         let count = repos.len();
         if let Err(e) = crate::persistence::save_repos_cache(&repos) {
