@@ -101,7 +101,8 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
 
 ## GitHub API
 
-- Per-URL ETag cache (304 Not Modified — avoids consuming rate limit)
+- Per-URL ETag cache, persisted across launches (a 304 Not Modified is free
+  for authenticated requests; anonymous 304s still count against the quota)
 - Per-URL locks to prevent race conditions
 - Automatic pagination (`per_page=100`, loops until empty page)
 - Rate-limit aware (warning at <10 remaining, error at 0)
@@ -118,7 +119,7 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
 
 ## Tests
 
-131 unit tests covering:
+Unit tests (`cargo test`) cover:
 - `colony.json` manifest parsing (full, minimal, with pattern, with archives)
 - Platform auto-detection from release assets
 - `release_files` construction from assets

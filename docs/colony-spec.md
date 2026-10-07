@@ -165,7 +165,7 @@ Colony shows a per-app icon in the grid. It is resolved, in order:
 2. If `icon` is absent, a conventional **`icon.png`** at the repo root.
 3. If neither exists, Colony draws a generated category tile (a tinted hexagon with the category glyph).
 
-The icon is fetched once and cached on disk (`<data>/repo-icons/<repo>/icon.png`), decoded to an image, and rendered at a fixed ~54 px tile.
+The icon is fetched once and cached on disk (`<cache>/repo-icons/<repo>/icon.png`), decoded to an image, and rendered at a fixed ~54 px tile.
 
 **Format**: a square **PNG** (transparent or opaque). PNG is the only format Colony decodes — not `.ico` / `.svg` / `.icns` (those are for a platform's *own* application icon, which is separate from the Colony grid icon). A 48–128 px source works well; pixel-art icons should be authored at their native size.
 
@@ -222,8 +222,9 @@ signing is adopted per-app, no flag day - **unless** the manifest declares:
 ```
 
 With `"signed": true`, a missing signature ABORTS the install. Declare it once
-every release of the app ships `.sig` assets (all Project-Colony apps have signed
-releases as of 2026-07-20). Sign with:
+every release of the app ships `.sig` assets. Not every Project-Colony app
+signs its releases yet, so check an app's release assets rather than assuming.
+Sign with:
 
 ```sh
 COLONY_SIGNING_KEY=/path/to/colony-release.pem \
@@ -231,9 +232,9 @@ COLONY_RELEASE_VERSION=<tag> ./scripts/sign-release.sh <asset>
 ```
 
 `COLONY_RELEASE_VERSION` is required because the script also emits a signed
-`<asset>.meta` sidecar binding the bytes to a version and a filename. Only the
-launcher's own self-update consumes that sidecar today; for app assets the
-`.sig` is what matters, and the extra files are harmless if published.
+`<asset>.meta` sidecar binding the bytes to a version and a filename. The
+launcher's self-update requires it, and app installs check it whenever it is
+published (see below).
 
 Note the trust boundary. Signatures protect against tampered release assets
 (e.g. an asset swapped after publication), because forging one requires the
@@ -241,7 +242,8 @@ org's private signing key, which never lives in any repository. Enforcement is
 implemented: `"signed": true` refuses an install with no signature, and the
 launcher **pins** the requirement client-side once an app has been installed with
 a verified signature, so flipping `signed` back to false in a compromised
-repository no longer downgrades that app to unsigned. Since Colony 0.9.3 the binding gap is closed on the CLIENT side: an app asset
+repository no longer downgrades that app to unsigned. Since Colony 0.10.0 the
+binding gap is closed on the CLIENT side: an app asset
 that publishes a signed `<asset>.meta` sidecar (plus `<asset>.meta.sig`) has its
 bytes bound to an asset name, a digest and the resolved tag, and Colony refuses
 anything older than what is installed. That stops the replay of a *different*

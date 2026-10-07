@@ -89,7 +89,7 @@ git clone https://github.com/Project-Colony/Colony.git
 cd Colony
 cargo build              # debug build
 cargo run                # launch the launcher in debug mode
-cargo test               # run unit tests (88 tests across manifest parsing, scanning, i18n, signing, etc.)
+cargo test               # run the unit tests (manifest parsing, scanning, i18n, signing, etc.)
 cargo build --release    # optimized build
 ```
 
