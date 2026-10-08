@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.4](https://github.com/Project-Colony/Colony/compare/v0.10.3...v0.10.4) (2026-10-08)
+
+
+### Bug Fixes
+
+* **deps:** update rustls to 0.23.45 (RUSTSEC-2026-0285) ([#85](https://github.com/Project-Colony/Colony/issues/85)) ([4a8762a](https://github.com/Project-Colony/Colony/commit/4a8762aab1477878856de6073580567135cbd17d))
+
 ## [0.10.3](https://github.com/Project-Colony/Colony/compare/v0.10.2...v0.10.3) (2026-09-02)
 
 
