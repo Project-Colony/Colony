@@ -25,7 +25,7 @@ Two variants maintained on the AUR. Pick **one**:
 
 | Package       | Install                      | Notes                                          |
 |---------------|------------------------------|------------------------------------------------|
-| `colony-bin`  | `paru -S colony-bin`         | Prebuilt binary, instant install (~40 MB DL). Auto-updates at every upstream release. |
+| `colony-bin`  | `paru -S colony-bin`         | Prebuilt binary, instant install (~30 MB DL). Auto-updates at every upstream release. |
 | `colony-git`  | `paru -S colony-git`         | Builds from HEAD, ~5 min compile, always at latest commit. Recompiles on each `paru -Syu` if upstream advanced. |
 
 Both provide a `/usr/bin/colony` binary and a `colony.desktop` entry so GNOME/KDE/rofi/wofi launchers pick it up automatically.
@@ -90,13 +90,13 @@ Project Colony program, so a theme looks the same wherever you meet it:
 | Everforest | Material (Oceanic, Palenight, Deep Ocean) | Flexoki | Nightfox |
 | Sonokai | Oxocarbon | Night Owl | Iceberg |
 | Horizon | Mélange | Synthwave '84 | Modus (Operandi, Vivendi) |
-| Stellar Blade (Eve, Tachy, Lily, Enya, Kaya) | Parchment | | |
+| Stellar Blade (Eve, Tachy, Lily, Enya, Kaya; fan-made, unofficial) | Parchment | | |
 
 Each palette includes full semantic tokens: backgrounds, text layers, accents, success/warning/error states, button states, and more.
 
 ## For app developers
 
-Want your Rust (or any) desktop app to appear in Colony's catalog? It takes a single JSON file plus a GitHub release with properly named assets.
+Want your Rust (or any) desktop app to appear in Colony's catalog? It takes a single JSON file plus a GitHub release with properly named assets. Colony only scans repositories of the [Project-Colony](https://github.com/Project-Colony) GitHub organization, so the repo has to live there to be listed.
 
 **Quick version** — add `colony.json` at the root of your repo:
 
@@ -147,3 +147,5 @@ how these move up.
 [GPL-3.0-or-later](LICENSE) © 2026 Project Colony contributors
 
 Colony is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+The bundled fonts keep their own license, the SIL Open Font License 1.1, with the full text next to each font in `src/ui/assets/fonts/`: [JetBrains Mono Nerd Font](src/ui/assets/fonts/JetBrainsMonoNerdFont/OFL.txt), [Font Awesome Free](src/ui/assets/fonts/FontAwesome/OFL.txt) and [OpenDyslexic](src/ui/assets/fonts/OpenDyslexic/OFL.txt).

@@ -743,7 +743,7 @@ impl App {
                             .size(self.sz(15))
                             .font(self.app_font())
                             .color(Palette::TEXT_DIM()),
-                        text("MotherSphere/Colony")
+                        text("Project-Colony/Colony")
                             .size(self.sz(14))
                             .font(self.app_font())
                             .color(Palette::TEXT_MUTED()),

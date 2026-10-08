@@ -33,7 +33,7 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
 
-      # --all-targets, or clippy never sees the 140 tests - the code most
+      # --all-targets, or clippy never sees the tests - the code most
       # likely to accumulate lint debt, since nobody reads it in review.
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings

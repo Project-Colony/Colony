@@ -77,8 +77,10 @@ fn now_secs() -> u64 {
 /// This used to start empty on every launch, which made a cold boot and a warm
 /// boot cost exactly the same: ~55 full 200s for the org catalog, against an
 /// anonymous budget of 60/h. Opening Colony twice within the hour rate-limited
-/// the second launch. GitHub does not bill a 304, so replaying the ETags turns
-/// almost the whole refresh free - it only ever needed to survive the process.
+/// the second launch. GitHub does not bill a 304 on an authenticated request, so
+/// replaying the ETags makes almost the whole signed-in refresh free; anonymous
+/// 304s still count against the quota. The cache only ever needed to survive
+/// the process.
 static HTTP_CACHE: std::sync::LazyLock<Mutex<PersistedCache>> = std::sync::LazyLock::new(|| {
     Mutex::new(crate::persistence::load_http_cache_json().unwrap_or_default())
 });
