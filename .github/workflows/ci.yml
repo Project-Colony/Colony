@@ -41,6 +41,25 @@ jobs:
       - name: Test
         run: cargo test --verbose
 
+      # SignPath signs only an .exe whose ProductName is the project name and
+      # whose ProductVersion is set. build.rs embeds both; this proves it on
+      # every PR, and the release workflow checks the shipped file again.
+      # `-cne`, not `-ne`: PowerShell compares strings case-insensitively, and
+      # winresource's default ProductName is the lowercase package name.
+      - name: Check the Windows version resource
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo build
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $expected = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          $info = (Get-Item target\debug\colony.exe).VersionInfo
+          "ProductName='$($info.ProductName)' ProductVersion='$($info.ProductVersion)' FileVersion='$($info.FileVersion)'"
+          if ($info.ProductName -cne 'Colony' -or $info.ProductVersion -cne $expected) {
+            "::error::colony.exe has ProductName '$($info.ProductName)' and ProductVersion '$($info.ProductVersion)', expected 'Colony' and '$expected'"
+            exit 1
+          }
+
   # The declared MSRV was 1.80 for years and could never have built: 70
   # transitive dependencies require more. Nothing checked it, because CI only
   # ever ran on stable. This leg is what stops it drifting again.

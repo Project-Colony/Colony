@@ -142,6 +142,29 @@ how these move up.
 | [Colony spec](docs/colony-spec.md) | Full `colony.json` manifest reference                 |
 | [Contributing](CONTRIBUTING.md)    | How to add your app + how to contribute to Colony itself |
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+Windows builds are Authenticode-signed once the SignPath Foundation has accepted the project; until then they ship without Authenticode. Every release asset, on every platform, is always signed with the organisation's ed25519 key, and Colony verifies that signature before it applies a self-update (see [Release signing](docs/release-signing.md)).
+
+Team roles and members:
+
+- Committers and reviewers: [MotherSphere](https://github.com/MotherSphere)
+- Approvers: [MotherSphere](https://github.com/MotherSphere)
+
+### Privacy policy
+
+Colony talks to GitHub and to no other server. It has no telemetry, no analytics and no crash reporting.
+
+- **At every start, automatically**, and again when you press Refresh: it reads the Project-Colony catalogue from the GitHub API (`api.github.com`): the organisation's repository list and, for each repository, its `colony.json`, README, licence, changelog and icon, plus its latest release when the manifest does not list its files.
+- **Update checks, automatically unless turned off** (Settings, "Check automatically", on by default) or when you press "Check for updates": it asks the GitHub API for the release of every installed app and the latest release of Colony itself. These requests name the repositories of the apps you have installed, so GitHub can see which Colony apps you use.
+- **When you press "What's new in {version}"** on an app's page: it asks the GitHub API for that release, to show its notes.
+- **When you install or update an app, or update Colony**: it looks the release up through the GitHub API, then downloads the release file and its `.sig`, `.meta` and `.meta.sig` from `github.com`, which serves them from GitHub's own download hosts.
+- **When you sign in with GitHub** (optional): it uses GitHub's device flow (`github.com/login/device/code` and `github.com/login/oauth/access_token`, scope `read:user`), opens the verification page in your browser, and reads your user name from `api.github.com/user`. While you are signed in, your GitHub token is sent with the requests above, to GitHub only, to raise the API rate limit.
+
+Requests carry a `Colony-Launcher` user agent. Beyond that, they tell GitHub only which repositories and files are asked for (a download's file name shows your platform) and, while you are signed in, which account is asking; nothing from your settings or your files is sent. GitHub also sees what any web request shows it, such as your IP address, under the [GitHub General Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement). Links you click open in your web browser. The apps you install through Colony are separate programs with their own behaviour.
+
 ## License
 
 [GPL-3.0-or-later](LICENSE) © 2026 Project Colony contributors
