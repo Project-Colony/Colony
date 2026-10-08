@@ -42,8 +42,9 @@ download time, so the staging file cannot be swapped in between.
 
 Because verification is fail-closed, a release published without the
 `colony-<platform>.sig`, `.meta` and `.meta.sig` assets will make self-update
-fail for users on that channel. The CI `sign` job checks all three exist for all
-four platforms and fails the release otherwise.
+fail for users on that channel. The release workflow's `sign-and-publish` job
+checks all three exist and verify for all four platforms and fails the release
+otherwise.
 
 ## Signing (CI or local)
 
@@ -90,7 +91,9 @@ tells you which state you are in.
 
 **Still a draft, incomplete.** Nobody is affected: `/releases/latest` still
 points at the previous version and no client has been offered anything. Fix the
-cause and use **"Re-run failed jobs"**.
+cause and use **"Re-run failed jobs"**. The build artifacts are kept for one
+day; after that, dispatch the workflow again from the tag itself:
+`gh workflow run release-please.yml --ref <tag> -f tag=<tag>`.
 
 **Never "Re-run all jobs".** release-please re-runs against a `main` whose
 release already exists, emits an empty `release_created`, and every downstream
@@ -113,14 +116,30 @@ then follow the manual signing procedure above and re-publish with
 
 Since the v0.7.0 incident (a release shipped unsigned because signing was a
 manual step, bricking self-update for every existing install), signing is a
-mandatory job in the release workflow: `.github/workflows/release-please.yml`
-(`sign` job) downloads the four built binaries, signs them with the
-`COLONY_SIGNING_KEY_PEM` secret (the PEM contents), verifies that every asset
-came out with a `.sig`, a `.meta` and a `.meta.sig`, and uploads them. The job
-**fails the release** if the secret is missing or if any of those files is
-missing or empty, so a release the launcher cannot verify can no longer ship
-silently. The manual procedure above remains for re-signing an old release by
-hand.
+mandatory part of the release workflow, `.github/workflows/release-please.yml`.
+Its build legs only build, smoke-test and upload each binary as a workflow
+artifact. The `sign-and-publish` job then calls the organisation's shared
+workflow, `.github/workflows/sign-and-publish.yml` in
+[Project-Colony-Resources](https://github.com/Project-Colony/Project-Colony-Resources),
+pinned by commit, which in that same run:
+
+1. checks the release is still a draft;
+2. sends `colony-windows.exe` to SignPath for Authenticode, once SignPath is
+   turned on for this repository (`signpath-project-slug`), and waits for a
+   person to approve the request;
+3. writes `.sig`, `.meta` and `.meta.sig` over the final bytes with the
+   `COLONY_SIGNING_KEY_PEM` secret (the PEM contents), in the same format as
+   `scripts/sign-release.sh`;
+4. uploads everything to the draft, downloads it again and verifies every
+   signature and digest against what users will download;
+5. publishes the release.
+
+The order is the point: Authenticode rewrites the `.exe`, so a `.sig` or
+`.meta` computed before it would describe bytes that no longer exist, and the
+launcher would refuse the update. The job **fails the release** if the secret is
+missing or any file is missing, empty or does not verify, so a release the
+launcher cannot verify can no longer ship silently. The manual procedure above
+remains for re-signing an old release by hand.
 
 ## Key custody
 
