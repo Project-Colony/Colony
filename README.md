@@ -159,6 +159,7 @@ Colony talks to GitHub and to no other server. It has no telemetry, no analytics
 
 - **At every start, automatically**, and again when you press Refresh: it reads the Project-Colony catalogue from the GitHub API (`api.github.com`): the organisation's repository list and, for each repository, its `colony.json`, README, licence, changelog and icon, plus its latest release when the manifest does not list its files.
 - **Update checks, automatically unless turned off** (Settings, "Check automatically", on by default) or when you press "Check for updates": it asks the GitHub API for the release of every installed app and the latest release of Colony itself. These requests name the repositories of the apps you have installed, so GitHub can see which Colony apps you use.
+- **When you press "What's new in {version}"** on an app's page: it asks the GitHub API for that release, to show its notes.
 - **When you install or update an app, or update Colony**: it looks the release up through the GitHub API, then downloads the release file and its `.sig`, `.meta` and `.meta.sig` from `github.com`, which serves them from GitHub's own download hosts.
 - **When you sign in with GitHub** (optional): it uses GitHub's device flow (`github.com/login/device/code` and `github.com/login/oauth/access_token`, scope `read:user`), opens the verification page in your browser, and reads your user name from `api.github.com/user`. While you are signed in, your GitHub token is sent with the requests above, to GitHub only, to raise the API rate limit.
 
