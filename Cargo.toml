@@ -1,6 +1,8 @@
 [package]
 name = "colony"
 version = "0.10.4"
+description = "Launcher and app store for Project Colony programs"
+repository = "https://github.com/Project-Colony/Colony"
 edition = "2021"
 license = "GPL-3.0-or-later"
 # The real floor, and it is enforced by CI (see .github/workflows/ci.yml).
@@ -9,47 +11,51 @@ license = "GPL-3.0-or-later"
 # cargo refuses to build at all on it. Nothing checked, because CI only ever
 # ran on stable.
 rust-version = "1.88"
+# MSRV-aware resolution: `cargo update` picks the newest release of each crate
+# that still builds on `rust-version`, so a transitive dependency cannot raise
+# the floor by accident.
+resolver = "3"
 
 [dependencies]
-anyhow = "1.0.100"
+anyhow = "1.0.104"
 # The shared theme, palettes, accents, labels and widgets, generated from the
 # design tokens in Project-Colony-Resources.
 colony-ui = "0.1.5"
 iced = { version = "0.14.0", features = ["tokio", "markdown", "advanced", "image-without-codecs"] }
 shell-words = "1.1.1"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
-toml = "0.9.11"
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "http2", "charset", "system-proxy"] }
-tokio = { version = "1", features = ["sync", "time", "rt"] }
-futures = "0.3"
-open = "5"
-base64 = "0.23"
-dirs = "6"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+toml = "1.1.8"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "form", "stream", "rustls", "http2", "charset", "system-proxy"] }
+tokio = { version = "1.53.2", features = ["sync", "time", "rt"] }
+futures = "0.3.34"
+open = "5.4.4"
+base64 = "0.23.1"
+dirs = "7.0.0"
 # apple-native / windows-native are REQUIRED, not optional: keyring 3 has no
 # default feature, and without them its macOS and Windows backends resolve to
 # the in-memory `mock`, whose set_password returns Ok while storing nothing.
 # Colony reads that Ok as success and deletes its plaintext fallback on purpose,
 # so the token was written nowhere and every restart logged the user out. Both
 # are target-gated in keyring's manifest, so they add nothing to the Linux build.
-keyring = { version = "3", features = [
+keyring = { version = "3.6.3", features = [
     "apple-native",
     "windows-native",
     "sync-secret-service",
     "vendored",
 ] }
-semver = "1"
-sha2 = "0.10"
+semver = "1.0.28"
+sha2 = "0.11.0"
 # Pure-Rust ed25519 verification for signed launcher self-updates (no openssl).
-ed25519-dalek = { version = "3", default-features = false }
-zip = { version = "8", default-features = false, features = ["deflate"] }
-tar = "0.4"
-flate2 = "1"
+ed25519-dalek = { version = "3.0.0", default-features = false }
+zip = { version = "9.0.0", default-features = false, features = ["deflate"] }
+tar = "0.4.46"
+flate2 = "1.1.10"
 # PNG-only decoder for per-app icons (no other codecs); pairs with iced's
 # image-without-codecs to render decoded RGBA. Keeps the image stack minimal.
-image = { version = "0.25", default-features = false, features = ["png"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [profile.release]
 lto = "thin"
@@ -65,7 +71,7 @@ codegen-units = 16
 strip = false
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = "3.27.0"
 
 # Embeds the Windows version resource (build.rs). Without default features it
 # pulls in nothing but version_check, and it does nothing on other targets.
