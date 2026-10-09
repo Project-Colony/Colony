@@ -111,7 +111,7 @@ Then publish a GitHub Release with assets named `yourapp-linux`, `yourapp-window
 
 **Full walkthrough**: see [CONTRIBUTING.md § Adding your app to Colony](CONTRIBUTING.md#adding-your-app-to-colony).
 
-The canonical [release workflow template](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/release.yml) lives in Project-Colony-Resources, alongside the shared signing script and the manifest schema.
+The canonical [release workflow template](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/sign-and-publish-caller.yml) lives in Project-Colony-Resources, alongside the shared signing workflow it calls and the manifest schema.
 
 ## Platforms
 

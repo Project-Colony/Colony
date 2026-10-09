@@ -46,9 +46,9 @@ You can upload any subset — Colony only advertises the platforms whose asset i
 
 ### Step 3 — Wire up a release workflow (Rust apps)
 
-The ready-to-use GitHub Actions template lives in Project-Colony-Resources at [`templates/release.yml`](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/release.yml), next to the shared signing script it calls. Copy it to your own repo as `.github/workflows/release.yml` and replace `{{APP_NAME}}` with your binary/repo name (lowercase).
+The ready-to-use GitHub Actions template lives in Project-Colony-Resources at [`templates/sign-and-publish-caller.yml`](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/sign-and-publish-caller.yml). Copy it to your own repo as `.github/workflows/release.yml` and replace `{{APP_NAME}}` with your binary/repo name (lowercase). Its build jobs never see a signing key: signing and publishing happen in the organisation's [shared signing workflow](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/design/releases.md#shared-signing-workflow), which the template calls.
 
-It uses [`release-please`](https://github.com/googleapis/release-please) so every merged PR tagged with a conventional-commit prefix (`feat:`, `fix:`, etc.) opens a release PR; merging that PR tags the version, builds the matrix of 4 platforms, and uploads the assets under the convention above. Zero manual release work afterwards.
+It uses [`release-please`](https://github.com/googleapis/release-please) so every merged PR tagged with a conventional-commit prefix (`feat:`, `fix:`, etc.) opens a release PR; merging that PR tags the version, builds the matrix of 4 platforms, then signs and publishes the assets under the convention above. Zero manual release work afterwards.
 
 Non-Rust apps: replicate the same asset naming convention with whatever tooling you prefer (electron-builder, pyinstaller, go build, etc.).
 
