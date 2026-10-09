@@ -21,14 +21,33 @@ mod update;
 
 use state::{default_font, App};
 
-/// Where diagnostics land. A plain truncate-on-start file, not a rolling
-/// appender: one run's worth of log is what a bug report needs, and it keeps
-/// the dependency set unchanged.
-fn log_file_path() -> Option<std::path::PathBuf> {
-    // The shared layout, same as every other cache: <cache>/Colony/Colony/.
-    colony_ui::paths::cache_dir("Colony")
-        .ok()
-        .map(|dir| dir.join("colony.log"))
+/// Run `f` with its log lines held in memory, and return them.
+///
+/// The startup migration must run before anything creates a directory, the
+/// log file included, yet what it reports belongs in that file.
+fn capture_log(f: impl FnOnce()) -> Vec<u8> {
+    #[derive(Clone, Default)]
+    struct Buffer(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+    impl std::io::Write for Buffer {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            let mut buffer = self.0.lock().unwrap_or_else(|e| e.into_inner());
+            buffer.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let buffer = Buffer::default();
+    let writer = buffer.clone();
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(move || writer.clone())
+        .with_ansi(false)
+        .finish();
+    tracing::subscriber::with_default(subscriber, f);
+    let mut lines = buffer.0.lock().unwrap_or_else(|e| e.into_inner());
+    std::mem::take(&mut *lines)
 }
 
 /// Answer `--version` / `--help` without opening a window. The bug template
@@ -75,9 +94,11 @@ fn handle_cli_flags() -> bool {
                  Diagnostics are written to {} and to stderr.\n\
                  Set RUST_LOG=debug for more detail.",
                 env!("CARGO_PKG_VERSION"),
-                log_file_path()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "(no cache directory)".into()),
+                // `locate`, not the creating helper: printing help must not
+                // bring a directory into existence before the migration runs.
+                colony_ui::paths::locate::data_dir("Colony")
+                    .map(|dir| dir.join("colony.log").display().to_string())
+                    .unwrap_or_else(|_| "(no data directory)".into()),
             );
             true
         }
@@ -190,6 +211,13 @@ pub fn main() -> iced::Result {
         return Ok(());
     }
 
+    // Earlier versions wrote to different directories; move them before
+    // anything creates a path. That includes the log file: on Windows its data
+    // directory is the very config directory the first move targets, and a
+    // move skips a target that already exists. No-op once done, and on a fresh
+    // install.
+    let migration_log = capture_log(crate::persistence::migrate_legacy_paths);
+
     // `EnvFilter::from_default_env().add_directive(INFO)` looked like "default
     // to info", but a bare `RUST_LOG=debug` parses to a directive that compares
     // Equal to the added one, so add_directive REPLACED it and the user's
@@ -206,19 +234,26 @@ pub fn main() -> iced::Result {
     // Log to a file as well as stderr: a .desktop launch has no terminal, and
     // on Windows there is no console at all, so stderr-only meant that every
     // warning in the codebase reached nobody in any shipped configuration.
+    // A plain truncate-on-start file in the data directory, not a rolling
+    // appender: one run's worth of log is what a bug report needs, and it keeps
+    // the dependency set unchanged.
+    use std::io::Write as _;
     use tracing_subscriber::fmt::writer::MakeWriterExt;
-    match log_file_path().and_then(|p| std::fs::File::create(p).ok()) {
-        Some(file) => tracing_subscriber::fmt()
-            .with_env_filter(filter)
-            .with_writer(std::sync::Mutex::new(file).and(std::io::stderr))
-            .with_ansi(false)
-            .init(),
+    let _ = std::io::stderr().write_all(&migration_log);
+    let log_file = crate::persistence::colony_log_path()
+        .ok()
+        .and_then(|path| std::fs::File::create(path).ok());
+    match log_file {
+        Some(mut file) => {
+            let _ = file.write_all(&migration_log);
+            tracing_subscriber::fmt()
+                .with_env_filter(filter)
+                .with_writer(std::sync::Mutex::new(file).and(std::io::stderr))
+                .with_ansi(false)
+                .init()
+        }
         None => tracing_subscriber::fmt().with_env_filter(filter).init(),
     }
-
-    // Earlier versions wrote to different directories; move them before
-    // anything reads a path. No-op once done, and on a fresh install.
-    crate::persistence::migrate_legacy_paths();
 
     // Honor the saved language preference over environment locale detection,
     // and reopen at the last persisted window size (clamped to sanity).

@@ -12,9 +12,12 @@ use std::path::PathBuf;
 /// Resolve an external config file named `file_name` (e.g. `"categories.json"`).
 ///
 /// Search order, first existing file wins:
-///   1. `~/.config/colony/<file_name>` — per-user override (XDG config dir).
-///   2. `<exe_dir>/config/<file_name>` — config shipped next to the binary.
-///   3. `./config/<file_name>`         — current working dir (dev: `cargo run`).
+///   1. `<config_local>/colony/<file_name>`: per-user override, `~/.config/colony/`
+///      on Linux and `%LOCALAPPDATA%\colony\` on Windows.
+///   2. `<config>/colony/<file_name>`: Windows only, the Roaming folder that
+///      earlier versions read, so an override placed there keeps working.
+///   3. `<exe_dir>/config/<file_name>`: config shipped next to the binary.
+///   4. `./config/<file_name>`: current working dir (dev: `cargo run`).
 ///
 /// Returns `None` when no candidate exists; callers should then use their embedded
 /// or built-in defaults.
@@ -26,19 +29,27 @@ pub fn resolve_config_path(file_name: &str) -> Option<PathBuf> {
 fn candidate_paths(file_name: &str) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
 
-    // 1. ~/.config/colony/<file_name>
-    if let Some(config_dir) = dirs::config_dir() {
-        candidates.push(config_dir.join("colony").join(file_name));
+    // 1. Local, never Roaming: the shared layout keeps Colony out of Roaming.
+    // 2. Roaming, only where it differs (Windows), for overrides placed there
+    //    before. On Linux and macOS the two resolve to the same directory.
+    for root in [dirs::config_local_dir(), dirs::config_dir()]
+        .into_iter()
+        .flatten()
+    {
+        let path = root.join("colony").join(file_name);
+        if !candidates.contains(&path) {
+            candidates.push(path);
+        }
     }
 
-    // 2. <exe_dir>/config/<file_name>
+    // 3. <exe_dir>/config/<file_name>
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
             candidates.push(exe_dir.join("config").join(file_name));
         }
     }
 
-    // 3. ./config/<file_name> (dev convenience)
+    // 4. ./config/<file_name> (dev convenience)
     candidates.push(PathBuf::from("config").join(file_name));
 
     candidates
@@ -62,6 +73,33 @@ mod tests {
             candidates.last().unwrap(),
             &PathBuf::from("config").join("categories.json")
         );
+    }
+
+    #[test]
+    fn the_local_override_wins_over_roaming() {
+        // Both sides read XDG_CONFIG_HOME, which other tests redirect.
+        let _guard = crate::persistence::XDG_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let candidates = candidate_paths("colony.toml");
+        let local = dirs::config_local_dir()
+            .expect("config_local_dir")
+            .join("colony")
+            .join("colony.toml");
+        let roaming = dirs::config_dir()
+            .expect("config_dir")
+            .join("colony")
+            .join("colony.toml");
+
+        assert_eq!(candidates[0], local, "Local is searched first");
+        // Roaming is still read, right after Local, and listed once: on Linux
+        // and macOS it is the same path as Local.
+        let at = candidates.iter().position(|p| p == &roaming);
+        assert!(matches!(at, Some(0) | Some(1)), "{candidates:?}");
+        assert_eq!(candidates.iter().filter(|p| *p == &roaming).count(), 1);
+        if local != roaming {
+            assert_eq!(at, Some(1));
+        }
     }
 
     #[test]

@@ -82,7 +82,7 @@ body:
     attributes:
       label: Logs
       description: |
-        Relevant lines from `colony 2>&1` or `~/.cache/colony/`. Redact any
+        Relevant lines from `colony 2>&1` or `~/.local/share/Colony/Colony/colony.log`. Redact any
         personal paths or tokens before pasting.
       render: shell
 

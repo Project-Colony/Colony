@@ -93,11 +93,11 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
 | Preferences | `~/.config/Colony/Colony/preferences/preferences.json` | Permanent |
 | Favorites | `~/.config/Colony/Colony/preferences/favorites.json` | Permanent |
 | OAuth token | OS Keychain / `~/.config/Colony/Colony/auth/github_token.json` | Permanent |
-| Diagnostics log | `~/.cache/Colony/Colony/colony.log` | Truncated per run |
+| Diagnostics log | `~/.local/share/Colony/Colony/colony.log` | Truncated per run |
 | Installed versions | `~/.local/share/Colony/apps/<repo>/.colony_version` | Permanent |
 | Resolved asset | `~/.local/share/Colony/apps/<repo>/.colony_asset` | Permanent |
 | Colony binaries | `~/.local/share/Colony/apps/<repo>/` | Permanent |
-| Self-update staging | `~/.cache/Colony/Colony/update-staging/` | Temporary |
+| Self-update staging | `~/.cache/Colony/Colony/update-staging/` | Emptied at every start |
 
 ## GitHub API
 
