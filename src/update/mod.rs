@@ -588,8 +588,9 @@ mod tests {
     /// honors XDG on Linux, so callers gate on cfg(target_os = "linux").
     #[cfg(target_os = "linux")]
     fn with_temp_dirs(f: impl FnOnce()) {
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = crate::persistence::XDG_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         let tmp = tempfile::tempdir().expect("tempdir");
         let old_config = std::env::var_os("XDG_CONFIG_HOME");
         let old_data = std::env::var_os("XDG_DATA_HOME");

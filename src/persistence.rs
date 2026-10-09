@@ -5,98 +5,254 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use crate::github::{current_platform_key, ColonyRepo};
 
 /// Colony's own name in the shared `Colony/<Program>/` tree.
 const PROGRAM: &str = "Colony";
 
+/// Legacy directories this session keeps using because [`migrate_legacy_paths`]
+/// could not move them. Set at most once, before anything reads a path.
+static CONFIG_FALLBACK: OnceLock<PathBuf> = OnceLock::new();
+static CACHE_FALLBACK: OnceLock<PathBuf> = OnceLock::new();
+
+/// Serializes the tests that redirect the XDG variables. They are process-wide,
+/// so every such test must hold this one lock rather than a lock of its own.
+#[cfg(test)]
+pub(crate) static XDG_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Use the migration fallback when there is one, else the shared layout.
+fn resolve(
+    fallback: &OnceLock<PathBuf>,
+    layout: fn(&str) -> std::io::Result<PathBuf>,
+) -> Result<PathBuf> {
+    match fallback.get() {
+        Some(legacy) => {
+            std::fs::create_dir_all(legacy)?;
+            Ok(legacy.clone())
+        }
+        None => Ok(layout(PROGRAM)?),
+    }
+}
+
 /// Central config directory for Colony's own files.
 ///
-/// The layout — which root on which platform — is defined once in colony-ui;
+/// The layout (which root on which platform) is defined once in colony-ui;
 /// see `design/filesystem.md` in Project-Colony-Resources. On Linux this is
-/// `~/.config/Colony/Colony/`.
+/// `~/.config/Colony/Colony/`. After a failed migration it is the legacy
+/// directory instead, for the rest of the session.
 pub fn colony_data_dir() -> Result<PathBuf> {
-    Ok(colony_ui::paths::config_dir(PROGRAM)?)
+    resolve(&CONFIG_FALLBACK, colony_ui::paths::config_dir)
 }
 
 /// Regenerable state: the repo listing and the scan results.
 pub(crate) fn colony_cache_dir() -> Result<PathBuf> {
-    Ok(colony_ui::paths::cache_dir(PROGRAM)?)
+    resolve(&CACHE_FALLBACK, colony_ui::paths::cache_dir)
+}
+
+/// The diagnostics log, `<data>/Colony/Colony/colony.log`. Data rather than
+/// cache: it is something the program produced and cannot fetch again.
+///
+/// While a failed migration keeps the session on the legacy config directory,
+/// the log stays beside it. On Windows the data directory *is* the new config
+/// directory, and creating it would make the next start take the move as done.
+pub fn colony_log_path() -> Result<PathBuf> {
+    let dir = match CONFIG_FALLBACK.get() {
+        Some(legacy) => legacy.clone(),
+        None => colony_ui::paths::data_dir(PROGRAM)?,
+    };
+    Ok(dir.join("colony.log"))
 }
 
 /// Move state written by earlier versions to where the shared layout puts it.
 ///
-/// Must run before anything reads a path — `main` calls it first.
+/// Must run before anything creates a path, the log file included: `main`
+/// calls it first.
 ///
 /// Deliberately conservative: it only moves when the old location exists and
 /// the new one does not, and it **never deletes the source**. A user who ends
 /// up with a copy in both places has lost nothing; a user whose preferences
-/// were deleted by a half-finished migration has.
+/// were deleted by a half-finished migration has. When a move fails, the
+/// session keeps using the old location rather than an empty new one, and the
+/// next start tries again.
 pub fn migrate_legacy_paths() {
-    // Windows used to resolve config to Roaming (dirs::config_dir), and the
-    // layout is Local. Identical on Linux and macOS, so this is a no-op there.
-    if let (Some(legacy_root), Ok(current)) = (
-        dirs::config_dir(),
+    let (Ok(config), Ok(cache)) = (
         colony_ui::paths::locate::config_dir(PROGRAM),
-    ) {
-        relocate(
-            &legacy_root.join("Colony").join(PROGRAM),
-            &current,
-            "config directory",
+        colony_ui::paths::locate::cache_dir(PROGRAM),
+    ) else {
+        return;
+    };
+    // Windows used to resolve config to Roaming (dirs::config_dir), and the
+    // layout is Local. Identical on Linux and macOS, so that move is a no-op
+    // there.
+    let legacy_config =
+        dirs::config_dir().map_or_else(|| config.clone(), |root| root.join("Colony").join(PROGRAM));
+    let (config_fallback, cache_fallback) = migrate(&legacy_config, &config, &cache);
+    if let Some(dir) = config_fallback {
+        let _ = CONFIG_FALLBACK.set(dir);
+    }
+    if let Some(dir) = cache_fallback {
+        let _ = CACHE_FALLBACK.set(dir);
+    }
+}
+
+/// The moves behind [`migrate_legacy_paths`], on explicit paths. Returns the
+/// legacy config and cache directories this session has to keep using because
+/// their move failed, if any.
+fn migrate(
+    legacy_config: &Path,
+    config: &Path,
+    cache: &Path,
+) -> (Option<PathBuf>, Option<PathBuf>) {
+    if move_config_dir(legacy_config, config) != config {
+        // The cache used to live inside the config directory, and on Windows,
+        // the only platform this move runs on, the new cache root sits inside
+        // the new config directory. Keep it in the old place too: creating it
+        // would create the new config directory with it, and the next start
+        // would have to merge into that directory instead of moving the old
+        // one. The cache moves below read from the new config directory, which
+        // this failure left empty, so they are skipped.
+        return (
+            Some(legacy_config.to_path_buf()),
+            Some(legacy_config.join("cache")),
         );
     }
 
     // Everything regenerable used to live inside the config directory. All of
     // it is re-fetched when missing, so a failure here costs a round trip to
     // GitHub and nothing more.
-    if let (Ok(config), Ok(cache)) = (
-        colony_ui::paths::locate::config_dir(PROGRAM),
-        colony_ui::paths::locate::cache_dir(PROGRAM),
-    ) {
-        relocate(&config.join("cache"), &cache, "cache");
-        for sub in ["repo-docs", "repo-icons", "update-staging"] {
-            relocate(&config.join(sub), &cache.join(sub), sub);
-        }
+    let legacy_cache = config.join("cache");
+    if relocate(&legacy_cache, cache, "cache") != cache {
+        // Moving the per-repo caches now would fill a cache root this session
+        // does not read; they follow at the start that succeeds.
+        return (None, Some(legacy_cache));
     }
+    for sub in ["repo-docs", "repo-icons", "update-staging"] {
+        relocate(&config.join(sub), &cache.join(sub), sub);
+    }
+    (None, None)
 }
 
-/// Move `from` to `to`, once, without ever destroying `from`.
-fn relocate(from: &Path, to: &Path, what: &str) {
-    if from == to || !from.is_dir() || to.exists() {
-        return;
+/// Written in the new config directory once the move from the legacy one is
+/// done. "The new directory exists" used to stand for "moved", but v0.10.2 to
+/// v0.10.4 created that directory, for the log file, before the move ran: on
+/// Windows the whole profile stayed behind in Roaming and Colony started on an
+/// empty one.
+const MIGRATED_MARKER: &str = ".migrated";
+
+/// The config directory move, tracked by [`MIGRATED_MARKER`]. Returns the
+/// directory to use from now on, as [`relocate`] does.
+fn move_config_dir<'a>(legacy: &'a Path, current: &'a Path) -> &'a Path {
+    let marker = current.join(MIGRATED_MARKER);
+    if legacy == current || !legacy.is_dir() || marker.exists() {
+        return current;
     }
-    let Some(parent) = to.parent() else { return };
+    if current.exists() {
+        // An earlier version created the new directory and skipped the move.
+        // Bring over what it lacks; whatever was written there since wins.
+        if let Err(e) = copy_tree(legacy, current) {
+            tracing::warn!(
+                "could not finish moving the config directory from {} to {}: {e}; \
+                 trying again at the next start",
+                legacy.display(),
+                current.display()
+            );
+            return current;
+        }
+        tracing::info!(
+            "copied what {} lacked from {}; files already there were kept, and \
+             the old directory can be deleted by hand",
+            current.display(),
+            legacy.display()
+        );
+    } else if relocate(legacy, current, "config directory") != current {
+        return legacy;
+    }
+    if let Err(e) = std::fs::write(&marker, b"") {
+        tracing::warn!("could not write {}: {e}", marker.display());
+    }
+    current
+}
+
+/// Move `from` to `to`, once, without ever destroying `from`, and return the
+/// directory to use from now on: `to`, unless `from` still holds data that
+/// could not be moved.
+fn relocate<'a>(from: &'a Path, to: &'a Path, what: &str) -> &'a Path {
+    if from == to || !from.is_dir() || to.exists() {
+        return to;
+    }
+    let Some(parent) = to.parent() else { return to };
     if let Err(e) = std::fs::create_dir_all(parent) {
-        tracing::warn!("cannot prepare {} for the {what}: {e}", parent.display());
-        return;
+        tracing::warn!(
+            "cannot prepare {} for the {what}: {e}; using the old location at {} for now",
+            parent.display(),
+            from.display()
+        );
+        return from;
     }
 
-    // A rename is atomic and cheap, but fails across filesystems (EXDEV) — and
+    // A rename is atomic and cheap, but fails across filesystems (EXDEV), and
     // ~/.config and ~/.cache are not guaranteed to be on the same one.
     if std::fs::rename(from, to).is_ok() {
         tracing::info!("moved the {what} to {}", to.display());
-        return;
+        return to;
     }
     match copy_tree(from, to) {
-        Ok(()) => tracing::info!(
-            "copied the {what} to {}; the old copy at {} is left in place and can be deleted by hand",
-            to.display(),
-            from.display()
-        ),
-        Err(e) => {
-            // Leave no half-copied directory behind: the next start would see
-            // `to` existing and skip the migration, stranding the real data.
-            let _ = std::fs::remove_dir_all(to);
-            tracing::error!(
-                "could not move the {what} from {}: {e}. Nothing was lost — the old                  location still holds it — but Colony will start with an empty one.",
+        Ok(()) => {
+            tracing::info!(
+                "copied the {what} to {}; the old copy at {} is left in place and can be deleted by hand",
+                to.display(),
                 from.display()
             );
+            to
+        }
+        Err(e) => {
+            tracing::error!(
+                "could not move the {what} from {} to {}: {e}. Nothing was lost: \
+                 Colony keeps using the old location for this session and tries \
+                 again at the next start.",
+                from.display(),
+                to.display()
+            );
+            discard_half_copy(to);
+            from
         }
     }
 }
 
-/// Recursive copy. Files and directories only; anything else is skipped.
+/// Remove what a failed copy left at `to`. Left in place, it would pass for a
+/// finished move at the next start, which would then skip the move and run on
+/// half the data. When it cannot be removed, for example because a scanner
+/// holds a file open, it is renamed aside instead.
+fn discard_half_copy(to: &Path) {
+    let Err(e) = std::fs::remove_dir_all(to) else {
+        return;
+    };
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let mut aside = to.as_os_str().to_owned();
+    aside.push(format!(".incomplete-{stamp}"));
+    let aside = PathBuf::from(aside);
+    match std::fs::rename(to, &aside) {
+        Ok(()) => tracing::warn!(
+            "could not remove the incomplete copy at {}: {e}; moved it to {}, \
+             which can be deleted by hand",
+            to.display(),
+            aside.display()
+        ),
+        Err(_) => tracing::error!(
+            "could not remove the incomplete copy at {}: {e}. Delete it by hand, \
+             or the next start will skip the move and use it",
+            to.display()
+        ),
+    }
+}
+
+/// Recursive copy that never overwrites: a file already at the target is
+/// kept. Files and directories only; anything else is skipped.
 fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
     for entry in std::fs::read_dir(from)? {
@@ -105,7 +261,7 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
         let kind = entry.file_type()?;
         if kind.is_dir() {
             copy_tree(&entry.path(), &target)?;
-        } else if kind.is_file() {
+        } else if kind.is_file() && std::fs::symlink_metadata(&target).is_err() {
             std::fs::copy(entry.path(), &target)?;
         }
     }
@@ -670,11 +826,15 @@ pub fn remove_app_dir(app_dir: &std::path::Path) -> std::io::Result<()> {
 /// accumulates. Run once at boot: any staging file present then is by
 /// definition orphaned, because nothing is in flight yet.
 ///
-/// The `update-staging` directory gets the same treatment, plus the `.old`
-/// backup a completed self-update leaves next to the executable - two full
-/// copies of the launcher could otherwise sit on disk indefinitely.
+/// The `update-staging` directory is emptied outright: the path of a
+/// downloaded launcher update lives only in memory, so one that was never
+/// applied is unreachable after a restart, binary and signatures alike. So is
+/// the `.old` backup a completed self-update leaves next to the executable -
+/// two full copies of the launcher could otherwise sit on disk indefinitely.
 pub fn prune_staging() -> u64 {
-    fn sweep(dir: &std::path::Path, reclaimed: &mut u64) {
+    /// `everything` is for directories that hold nothing but staging; the
+    /// per-app directories hold the installed binaries too.
+    fn sweep(dir: &std::path::Path, reclaimed: &mut u64, everything: bool) {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
         };
@@ -683,7 +843,8 @@ pub fn prune_staging() -> u64 {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            if !(name.ends_with(".part")
+            if !(everything
+                || name.ends_with(".part")
                 || name.ends_with(".part.id")
                 || name.ends_with(".new")
                 || name.ends_with(".old"))
@@ -703,7 +864,7 @@ pub fn prune_staging() -> u64 {
         if let Ok(entries) = std::fs::read_dir(&apps) {
             for entry in entries.flatten() {
                 if entry.path().is_dir() {
-                    sweep(&entry.path(), &mut reclaimed);
+                    sweep(&entry.path(), &mut reclaimed, false);
                     // An uninstall that could not delete a running binary
                     // renames it aside and leaves the shell of the directory;
                     // once the sweep above has taken the `.old` file, finish
@@ -718,8 +879,14 @@ pub fn prune_staging() -> u64 {
             }
         }
     }
-    if let Ok(base) = colony_data_dir() {
-        sweep(&base.join("update-staging"), &mut reclaimed);
+    // Self-update staging lives in the cache. The config root is swept as well,
+    // for what versions before the shared layout left there and the migration
+    // could not move.
+    for base in [colony_cache_dir(), colony_data_dir()]
+        .into_iter()
+        .flatten()
+    {
+        sweep(&base.join("update-staging"), &mut reclaimed, true);
     }
     // Only our OWN backup, by exact path - never a directory sweep here. The
     // executable may well live in /usr/bin, where an extension-based sweep
@@ -885,7 +1052,7 @@ mod path_migration_tests {
         );
         seed(&from, "auth/github_token.json", "token");
 
-        relocate(&from, &to, "config directory");
+        assert_eq!(relocate(&from, &to, "config directory"), to.as_path());
 
         assert!(!from.exists(), "the source should have been renamed away");
         assert_eq!(
@@ -922,7 +1089,8 @@ mod path_migration_tests {
         let root = scratch("noop");
         let (from, to) = (root.join("absent"), root.join("new"));
 
-        relocate(&from, &to, "config directory");
+        // Nothing to move is not a failure: the new location is the one to use.
+        assert_eq!(relocate(&from, &to, "config directory"), to.as_path());
 
         assert!(!to.exists(), "nothing to migrate should create nothing");
         let _ = std::fs::remove_dir_all(&root);
@@ -943,6 +1111,177 @@ mod path_migration_tests {
             "kept"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Run `f` while `dir` cannot be moved: its parent is read-only, which
+    /// fails the rename, and `file` inside it is unreadable, which fails the
+    /// copy fallback. `None` when running as root, which ignores permission
+    /// bits, so neither failure can be staged.
+    #[cfg(unix)]
+    fn while_unmovable<T>(dir: &Path, file: &Path, f: impl FnOnce() -> T) -> Option<T> {
+        use std::os::unix::fs::PermissionsExt;
+        let set_mode = |path: &Path, mode| {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap()
+        };
+        let parent = dir.parent().expect("parent");
+        set_mode(file, 0o000);
+        set_mode(parent, 0o555);
+        let out = std::fs::File::open(file).is_err().then(f);
+        // Restore before the caller asserts, so the temp dir can always be
+        // removed.
+        set_mode(parent, 0o755);
+        set_mode(file, 0o600);
+        out
+    }
+
+    /// A move that fails must leave the session on the old directory, never on
+    /// an empty new one.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_move_keeps_using_the_legacy_directory() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (from, to) = (root.path().join("locked/old"), root.path().join("new"));
+        seed(
+            &from,
+            "preferences/preferences.json",
+            "{\"theme\":\"gruvbox\"}",
+        );
+        seed(&from, "auth/github_token.json", "token");
+        let unreadable = from.join("auth/github_token.json");
+
+        let Some(used) = while_unmovable(&from, &unreadable, || {
+            relocate(&from, &to, "config directory").to_path_buf()
+        }) else {
+            return;
+        };
+
+        assert_eq!(used, from, "the session must stay on the legacy directory");
+        assert!(
+            !to.exists(),
+            "the half copy is removed so the next start retries"
+        );
+        assert_eq!(
+            std::fs::read_to_string(from.join("preferences/preferences.json")).unwrap(),
+            "{\"theme\":\"gruvbox\"}"
+        );
+        assert_eq!(std::fs::read_to_string(&unreadable).unwrap(), "token");
+    }
+
+    /// The Windows shape: Roaming to Local, with the new cache root inside the
+    /// new config directory. A failed move puts both on the legacy tree, and
+    /// that is what `colony_data_dir` and `colony_cache_dir` then resolve to.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_config_move_resolves_both_dirs_to_the_legacy_tree() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let legacy = root.path().join("roaming/Colony/Colony");
+        let config = root.path().join("local/Colony/Colony");
+        let cache = config.join("cache");
+        seed(&legacy, "preferences/favorites.json", "[\"Grape\"]");
+        seed(&legacy, "auth/github_token.json", "token");
+
+        let Some((config_fallback, cache_fallback)) =
+            while_unmovable(&legacy, &legacy.join("auth/github_token.json"), || {
+                migrate(&legacy, &config, &cache)
+            })
+        else {
+            return;
+        };
+
+        assert_eq!(config_fallback.as_deref(), Some(legacy.as_path()));
+        assert_eq!(cache_fallback, Some(legacy.join("cache")));
+        assert!(!config.exists(), "the new config directory must not exist");
+
+        let unused: fn(&str) -> std::io::Result<PathBuf> =
+            |_| panic!("the layout must not be consulted while a fallback is set");
+        let (config_lock, cache_lock) = (OnceLock::new(), OnceLock::new());
+        config_lock.set(config_fallback.unwrap()).unwrap();
+        cache_lock.set(cache_fallback.unwrap()).unwrap();
+        let data_dir = resolve(&config_lock, unused).unwrap();
+        assert_eq!(data_dir, legacy);
+        assert_eq!(resolve(&cache_lock, unused).unwrap(), legacy.join("cache"));
+        assert_eq!(
+            std::fs::read_to_string(data_dir.join("preferences/favorites.json")).unwrap(),
+            "[\"Grape\"]"
+        );
+    }
+
+    /// A failed cache move keeps the session on the old cache and leaves the
+    /// per-repo caches where they are, for the start where the move succeeds.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_cache_move_defers_the_per_repo_moves() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let config = root.path().join("config/Colony/Colony");
+        let cache = root.path().join("cache/Colony/Colony");
+        seed(&config, "cache/repos_cache.json", "[]");
+        seed(&config, "repo-docs/Eidos/README.md", "# Eidos");
+        let legacy_cache = config.join("cache");
+
+        let Some(fallbacks) = while_unmovable(
+            &legacy_cache,
+            &legacy_cache.join("repos_cache.json"),
+            || migrate(&config, &config, &cache),
+        ) else {
+            return;
+        };
+
+        assert_eq!(fallbacks, (None, Some(legacy_cache)));
+        assert!(!cache.join("repo-docs").exists());
+        assert!(config.join("repo-docs/Eidos/README.md").exists());
+    }
+
+    /// v0.10.2 to v0.10.4 created the new config directory before the move ran,
+    /// so on Windows the move was skipped and the profile stayed in Roaming.
+    /// The missing files arrive now, and nothing written since is overwritten.
+    #[test]
+    fn a_move_an_earlier_version_skipped_is_finished_without_overwriting() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (legacy, current) = (root.path().join("roaming"), root.path().join("local"));
+        seed(
+            &legacy,
+            "preferences/preferences.json",
+            "{\"theme\":\"gruvbox\"}",
+        );
+        seed(&legacy, "preferences/favorites.json", "[\"Grape\"]");
+        seed(&legacy, "auth/github_token.json", "token");
+        seed(&current, "cache/colony.log", "log");
+        seed(&current, "preferences/preferences.json", "{\"width\":900}");
+
+        assert_eq!(move_config_dir(&legacy, &current), current.as_path());
+
+        let read = |rel: &str| std::fs::read_to_string(current.join(rel)).unwrap();
+        assert_eq!(read("preferences/favorites.json"), "[\"Grape\"]");
+        assert_eq!(read("auth/github_token.json"), "token");
+        assert_eq!(read("preferences/preferences.json"), "{\"width\":900}");
+        assert_eq!(read("cache/colony.log"), "log");
+        assert!(
+            legacy.join("preferences/preferences.json").exists(),
+            "the source is never removed"
+        );
+        assert!(current.join(MIGRATED_MARKER).exists());
+
+        // Done once: a file removed since is not brought back.
+        std::fs::remove_file(current.join("auth/github_token.json")).unwrap();
+        assert_eq!(move_config_dir(&legacy, &current), current.as_path());
+        assert!(!current.join("auth/github_token.json").exists());
+    }
+
+    /// A completed move is marked as well, so a later start never merges the
+    /// old directory back in.
+    #[test]
+    fn a_completed_config_move_is_marked() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (legacy, current) = (root.path().join("roaming"), root.path().join("local"));
+        seed(&legacy, "auth/github_token.json", "token");
+
+        assert_eq!(move_config_dir(&legacy, &current), current.as_path());
+
+        assert_eq!(
+            std::fs::read_to_string(current.join("auth/github_token.json")).unwrap(),
+            "token"
+        );
+        assert!(current.join(MIGRATED_MARKER).exists());
     }
 
     #[test]
@@ -983,8 +1322,7 @@ mod path_migration_tests {
     fn migrating_a_real_legacy_layout_moves_the_caches_and_leaves_config_alone() {
         // Driving process-wide environment variables; must not race the other
         // tests that read a path.
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = XDG_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         let root = scratch("e2e");
         let (old_config, old_data, old_cache) = (
@@ -1044,6 +1382,16 @@ mod path_migration_tests {
         // Running twice is inert.
         migrate_legacy_paths();
         assert!(cache.join("repos_cache.json").exists());
+
+        // Self-update staging is downloaded to the cache, so that is where the
+        // boot sweep has to look; the config root is still swept for what
+        // older versions left there. A staged update that was never applied is
+        // unreachable after a restart and goes too.
+        seed(&legacy, "update-staging/colony-linux.part", "partial");
+        let reclaimed = prune_staging();
+        assert!(!cache.join("update-staging/colony-linux").exists());
+        assert!(!legacy.join("update-staging/colony-linux.part").exists());
+        assert_eq!(reclaimed, ("binary".len() + "partial".len()) as u64);
 
         for (k, v) in [
             ("XDG_CONFIG_HOME", old_config),

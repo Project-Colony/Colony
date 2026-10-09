@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-#[cfg(not(windows))]
-use std::sync::OnceLock;
 
 use anyhow::Result;
 use serde::Deserialize;
@@ -115,7 +113,6 @@ struct ColonyConfig {
 struct ScanConfig {
     windows: Option<Vec<String>>,
     unix: Option<Vec<String>>,
-    colony: Option<Vec<String>>,
 }
 
 pub fn scan_applications() -> Result<Vec<Application>> {
@@ -198,16 +195,7 @@ fn default_windows_dirs() -> Vec<PathBuf> {
 
 #[cfg(not(windows))]
 fn get_application_dirs() -> Vec<PathBuf> {
-    // Scan Colony-managed directories first: with first-seen-wins dedup this
-    // ensures a Colony-installed app is not shadowed (and mis-classified) by a
-    // same-named system app.
-    let mut dirs = colony_application_dirs();
-    for dir in load_scan_dirs_from_config().unwrap_or_else(default_unix_dirs) {
-        if !dirs.contains(&dir) {
-            dirs.push(dir);
-        }
-    }
-    dirs
+    load_scan_dirs_from_config().unwrap_or_else(default_unix_dirs)
 }
 
 #[cfg(not(windows))]
@@ -286,58 +274,6 @@ fn default_unix_dirs() -> Vec<PathBuf> {
     }
 
     dirs
-}
-
-#[cfg(not(windows))]
-fn colony_application_dirs() -> Vec<PathBuf> {
-    static COLONY_DIRS: OnceLock<Vec<PathBuf>> = OnceLock::new();
-    COLONY_DIRS
-        .get_or_init(|| load_colony_dirs_from_config().unwrap_or_else(default_colony_dirs))
-        .clone()
-}
-
-#[cfg(not(windows))]
-fn load_colony_dirs_from_config() -> Option<Vec<PathBuf>> {
-    let path = crate::config::resolve_config_path("colony.toml")?;
-    let content = fs::read_to_string(&path).ok()?;
-    let config: ColonyConfig = match toml::from_str(&content) {
-        Ok(config) => config,
-        Err(error) => {
-            tracing::warn!("Invalid config {}: {}", path.display(), error);
-            return None;
-        }
-    };
-    let dirs = config.scan?.colony?;
-    let expanded: Vec<PathBuf> = dirs
-        .into_iter()
-        .map(|dir| PathBuf::from(expand_env_vars(&dir)))
-        .collect();
-    if expanded.is_empty() {
-        None
-    } else {
-        Some(expanded)
-    }
-}
-
-#[cfg(not(windows))]
-fn default_colony_dirs() -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-
-    if let Ok(home) = std::env::var("HOME") {
-        dirs.push(PathBuf::from(format!(
-            "{}/.local/share/colony/applications",
-            home
-        )));
-    }
-
-    dirs
-}
-
-#[cfg(not(windows))]
-fn is_colony_app(path: &Path) -> bool {
-    colony_application_dirs()
-        .iter()
-        .any(|dir| path.starts_with(dir))
 }
 
 fn expand_env_vars(value: &str) -> String {
@@ -663,18 +599,13 @@ fn parse_desktop_file(path: &Path) -> Result<Application> {
     let name = name.ok_or_else(|| anyhow::anyhow!("No name found"))?;
     let exec = exec.ok_or_else(|| anyhow::anyhow!("No exec found"))?;
 
-    let origin = if is_colony_app(path) {
-        AppOrigin::Colony
-    } else {
-        AppOrigin::External
-    };
-
     Ok(Application {
         name,
         exec,
         icon,
         category: categorize_linux_app(&categories),
-        origin,
+        // The entries Colony writes for its own apps were skipped above.
+        origin: AppOrigin::External,
     })
 }
 
@@ -766,18 +697,12 @@ fn parse_macos_app(path: &Path) -> Option<Application> {
 
     let category = categorize_macos_app(&name);
 
-    let origin = if is_colony_app(path) {
-        AppOrigin::Colony
-    } else {
-        AppOrigin::External
-    };
-
     Some(Application {
         name,
         exec,
         icon: None,
         category,
-        origin,
+        origin: AppOrigin::External,
     })
 }
 

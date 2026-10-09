@@ -145,7 +145,7 @@ See [docs/architecture.md](docs/architecture.md) for the full layout. Short vers
 
 ### Reporting bugs / feature requests
 
-Use the templates in `.github/ISSUE_TEMPLATE/` when filing. Include Colony version (`colony --version`), OS, and relevant log excerpts from `~/.cache/colony/colony.log`.
+Use the templates in `.github/ISSUE_TEMPLATE/` when filing. Include Colony version (`colony --version`), OS, and relevant log excerpts from `~/.local/share/Colony/Colony/colony.log`.
 
 ---
 

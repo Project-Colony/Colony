@@ -133,7 +133,7 @@ If your app is installed but not in any of these (portable binary without `.desk
 | System app scan cache      | `~/.cache/Colony/Colony/scan_cache.json`                 |
 | Self-update staging        | `~/.cache/Colony/Colony/update-staging/`                 |
 | HTTP ETag cache            | `~/.cache/Colony/Colony/http_etags.json`                 |
-| Diagnostics log            | `~/.cache/Colony/Colony/colony.log`                      |
+| Diagnostics log            | `~/.local/share/Colony/Colony/colony.log`                |
 
 On Windows all three roots are `%LOCALAPPDATA%\Colony\`, and on macOS config
 and data share `~/Library/Application Support/Colony/` while the cache sits in
@@ -162,7 +162,10 @@ Themes apply immediately, no restart. If a palette looks off, verify Settings â†
 Yes. Colony looks for a `categories.json` override before falling back to the
 copy compiled into the binary, in this order:
 
-1. `~/.config/Colony/Colony/categories.json`
+1. `~/.config/colony/categories.json` on Linux,
+   `~/Library/Application Support/colony/categories.json` on macOS, and
+   `%LOCALAPPDATA%\colony\categories.json` on Windows, where
+   `%APPDATA%\colony\` is still read after it
 2. next to the `colony` binary
 3. `./config/categories.json`
 
