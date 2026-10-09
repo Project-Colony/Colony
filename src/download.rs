@@ -440,13 +440,26 @@ async fn fetch_bytes(client: &reqwest::Client, url: &str, token: Option<&str>) -
     bounded_body(resp, url, MAX_SIDECAR_BYTES).await
 }
 
+/// Lowercase hex SHA-256 of `bytes`, the form release metadata and colony.json
+/// carry. sha2 0.11 returns a `hybrid_array::Array`, which has no `LowerHex`,
+/// so the digest is spelled out byte by byte.
+fn sha256_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    Sha256::digest(bytes)
+        .iter()
+        .fold(String::with_capacity(64), |mut hex, byte| {
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        })
+}
+
 /// Verify a SHA256 digest over bytes already in memory.
 ///
 /// Takes bytes rather than a path so the caller checks exactly what it is about
 /// to install: re-opening the staged file to hash it means the digest describes
 /// one read and the install uses another.
 fn verify_sha256_bytes(bytes: &[u8], expected_hex: &str) -> Result<()> {
-    let computed = format!("{:x}", Sha256::digest(bytes));
+    let computed = sha256_hex(bytes);
     if computed != expected_hex.to_lowercase() {
         anyhow::bail!(
             "SHA256 mismatch: expected {}, got {}",
@@ -641,7 +654,7 @@ fn extract_from_zip(
 
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let entry_name = entry.name().to_string();
+        let entry_name = entry.name()?.into_owned();
         // Match by exact filename (last component), handles entries like "dir/binary"
         let matches = std::path::Path::new(&entry_name)
             .file_name()
@@ -1278,7 +1291,7 @@ fn check_metadata_bindings(
         meta.asset
     );
 
-    let digest = format!("{:x}", Sha256::digest(binary_bytes));
+    let digest = sha256_hex(binary_bytes);
     anyhow::ensure!(
         digest == meta.sha256,
         "update metadata digest mismatch (signed {}, downloaded {digest})",
@@ -1791,7 +1804,7 @@ mod tests {
         crate::signing::ReleaseMetadata {
             version: version.into(),
             asset: asset.into(),
-            sha256: format!("{:x}", Sha256::digest(bytes)),
+            sha256: sha256_hex(bytes),
         }
     }
 
@@ -2004,6 +2017,18 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("not found"));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sha256_hex_matches_the_fips_180_vectors() {
+        assert_eq!(
+            sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]

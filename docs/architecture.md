@@ -11,7 +11,7 @@ Colony is an application launcher written in Rust with Iced 0.14 (Elm architectu
 | Language | Rust (edition 2021) |
 | UI | Iced 0.14 (Elm architecture) |
 | Async | Tokio (integrated via Iced runtime) |
-| HTTP | reqwest (async + streaming) |
+| HTTP | reqwest (async + streaming), rustls checking certificates against the OS trust store (no OpenSSL) |
 | Auth | GitHub Device Flow OAuth |
 | Secret storage | keyring (OS keychain) + file fallback |
 | Serialization | serde + serde_json |
