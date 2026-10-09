@@ -1,23 +1,38 @@
+# Colony release workflow, from templates/sign-and-publish-caller.yml of
+# Project-Colony-Resources.
+#
+# The build legs only build, check and upload artifacts; they never see a key.
+# Authenticode (SignPath, once approved), ed25519 signing, verification and
+# publishing all happen in .github/workflows/sign-and-publish.yml of
+# Project-Colony-Resources, in this same run. The signing key is only ever in
+# that workflow's own job, which checks out nothing and builds nothing. See
+# design/releases.md, section "Shared signing workflow".
+#
+# On top of the template: a `target` job that refuses to rebuild a published
+# release, a check of the Windows version resource, and the AUR bump once the
+# release is public.
+#
+# Action refs are pinned to commit SHAs on purpose: this workflow can publish
+# releases, and whoever can move a floating tag can change what it runs.
+
 name: Release
 
 on:
   push:
     branches: [main]
   # Recovery path. release-please only ever emits `release_created` once per
-  # release, so once a tag exists there is no way to re-run build and sign for
-  # it: "Re-run all jobs" makes release-please report nothing to do and every
-  # downstream job skip, while the run goes green. That is how v0.10.0 ended up
-  # tagged with an empty draft release and no way to finish it.
-  #
-  # Dispatch with the tag to build, sign and publish an existing DRAFT release,
-  # and start it FROM that tag: `gh workflow run release-please.yml --ref
-  # v0.10.0 -f tag=v0.10.0`. Once SignPath is on, sign-and-publish refuses a run
+  # release, so once a tag exists "Re-run all jobs" makes release-please report
+  # nothing to do and every job below skip, while the run goes green. That is
+  # how v0.10.0 ended up tagged with an empty draft release. This input
+  # finishes an existing DRAFT release whose run failed. Start it from the tag
+  # ("Use workflow from: v0.10.0", or `gh workflow run release.yml --ref
+  # v0.10.0 -f tag=v0.10.0`): with SignPath on, sign-and-publish refuses a run
   # whose commit is not the tag's, since SignPath records the run's commit as
   # the source of what it signs.
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing release tag to build, sign and publish (e.g. v0.10.0)'
+        description: "Existing draft release to build, sign and publish (e.g. v0.10.0). Run from that same tag."
         required: true
         type: string
 
@@ -25,10 +40,18 @@ on:
 # script, so they only get to read.
 permissions: {}
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Assembles a release PR from the conventional commits since the last
+  # release. Merging that PR is what creates the tag. Push only: on a recovery
+  # dispatch the tag already exists, and running release-please would open or
+  # update a release PR as a side effect of repairing an old release.
   release-please:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -38,45 +61,36 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
-      upload_url: ${{ steps.release.outputs.upload_url }}
     steps:
+      # No `release-type` input: when it is set, the action ignores both files.
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
-          release-type: rust
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
-      # release-please's own step PUBLISHES the release - and moves
-      # /releases/latest - before a single binary exists. For the whole
-      # build+sign window every running Colony therefore showed an update badge
-      # whose every click failed: a missing asset first, then a fail-closed
-      # signature refusal once `build` had uploaded but `sign` had not. And if
-      # any build leg failed, that state was permanent until someone noticed.
-      #
-      # Held as a draft by this one gh call, which narrows the window from
-      # minutes to the second between the two steps. release-please's own
-      # `draft` setting lives in a config file, and the action ignores config
-      # files whenever `release-type` is set, as it is here.
-      - name: Hold the release as a draft until it is signed
+      # release-please publishes the release, and moves /releases/latest,
+      # before any binary exists. For the whole build and sign window every
+      # running Colony would show an update badge whose every click fails.
+      # Held as a draft; sign-and-publish refuses anything else and publishes
+      # it last. `-R` is not optional: this job has no checkout, so `gh` has no
+      # git remote to infer the repository from, and a failure here once left
+      # v0.10.0 published at /releases/latest with no assets at all.
+      - name: Hold the release as a draft
         if: ${{ steps.release.outputs.release_created }}
         env:
           GH_TOKEN: ${{ github.token }}
-        # `-R` is not optional: this job has no `actions/checkout`, so `gh`
-        # has no git remote to infer the repository from and dies with
-        # "fatal: not a git repository". aur-publish.yml already carries this
-        # exact warning; this call was added without heeding it, and the cost
-        # was a published, empty v0.10.0 sitting at /releases/latest.
-        run: gh release edit "${{ steps.release.outputs.tag_name }}" -R "${{ github.repository }}" --draft=true
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=true
 
   # One place that answers "which tag are we building?", so the jobs below do
   # not each have to know whether this run came from a merge or a dispatch.
   target:
     name: Resolve the target release
     needs: release-please
-    # NOT `always()`: that would also run this - and everything after it - when
-    # release-please FAILED, which is the brake that stopped the v0.10.0
-    # incident from going further than an empty draft. `!cancelled() &&
-    # !failure()` still lets the job run when release-please is SKIPPED, which
-    # is what a workflow_dispatch does.
+    # Runs on a merge that created a release, or on a recovery dispatch (when
+    # release-please is skipped). NOT `always()`: that would also run this, and
+    # everything after it, when release-please FAILED.
     if: ${{ !cancelled() && !failure() && (needs.release-please.outputs.release_created || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     permissions:
@@ -116,22 +130,16 @@ jobs:
           echo "building $tag (draft)"
 
   build:
-    name: Build ${{ matrix.asset }}
+    name: build ${{ matrix.asset }}
     needs: target
-    # Explicit, because a SKIPPED job propagates transitively: `target` runs on
-    # a dispatch thanks to its own status-function `if:`, but that does not
-    # clear the skip inherited from `release-please` for the jobs after it.
-    # Without this, a recovery dispatch resolves the tag and then silently
-    # builds nothing - which is exactly what the first v0.10.0 dispatch did.
-    # `!cancelled()` is load-bearing, not decoration. A job `if:` containing NO
-    # status-check function gets an implicit `success()` ANDed onto it, and that
-    # `success()` accounts for the whole ancestor graph - so the skipped
-    # `release-please` made it false and this job skipped even though its own
-    # condition was true and its direct dependency had succeeded. Naming any
-    # status function suppresses the implicit one.
+    # `!cancelled()` is load-bearing. A job `if:` with NO status-check function
+    # gets an implicit `success()` ANDed onto it, and that `success()` covers
+    # the whole ancestor graph, so on a recovery dispatch the skipped
+    # `release-please` would skip this job too, even with `target` green. The
+    # first v0.10.0 dispatch resolved the tag and then built nothing that way.
     if: ${{ !cancelled() && needs.target.result == 'success' }}
-    # GitHub-hosted runners only: SignPath rejects a signing request if any job
-    # leading to it ran on a self-hosted runner.
+    # GitHub-hosted runners only: SignPath rejects a signing request if any
+    # job leading to it ran on a self-hosted runner.
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -145,18 +153,17 @@ jobs:
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             asset: colony-windows.exe
+          # "macos" is Apple Silicon, "macos-x86" is Intel. Colony picks
+          # between them at runtime.
           - target: aarch64-apple-darwin
             os: macos-latest
             asset: colony-macos
           - target: x86_64-apple-darwin
             os: macos-latest
             asset: colony-macos-x86
-
     steps:
-      # Check out the TAG, not the branch. On a recovery dispatch the default
-      # ref is the branch the workflow was dispatched from, so without this the
-      # rebuild would produce binaries from a different commit than the one the
-      # tag names - and the .meta sidecar binds those bytes to that version.
+      # The tag, not the branch: a recovery dispatch must rebuild the tagged
+      # commit, since the .meta sidecar binds these bytes to that version.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.target.outputs.tag }}
@@ -164,7 +171,7 @@ jobs:
 
       # Pinned to master with `toolchain: stable` rather than to the `stable`
       # branch: that branch is rebased onto every master commit, so a SHA
-      # pinned on it stops being reachable from any branch. Bumped by hand.
+      # pinned on it stops being reachable from any branch.
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
         with:
           toolchain: stable
@@ -182,21 +189,20 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Rename binary (Unix)
+      - name: Name the artifact (Unix)
         if: runner.os != 'Windows'
         run: cp target/${{ matrix.target }}/release/colony ${{ matrix.asset }}
 
-      - name: Rename binary (Windows)
+      - name: Name the artifact (Windows)
         if: runner.os == 'Windows'
         run: copy target\${{ matrix.target }}\release\colony.exe ${{ matrix.asset }}
 
-      # The pipeline's signature checks prove provenance and say nothing about
-      # whether the binary RUNS. An asset built for the wrong architecture, or
-      # one that aborts under the release profile's LTO, would be signed,
-      # verified, published and hashed into the AUR PKGBUILD with every check
-      # green. `--version` exits before opening a window, so this is a genuine
-      # end-to-end smoke test of the shipped artefact.
-      - name: Smoke-test the artefact
+      # The signature proves provenance and says nothing about whether the
+      # binary RUNS. An artifact built for the wrong architecture, or one that
+      # aborts under the release profile's LTO, would otherwise be signed,
+      # published, installed and hashed into the AUR PKGBUILD with every check
+      # green. `--version` exits before opening a window.
+      - name: Smoke-test the artifact
         if: matrix.target != 'x86_64-apple-darwin'
         shell: bash
         run: |
@@ -222,11 +228,10 @@ jobs:
             exit 1
           }
 
-      # The Intel macOS asset is cross-compiled on an arm64 runner and cannot
-      # be executed there, so assert the architecture instead - which is the
-      # regression that would otherwise survive longest, on the leg with the
-      # fewest users.
-      - name: Check the cross-compiled artefact's architecture
+      # The Intel macOS artifact is cross-compiled on an arm64 runner and
+      # cannot be executed there, so assert its architecture instead: that is
+      # the leg with the fewest users, where a regression survives longest.
+      - name: Check the cross-compiled artifact's architecture
         if: matrix.target == 'x86_64-apple-darwin'
         shell: bash
         run: |
@@ -234,10 +239,11 @@ jobs:
           file "${{ matrix.asset }}" | grep -q 'x86_64' \
             || { echo "::error::${{ matrix.asset }} is not an x86_64 binary"; exit 1; }
 
-      # To sign-and-publish as an artifact, at its root and under its release
-      # name, and never to the release from here: Authenticode rewrites the
-      # .exe, so nothing may reach the release before every byte is final.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      # The file at the artifact root, under its release name, and never to
+      # the release from here: Authenticode rewrites the .exe, so nothing may
+      # reach the release before every byte is final. The name prefix is what
+      # `artifact-pattern` below matches.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: build-${{ matrix.asset }}
           path: ${{ matrix.asset }}
@@ -245,15 +251,13 @@ jobs:
           retention-days: 1
 
   # Self-update verification is fail-closed: a release without .sig assets
-  # bricks "Download update" for every existing install (this happened on
-  # v0.7.0, which shipped unsigned because signing was a manual step). The
-  # organisation's shared workflow, in this same run: Authenticode through
-  # SignPath for the .exe (once SignPath is on), then .sig, .meta and .meta.sig
-  # over the FINAL bytes with COLONY_SIGNING_KEY_PEM, upload to the draft,
-  # download again and verify, and only then publish. It fails the release if
-  # the key is missing, so an unsigned release can never ship silently.
-  # Pinned by SHA: it holds the release key. See design/releases.md, section
-  # "Shared signing workflow", in Project-Colony-Resources.
+  # bricks "Download update" for every existing install (v0.7.0 shipped
+  # unsigned because signing was a manual step). In the same run as the
+  # builds, chained by `needs:` rather than `on: release`: a release created
+  # with the default GITHUB_TOKEN fires no release events, so a workflow
+  # written that way never runs. The shared workflow fails the release if the
+  # key is missing. Pinned to the organisation's commit of the shared
+  # workflow; design/releases.md says when that pin moves.
   sign-and-publish:
     needs: [target, build]
     # Every dependency named explicitly. Guarding on `target` alone would let
@@ -263,7 +267,7 @@ jobs:
     permissions:
       actions: read
       contents: write
-    uses: Project-Colony/Project-Colony-Resources/.github/workflows/sign-and-publish.yml@619460ff4dc0049f129955f0988d368427b9eedb # main
+    uses: Project-Colony/Project-Colony-Resources/.github/workflows/sign-and-publish.yml@619460ff4dc0049f129955f0988d368427b9eedb # organisation pin
     with:
       tag: ${{ needs.target.outputs.tag }}
       # The four names self-update asks for (launcher_asset_name), each
@@ -273,18 +277,17 @@ jobs:
       # Uncomment once SignPath has approved this project and its project
       # exists in the Project-Colony SignPath organisation:
       # signpath-project-slug: "colony"
+      # Leave the default `code-signing-policy: true` only while README.md has
+      # a "## Code signing policy" section: the release notes link to it.
     # Named, not `inherit`: the called workflow gets these two and nothing else.
     secrets:
       COLONY_SIGNING_KEY_PEM: ${{ secrets.COLONY_SIGNING_KEY_PEM }}
       SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
 
-  # Chained here (not on `release: published`) because release-please creates
-  # the release with the default GITHUB_TOKEN, whose events do not trigger
-  # other workflows - the standalone trigger never fired once in nine
-  # releases. For the same reason the publish inside sign-and-publish, made
-  # with GITHUB_TOKEN, would not start it either. Running after
-  # sign-and-publish also guarantees the assets are signed and public before
-  # the AUR job hashes them.
+  # Chained here (not on `release: published`) for the same reason as
+  # sign-and-publish: the standalone trigger never fired once in nine
+  # releases. Running after sign-and-publish also guarantees the assets are
+  # signed and public before the AUR job hashes them.
   aur:
     name: Publish colony-bin to AUR
     needs: [target, sign-and-publish]

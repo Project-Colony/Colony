@@ -1,24 +1,32 @@
 # Release signing
 
-Colony verifies its own launcher self-updates with an **ed25519 signature**
-before applying them. This is mandatory and fail-closed: if the detached
-signature is missing, malformed, or does not verify against the embedded public
-key, the self-update is refused and the running binary is left untouched.
+Colony checks an **ed25519 signature** before it runs anything it downloads.
+The trusted public keys are embedded in [`src/signing.rs`](../src/signing.rs)
+(`RELEASE_PUBLIC_KEYS`) and verified with the pure-Rust `ed25519-dalek` crate,
+so the shipped binary needs no OpenSSL.
 
-- Verification: [`src/signing.rs`](../src/signing.rs) — embeds the public key and
-  verifies with the pure-Rust `ed25519-dalek` crate (no OpenSSL in the shipped
-  binary).
 - Signature format: the **raw 64-byte ed25519 signature** over the asset bytes,
   exactly what `openssl pkeyutl -sign -rawin` emits (base64 text is also
   accepted). Published as `<asset>.sig` next to each release asset.
-- Enforced only for the **launcher** (`colony-<platform>[.exe]`). Third-party
-  app installs continue to use the optional `sha256` field in `colony.json`,
-  plus `"signed": true` to require a signature (pinned client-side once an app
-  has been installed with one, so a repo cannot silently stop signing).
+- **Launcher self-updates** (`colony-<platform>[.exe]`): mandatory and
+  fail-closed. If the signature or the signed sidecar (below) is missing,
+  malformed or does not verify, the update is refused and the running binary
+  is left untouched.
+- **App installs and updates**: any app release that publishes `<asset>.sig`
+  MUST verify against the same keys, or the install is refused. An app without
+  a `.sig` installs as a legacy unsigned app, unless its `colony.json` declares
+  `"signed": true`. Once an install of an app has verified a signature, that
+  app is pinned: a later release that stops publishing `.sig` is refused,
+  whatever the manifest now says. The same applies to the `.meta` sidecar
+  ([`src/download.rs`](../src/download.rs), `download_release_asset`). The
+  optional `sha256` field in `colony.json` is checked on top of that.
+
+The organisation signs every program with one key, so the keys embedded here
+are the trust root for the launcher and for every signed app at once.
 
 ### Why a signature alone is not enough
 
-A signature over raw bytes proves only *these bytes came from the release key* —
+A signature over raw bytes proves only *these bytes came from the release key* -
 not **which** artefact or **which** version they are. Anything able to control
 what the release host serves could therefore replay an older, genuinely signed
 build as an "update" (a downgrade), or serve the macOS asset where the Linux one
@@ -36,7 +44,9 @@ asset it asked for, that its digest matches the bytes actually downloaded, that
 its version equals the tag the update check resolved, and that this version is
 **strictly newer** than the running build. That last check is the anti-rollback.
 Both the signature and the sidecar are re-verified at install time, not only at
-download time, so the staging file cannot be swapped in between.
+download time, so the staging file cannot be swapped in between. Apps get the
+same bindings with one difference: their version must be **no older** than the
+installed one, since an app pinned to a fixed tag must stay reinstallable.
 
 ## Every release MUST ship signatures and sidecars
 
@@ -46,39 +56,49 @@ fail for users on that channel. The release workflow's `sign-and-publish` job
 checks all three exist and verify for all four platforms and fails the release
 otherwise.
 
-## Signing (CI or local)
+Every other program's release depends on Colony's too: the organisation's
+release template downloads Colony's latest `colony-linux`, verifies its `.sig`
+and `.meta` against Colony's public key, and runs its `validate-manifest` on
+the program's `colony.json`. A Colony release whose signatures do not verify,
+or whose `validate-manifest` regresses, stops every program in the organisation
+from releasing.
 
-The private key never lives in the repo. Point `COLONY_SIGNING_KEY` at the
-ed25519 private key (PEM), set `COLONY_RELEASE_VERSION` to the release tag (it is
-bound into each sidecar), and run:
+## How releases are signed
 
-**Sign the PUBLISHED bytes, never a local rebuild.** Download the assets from
-the release first:
+Signing happens in CI and nowhere else. Since the v0.7.0 incident (a release
+shipped unsigned because signing was a manual step, bricking self-update for
+every existing install), there is no hand-signing procedure and no signing
+script in this repository.
 
-```sh
-gh release download v1.2.3 --dir dist \
-  --pattern colony-linux --pattern colony-windows.exe \
-  --pattern colony-macos --pattern colony-macos-x86
+The release workflow is `.github/workflows/release.yml`. Merging the release
+PR that release-please opens creates the tag and a release, which the workflow
+immediately holds as a draft. Its build legs only build, smoke-test and upload
+each binary as a workflow artifact; they never see a key. The
+`sign-and-publish` job then calls the organisation's shared workflow,
+`.github/workflows/sign-and-publish.yml` in
+[Project-Colony-Resources](https://github.com/Project-Colony/Project-Colony-Resources),
+pinned by commit, which in that same run:
 
-COLONY_SIGNING_KEY=/path/to/colony-release.pem \
-COLONY_RELEASE_VERSION=v1.2.3 \
-  ./scripts/sign-release.sh dist/colony-linux dist/colony-windows.exe \
-                            dist/colony-macos dist/colony-macos-x86
+1. checks the release is still a draft;
+2. sends `colony-windows.exe` to SignPath for Authenticode, once SignPath is
+   turned on for this repository (`signpath-project-slug`), and waits for a
+   person to approve the request;
+3. writes `.sig`, `.meta` and `.meta.sig` over the final bytes with the
+   `COLONY_SIGNING_KEY_PEM` organisation secret, in a job that checks out
+   nothing and builds nothing;
+4. uploads everything to the draft, downloads it again and verifies every
+   signature and digest against what users will download;
+5. publishes the release.
 
-gh release upload v1.2.3 dist/*.sig dist/*.meta --clobber
-```
+The order is the point: Authenticode rewrites the `.exe`, so a `.sig` or
+`.meta` computed before it would describe bytes that no longer exist, and the
+launcher would refuse the update. The job **fails the release** if the secret is
+missing or any file is missing, empty or does not verify, so a release the
+launcher cannot verify can no longer ship silently. Only after that does the
+`aur` job bump `colony-bin`.
 
-The download step is not optional. `sign-release.sh` hashes whatever local file
-you hand it into the `.meta` sidecar, and the client then enforces that digest
-against the bytes it downloaded. Rust release builds are not bit-reproducible
-across machines, so signing a fresh `cargo build --release` produces a sidecar
-whose digest does not match what users receive - and every install fails
-verification, which is worse than being unsigned because it also fails
-fail-closed.
-
-For each asset this writes `<asset>.sig`, `<asset>.meta` and `<asset>.meta.sig`,
-every signature self-verified before it is kept. Upload all of them as release
-assets, then confirm the count:
+A published release carries 16 assets (four binaries, each with `.sig`,
+`.meta` and `.meta.sig`):
 
 ```sh
 gh release view v1.2.3 --json assets --jq '.assets|length'   # must be 16
@@ -92,8 +112,15 @@ tells you which state you are in.
 **Still a draft, incomplete.** Nobody is affected: `/releases/latest` still
 points at the previous version and no client has been offered anything. Fix the
 cause and use **"Re-run failed jobs"**. The build artifacts are kept for one
-day; after that, dispatch the workflow again from the tag itself:
-`gh workflow run release-please.yml --ref <tag> -f tag=<tag>`.
+day; after that, dispatch the workflow again, started from the tag itself:
+
+```sh
+gh workflow run release.yml --ref <tag> -f tag=<tag>
+```
+
+The dispatch rebuilds the tagged commit, signs it and publishes it. It must
+start from the tag, not from `main`: with SignPath on, the shared workflow
+refuses a run whose commit is not the tag's.
 
 **Never "Re-run all jobs".** release-please re-runs against a `main` whose
 release already exists, emits an empty `release_created`, and every downstream
@@ -101,60 +128,37 @@ job skips - while the run reports green. That looks like a successful recovery
 and is the opposite of one.
 
 **Published but unsigned or partial.** Clients are being offered an update that
-cannot be applied. Take it out of `latest` first, then complete it:
+cannot be applied. Take it out of `latest` by turning it back into a draft,
+confirm the fallback, then run the same dispatch:
 
 ```sh
-gh release edit <tag> --prerelease          # assets exist; keeps their URLs alive
-# or: gh release edit <tag> --draft=true    # release is empty anyway
-gh api repos/Project-Colony/Colony/releases/latest --jq .tag_name   # confirm the fallback
+gh release edit <tag> --draft=true
+gh api repos/Project-Colony/Colony/releases/latest --jq .tag_name   # the previous version
+gh workflow run release.yml --ref <tag> -f tag=<tag>
 ```
 
-then follow the manual signing procedure above and re-publish with
-`gh release edit <tag> --draft=false --prerelease=false`.
-
-### In CI (the normal path)
-
-Since the v0.7.0 incident (a release shipped unsigned because signing was a
-manual step, bricking self-update for every existing install), signing is a
-mandatory part of the release workflow, `.github/workflows/release-please.yml`.
-Its build legs only build, smoke-test and upload each binary as a workflow
-artifact. The `sign-and-publish` job then calls the organisation's shared
-workflow, `.github/workflows/sign-and-publish.yml` in
-[Project-Colony-Resources](https://github.com/Project-Colony/Project-Colony-Resources),
-pinned by commit, which in that same run:
-
-1. checks the release is still a draft;
-2. sends `colony-windows.exe` to SignPath for Authenticode, once SignPath is
-   turned on for this repository (`signpath-project-slug`), and waits for a
-   person to approve the request;
-3. writes `.sig`, `.meta` and `.meta.sig` over the final bytes with the
-   `COLONY_SIGNING_KEY_PEM` secret (the PEM contents), in the same format as
-   `scripts/sign-release.sh`;
-4. uploads everything to the draft, downloads it again and verifies every
-   signature and digest against what users will download;
-5. publishes the release.
-
-The order is the point: Authenticode rewrites the `.exe`, so a `.sig` or
-`.meta` computed before it would describe bytes that no longer exist, and the
-launcher would refuse the update. The job **fails the release** if the secret is
-missing or any file is missing, empty or does not verify, so a release the
-launcher cannot verify can no longer ship silently. The manual procedure above
-remains for re-signing an old release by hand.
+The workflow refuses to touch a release that is still published, because
+replacing live binaries would leave signatures describing bytes users no longer
+receive. Drafting it first is what makes the rebuild possible.
 
 ## Key custody
 
-- The current private key was generated locally and stored at
-  `~/.config/colony/release-signing/colony-release.pem` (mode `600`), with the
-  public key beside it (`colony-release.pub.pem`). **Back it up somewhere
-  durable and secret** (password manager / offline media). If it is lost, you
-  must rotate (below); if it leaks, rotate immediately.
-- For CI, store the PEM contents as an encrypted secret
-  (`COLONY_SIGNING_KEY_PEM`), not in the repo.
+- The private key exists in one place: the `COLONY_SIGNING_KEY_PEM`
+  organisation secret (the PEM contents). Only the signing job of the shared
+  workflow receives it. There is no copy on any machine and none in any
+  repository.
+- GitHub never returns a secret's value, so nobody, maintainers included, can
+  read the key back. If the secret is deleted or overwritten, the key is gone
+  and the only way forward is a rotation (below). If it leaks, rotate
+  immediately.
+- Every program in the organisation is signed with this same key, so a
+  rotation is an organisation-wide event, not a Colony-only one.
 
 ## Generating / rotating the key
 
 ```sh
-# 1. New keypair
+# 1. New keypair, on a trusted machine. The private half goes into the org
+#    secret and is then deleted from disk.
 openssl genpkey -algorithm ed25519 -out colony-release.pem
 openssl pkey -in colony-release.pem -pubout -out colony-release.pub.pem
 
@@ -177,21 +181,43 @@ Rotate over three releases:
 | N+1 | `[new, old]` | **new** | everyone on N or later |
 | N+2 | `[new]` | **new** | everyone on N or later; `old` is now revoked |
 
-Two rules make this safe:
+Step by step:
 
-- **N must be signed with the OLD key.** Its whole job is to widen the trusted
-  set on machines that only trust `old`. Signing it with `new` is the mistake
-  that strands the install base.
-- **Do not skip to N+2.** Anyone still on N-1 or earlier when `old` is dropped
-  can no longer self-update and must reinstall by hand. Leave N and N+1 in the
-  field long enough for that to be a rounding error, and check the release
-  download counts before shipping N+2.
+1. **Ship N carrying both keys, signed with the old one.** Add the new key to
+   `RELEASE_PUBLIC_KEYS`, update the length assertion in the test below, and
+   release as usual: the org secret still holds `old`. N's whole job is to
+   widen the trusted set on machines that only trust `old`. Signing it with
+   `new` is the mistake that strands the install base.
+2. **Wait.** Leave N in the field long enough for installs older than N to be
+   a rounding error, and check the release download counts.
+3. **Switch the org secret to `new`.** From then on the shared workflow signs
+   every program with `new`, not only Colony. Every Colony install still on
+   N-1 or older trusts only `old`, so it refuses **every signed app** it tries
+   to install or update, not only its own self-update. That is why step 2
+   comes first.
+4. **Ship N+1**, signed with `new`. At the same time, replace Colony's public
+   key PEM everywhere it is copied:
+   - in Project-Colony-Resources, `templates/sign-and-publish-caller.yml` (the
+     `Validate colony.json` step verifies Colony's latest `colony-linux`
+     against it) and the `## Code signing policy` section of
+     `templates/program/README.md`;
+   - in every program, its copy of that release workflow and the public key in
+     its README's `## Code signing policy`;
+   - in this file, under "Verifying a signature by hand".
+
+   Until a program's workflow carries the new PEM, its releases stop at the
+   manifest check once N+1 is Colony's latest release.
+5. **Ship N+2** with `old` removed from `RELEASE_PUBLIC_KEYS`. Do not skip
+   to it: anyone still on N-1 or earlier when `old` is dropped can no longer
+   self-update and must reinstall by hand.
 
 For an EMERGENCY rotation after a key leak, the same sequence applies but the
 overlap is a liability rather than a courtesy: the attacker holding `old` can
 sign anything the field will accept until N+2 ships. Publish N and N+1 back to
 back, keep the window to hours, and say so publicly - a compromised key is not a
-quiet fix.
+quiet fix. If the old key is lost rather than leaked, N cannot be signed with
+it: every install older than the first release embedding the new key has to
+reinstall by hand.
 
 The test `any_trusted_key_verifies_and_an_untrusted_one_does_not` in
 `src/signing.rs` asserts both halves: any listed key validates, an unlisted one
@@ -200,9 +226,18 @@ requires deliberately updating that assertion.
 
 ## Verifying a signature by hand
 
+With OpenSSL 3 and the public key:
+
 ```sh
-openssl pkey -pubin -in colony-release.pub.pem -out /dev/null   # sanity: key parses
-openssl pkeyutl -verify -pubin -inkey colony-release.pub.pem \
-  -rawin -in colony-linux -sigfile colony-linux.sig
-# -> "Signature Verified Successfully"
+cat > colony-release.pub.pem <<'EOF'
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEARNjg3Nn8H6/aBg1unwGjkUTcrdTxERNefVaqU8cFu0s=
+-----END PUBLIC KEY-----
+EOF
+a=colony-linux
+openssl pkeyutl -verify -pubin -inkey colony-release.pub.pem -rawin -in "$a" -sigfile "$a.sig"
+openssl pkeyutl -verify -pubin -inkey colony-release.pub.pem -rawin -in "$a.meta" -sigfile "$a.meta.sig"
+# -> "Signature Verified Successfully", twice
+cat "$a.meta"     # version=<tag>, asset=<file name>, sha256=<digest>
+sha256sum "$a"    # the digest must equal the sha256 line
 ```
