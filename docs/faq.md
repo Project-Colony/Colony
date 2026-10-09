@@ -162,8 +162,10 @@ Themes apply immediately, no restart. If a palette looks off, verify Settings â†
 Yes. Colony looks for a `categories.json` override before falling back to the
 copy compiled into the binary, in this order:
 
-1. `~/.config/colony/categories.json` (`%LOCALAPPDATA%\colony\categories.json`
-   on Windows, where `%APPDATA%\colony\` is still read after it)
+1. `~/.config/colony/categories.json` on Linux,
+   `~/Library/Application Support/colony/categories.json` on macOS, and
+   `%LOCALAPPDATA%\colony\categories.json` on Windows, where
+   `%APPDATA%\colony\` is still read after it
 2. next to the `colony` binary
 3. `./config/categories.json`
 

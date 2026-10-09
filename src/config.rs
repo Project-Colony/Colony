@@ -13,7 +13,8 @@ use std::path::PathBuf;
 ///
 /// Search order, first existing file wins:
 ///   1. `<config_local>/colony/<file_name>`: per-user override, `~/.config/colony/`
-///      on Linux and `%LOCALAPPDATA%\colony\` on Windows.
+///      on Linux, `~/Library/Application Support/colony/` on macOS and
+///      `%LOCALAPPDATA%\colony\` on Windows.
 ///   2. `<config>/colony/<file_name>`: Windows only, the Roaming folder that
 ///      earlier versions read, so an override placed there keeps working.
 ///   3. `<exe_dir>/config/<file_name>`: config shipped next to the binary.

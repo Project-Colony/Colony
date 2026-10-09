@@ -276,15 +276,6 @@ fn default_unix_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// Whether `path` sits under the shared install root, where every program
-/// Colony installs lives. The installed-apps state is the only record of what
-/// Colony put on disk; a hard-coded list of directories went stale the moment
-/// the install root moved.
-#[cfg(not(windows))]
-fn is_colony_app(path: &Path) -> bool {
-    crate::persistence::colony_apps_dir().is_ok_and(|apps| path.starts_with(apps))
-}
-
 fn expand_env_vars(value: &str) -> String {
     let mut output = String::new();
     let mut chars = value.chars().peekable();
@@ -608,18 +599,13 @@ fn parse_desktop_file(path: &Path) -> Result<Application> {
     let name = name.ok_or_else(|| anyhow::anyhow!("No name found"))?;
     let exec = exec.ok_or_else(|| anyhow::anyhow!("No exec found"))?;
 
-    let origin = if is_colony_app(path) {
-        AppOrigin::Colony
-    } else {
-        AppOrigin::External
-    };
-
     Ok(Application {
         name,
         exec,
         icon,
         category: categorize_linux_app(&categories),
-        origin,
+        // The entries Colony writes for its own apps were skipped above.
+        origin: AppOrigin::External,
     })
 }
 
@@ -711,18 +697,12 @@ fn parse_macos_app(path: &Path) -> Option<Application> {
 
     let category = categorize_macos_app(&name);
 
-    let origin = if is_colony_app(path) {
-        AppOrigin::Colony
-    } else {
-        AppOrigin::External
-    };
-
     Some(Application {
         name,
         exec,
         icon: None,
         category,
-        origin,
+        origin: AppOrigin::External,
     })
 }
 
