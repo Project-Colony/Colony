@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.5](https://github.com/Project-Colony/Colony/compare/v0.10.4...v0.10.5) (2026-10-09)
+
+
+### Fixes
+
+* **paths:** recover the profile a skipped or failed migration left behind and prune update staging from the cache ([#88](https://github.com/Project-Colony/Colony/issues/88)) ([6fa151d](https://github.com/Project-Colony/Colony/commit/6fa151d2e7b1e61cb12705d93d192daf06b3532b))
+
+
+### Documentation
+
+* point app authors at the release template that signs outside the build ([#89](https://github.com/Project-Colony/Colony/issues/89)) ([13b39c2](https://github.com/Project-Colony/Colony/commit/13b39c2566528cadd413eb0149a8406096ec802e))
+
 ## [0.10.4](https://github.com/Project-Colony/Colony/compare/v0.10.3...v0.10.4) (2026-10-08)
 
 
