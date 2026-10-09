@@ -1,15 +1,16 @@
 //! Detached ed25519 signature verification for signed launcher self-updates.
 //!
-//! Colony's own release binaries are signed with an ed25519 private key held
-//! off-machine (see `docs/release-signing.md`); the matching public key is
-//! embedded below. Before a launcher self-update is applied, the downloaded
-//! binary is verified against a detached `<asset>.sig` signature. Verification
-//! is mandatory and fail-closed: a missing, malformed, or invalid signature
-//! aborts the update rather than installing untrusted code.
+//! Colony's own release binaries are signed with an ed25519 private key that
+//! only the organisation's shared signing workflow can use (see
+//! `docs/release-signing.md`); the matching public key is embedded below.
+//! Before a launcher self-update is applied, the downloaded binary is verified
+//! against a detached `<asset>.sig` signature. Verification is mandatory and
+//! fail-closed: a missing, malformed, or invalid signature aborts the update
+//! rather than installing untrusted code.
 //!
 //! The signature format is the raw 64-byte ed25519 signature emitted by
 //! `openssl pkeyutl -sign -rawin` (base64 text is also accepted), so releases
-//! can be signed with the ubiquitous `openssl` CLI in CI — no special tooling.
+//! can be signed with the ubiquitous `openssl` CLI in CI, no special tooling.
 
 use anyhow::Result;
 use base64::Engine;
@@ -18,7 +19,7 @@ use ed25519_dalek::{Signature, VerifyingKey};
 /// Colony release signing public keys (ed25519, raw 32 bytes each).
 ///
 /// A LIST, not a single key, because rotation is otherwise not expressible.
-/// With one embedded key, `sign-release.sh` emits exactly one `<asset>.sig`,
+/// With one embedded key, the signing workflow emits exactly one `<asset>.sig`,
 /// which is either old-key (refused by every updated client) or new-key
 /// (refused by every client in the field) - and verification is fail-closed, so
 /// the refusal is permanent. The documented rotation procedure could not be
@@ -54,7 +55,8 @@ pub const METADATA_SUFFIX: &str = ".meta";
 /// WHICH artefact or version they are, so an attacker able to control what the
 /// release host serves could replay an older, genuinely signed build. This
 /// sidecar binds the bytes to a version and a filename, and is signed with the
-/// same key; `scripts/sign-release.sh` emits it for every asset.
+/// same key; the organisation's shared signing workflow emits it for every
+/// asset.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleaseMetadata {
     /// Release tag the asset belongs to, e.g. `v1.2.3`.
@@ -243,8 +245,8 @@ mod tests {
     }
 
     #[test]
-    fn metadata_parses_sign_release_output() {
-        // Byte-for-byte what scripts/sign-release.sh writes.
+    fn metadata_parses_signing_workflow_output() {
+        // Byte-for-byte what the shared signing workflow writes.
         let raw = b"version=v0.9.1\nasset=colony-linux\nsha256=B1A5AF3D\n";
         let meta = ReleaseMetadata::parse(raw).unwrap();
         assert_eq!(meta.version, "v0.9.1");

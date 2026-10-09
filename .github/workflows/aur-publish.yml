@@ -3,7 +3,7 @@
 # MotherSphere AUR account — scope is limited to AUR push access, revocable by
 # removing that key from the AUR profile if ever compromised.
 #
-# Invoked as a reusable workflow from release-please.yml after the release
+# Invoked as a reusable workflow from release.yml after the release
 # assets are built, uploaded and signed. It deliberately does NOT trigger on
 # `release: published`: our releases are created by release-please with the
 # default GITHUB_TOKEN, and GitHub suppresses workflow triggers for events
