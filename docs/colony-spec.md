@@ -224,17 +224,12 @@ signing is adopted per-app, no flag day - **unless** the manifest declares:
 With `"signed": true`, a missing signature ABORTS the install. Declare it once
 every release of the app ships `.sig` assets. Not every Project-Colony app
 signs its releases yet, so check an app's release assets rather than assuming.
-Sign with:
-
-```sh
-COLONY_SIGNING_KEY=/path/to/colony-release.pem \
-COLONY_RELEASE_VERSION=<tag> ./scripts/sign-release.sh <asset>
-```
-
-`COLONY_RELEASE_VERSION` is required because the script also emits a signed
-`<asset>.meta` sidecar binding the bytes to a version and a filename. The
-launcher's self-update requires it, and app installs check it whenever it is
-published (see below).
+An app signs nothing itself: its release workflow, copied from the
+[release workflow template](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/sign-and-publish-caller.yml),
+hands the built binaries to the organisation's shared signing workflow. That
+workflow writes `<asset>.sig` and a signed `<asset>.meta` sidecar binding the
+bytes to a version and a filename. The launcher's self-update requires the
+sidecar, and app installs check it whenever it is published (see below).
 
 Note the trust boundary. Signatures protect against tampered release assets
 (e.g. an asset swapped after publication), because forging one requires the
@@ -274,5 +269,6 @@ colony validate-manifest colony.json $(tr '\n' ' ' < names.txt)
 ```
 
 It exits non-zero on any problem, so it works as a CI gate. The shipped
-[release workflow template](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/release.yml)
-already runs it against each release before signing.
+[release workflow template](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/sign-and-publish-caller.yml)
+already runs it on every release, in its Linux build job, before anything is
+signed.
