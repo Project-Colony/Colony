@@ -1,6 +1,6 @@
+use colony_ui::{sz, ui_font, ui_font_bold};
 use iced::advanced::widget::operation::Outcome;
 use iced::advanced::widget::{Id, Operation};
-use iced::font::Weight;
 use iced::widget::{button, column, container, row, text, Column};
 use iced::{Color, Element, Fill, Length, Rectangle, Task};
 
@@ -390,33 +390,29 @@ impl App {
 
         let primary_btn =
             |label_key: &'static str, msg: Message| -> iced::widget::Button<'a, Message> {
-                button(
-                    text(i18n::t(label_key))
-                        .size(self.sz(13))
-                        .font(self.app_font()),
-                )
-                .on_press(msg)
-                .padding([9, 18])
-                .style(|_theme, status| {
-                    let bg = match status {
-                        button::Status::Hovered => Palette::BTN_SUCCESS_HOVER(),
-                        _ => Palette::BTN_SUCCESS(),
-                    };
-                    button::Style {
-                        background: Some(bg.into()),
-                        text_color: Palette::TEXT_PRIMARY(),
-                        border: iced::Border::default().rounded(8),
-                        ..Default::default()
-                    }
-                })
+                button(text(i18n::t(label_key)).size(sz(13)).font(ui_font()))
+                    .on_press(msg)
+                    .padding([9, 18])
+                    .style(|_theme, status| {
+                        let bg = match status {
+                            button::Status::Hovered => Palette::BTN_SUCCESS_HOVER(),
+                            _ => Palette::BTN_SUCCESS(),
+                        };
+                        button::Style {
+                            background: Some(bg.into()),
+                            text_color: Palette::TEXT_PRIMARY(),
+                            border: iced::Border::default().rounded(8),
+                            ..Default::default()
+                        }
+                    })
             };
 
         let ghost_btn =
             |label_key: &'static str, msg: Message| -> iced::widget::Button<'a, Message> {
                 button(
                     text(i18n::t(label_key))
-                        .size(self.sz(12))
-                        .font(self.app_font())
+                        .size(sz(12))
+                        .font(ui_font())
                         .color(Palette::TEXT_SECONDARY()),
                 )
                 .on_press(msg)
@@ -483,20 +479,20 @@ impl App {
         .align_y(iced::Alignment::Center);
 
         let title_size = if matches!(step.zone, Zone::None) {
-            self.sz(24)
+            sz(24)
         } else {
-            self.sz(18)
+            sz(18)
         };
 
         let mut body: Column<'a, Message> = column![
             text(i18n::t(step.title_key))
                 .size(title_size)
-                .font(self.app_font_with_weight(Weight::Bold))
+                .font(ui_font_bold())
                 .color(Palette::TEXT_PRIMARY()),
             container(text("")).height(8),
             text(i18n::t(step.desc_key))
-                .size(self.sz(13))
-                .font(self.app_font())
+                .size(sz(13))
+                .font(ui_font())
                 .color(Palette::TEXT_SECONDARY()),
         ]
         .spacing(2);

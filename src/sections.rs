@@ -562,6 +562,32 @@ mod tests {
         assert!(!sections.unwrap().is_empty());
     }
 
+    /// Each icon is a Nerd Font glyph, written as a JSON escape: a pasted
+    /// private-use character is invisible in an editor and in a diff, so a
+    /// wrong one could only be caught by looking at the running sidebar.
+    #[test]
+    fn category_icons_are_escaped_nerd_font_glyphs() {
+        assert!(
+            EMBEDDED_CATEGORIES.is_ascii(),
+            "write glyphs as \\uXXXX escapes, not pasted characters"
+        );
+        let entries: Vec<serde_json::Value> =
+            serde_json::from_str(EMBEDDED_CATEGORIES).expect("embedded parses");
+        for entry in &entries {
+            let icon = entry["icon"].as_str().expect("every section has an icon");
+            let mut chars = icon.chars();
+            let (Some(glyph), None) = (chars.next(), chars.next()) else {
+                panic!("{icon:?} must be exactly one glyph");
+            };
+            assert!(
+                ('\u{e000}'..='\u{f8ff}').contains(&glyph),
+                "{:?}: U+{:04X} is outside the private-use area the Nerd Font fills",
+                entry["name"],
+                glyph as u32
+            );
+        }
+    }
+
     #[test]
     fn embedded_categories_has_expected_names() {
         let sections = parse_sections(EMBEDDED_CATEGORIES).expect("embedded parses");

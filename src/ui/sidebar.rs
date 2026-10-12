@@ -1,4 +1,5 @@
-use iced::font::Weight;
+use colony_ui::widgets;
+use colony_ui::{fonts, sz, ui_font, Typography};
 use iced::widget::{button, column, container, row, scrollable, text, Column};
 
 use iced::{Element, Fill, Length};
@@ -6,53 +7,25 @@ use iced::{Element, Fill, Length};
 use crate::message::Message;
 use crate::sections::Section;
 use crate::state::{App, GitHubState};
+use crate::ui::glyph_label;
 use crate::ui::theme::Palette;
 
 impl App {
     pub(crate) fn view_sidebar(&self) -> Element<'_, Message> {
-        let title_text = row![
-            text("Colony")
-                .size(self.sz(30))
-                .font(self.app_font_with_weight(Weight::Bold)),
-            text("\u{f013}")
-                .size(self.sz(14))
-                .font(self.app_font())
-                .color(if self.show_settings {
-                    Palette::TEXT_PRIMARY()
-                } else {
-                    Palette::TEXT_DIMMER()
-                }),
-        ]
-        .spacing(10)
-        .align_y(iced::Alignment::Center);
+        let typo = Typography::current();
 
-        let show_settings = self.show_settings;
-        let title = button(title_text)
-            .on_press(Message::ToggleSettings)
-            .padding([4, 8])
-            .style(move |_theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => Palette::BG_CARD_HOVER(),
-                    _ if show_settings => Palette::BG_SELECTED(),
-                    _ => iced::Color::TRANSPARENT,
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: Palette::TEXT_PRIMARY(),
-                    border: iced::Border::default().rounded(8),
-                    ..Default::default()
-                }
-            });
+        // The way into Preferences, and back out: the page's Close button
+        // sends the same message.
+        let title = widgets::identity_button(
+            &typo,
+            "Colony",
+            30,
+            self.show_settings,
+            Message::ToggleSettings,
+        );
 
-        let category_header = text(crate::i18n::t("categories"))
-            .size(self.sz(13))
-            .font(self.app_font())
-            .color(Palette::TEXT_MUTED());
-
-        let hint_text = text(crate::i18n::t("hint_keyboard"))
-            .size(self.sz(10))
-            .font(self.app_font())
-            .color(Palette::TEXT_DIMMEST());
+        let category_header = widgets::nav_label(&typo, &crate::i18n::t("categories"));
+        let hint_text = widgets::nav_hint(&typo, &crate::i18n::t("hint_keyboard"));
 
         let category_buttons: Vec<Element<'_, Message>> = self
             .sections
@@ -76,24 +49,26 @@ impl App {
             Palette::TEXT_DIM()
         };
 
-        let github_label = if github_connected {
-            "GitHub \u{f00c}"
-        } else {
-            "GitHub"
-        };
-
-        let github_btn_content = row![
+        let mut github_btn_content = row![
             text("\u{f09b}")
-                .size(self.sz(18))
-                .font(self.app_font())
+                .size(sz(18))
+                .font(fonts::glyph_font())
                 .color(github_icon_color),
-            text(github_label)
-                .size(self.sz(13))
-                .font(self.app_font())
+            text("GitHub")
+                .size(sz(13))
+                .font(ui_font())
                 .color(github_icon_color),
         ]
         .spacing(10)
         .align_y(iced::Alignment::Center);
+        if github_connected {
+            github_btn_content = github_btn_content.push(
+                text("\u{f00c}")
+                    .size(sz(13))
+                    .font(fonts::glyph_font())
+                    .color(github_icon_color),
+            );
+        }
 
         let show_menu = self.show_github_menu;
         let github_btn = button(github_btn_content)
@@ -114,14 +89,15 @@ impl App {
                 ..Default::default()
             });
 
-        let rescan_label = if self.is_scanning {
-            format!("\u{f110}  {}", crate::i18n::t("scanning"))
+        let rescan_label: Element<'_, Message> = if self.is_scanning {
+            glyph_label("\u{f110}", crate::i18n::t("scanning"), 13, ui_font()).into()
         } else {
-            crate::i18n::t("rescan")
+            text(crate::i18n::t("rescan"))
+                .size(sz(13))
+                .font(ui_font())
+                .into()
         };
-        let rescan_btn_base = button(text(rescan_label).size(self.sz(13)).font(self.app_font()))
-            .padding([8, 16])
-            .width(Fill);
+        let rescan_btn_base = button(rescan_label).padding([8, 16]).width(Fill);
         let rescan_btn = if self.is_scanning {
             rescan_btn_base
         } else {
@@ -138,48 +114,44 @@ impl App {
             // press that only ever produced a warning toast, with no dismiss,
             // for the whole session.
             if self.launcher_system_managed {
-                return_system_managed_badge(self, &update_info.0)
+                return_system_managed_badge(&update_info.0)
             } else {
-                let (label, msg): (String, Message) = if let Some(ref path) =
-                    self.launcher_update_staged
-                {
+                let (glyph, label, msg) = if let Some(ref path) = self.launcher_update_staged {
                     (
+                        "\u{f021}",
                         crate::i18n::t("launcher_restart_to_update"),
                         Message::ApplyLauncherUpdate(path.clone()),
                     )
                 } else {
                     let tag = &update_info.0;
                     (
+                        "\u{f0aa}",
                         crate::i18n::t_fmt("launcher_update_available_short", &[("version", tag)]),
                         Message::DownloadLauncherUpdate,
                     )
                 };
 
                 let is_downloading = self.is_downloading;
-                button(
-                    text(label)
-                        .size(self.sz(11))
-                        .font(self.app_font())
-                        .color(Palette::ACCENT()),
-                )
-                .on_press_maybe(if is_downloading { None } else { Some(msg) })
-                .padding([6, 12])
-                .width(Fill)
-                .style(|_theme, status| {
-                    let (bg, text_color) = crate::ui::theme::button_colors(
-                        status,
-                        Palette::BG_SELECTED(),
-                        Palette::BG_CARD_HOVER(),
-                        Palette::ACCENT(),
-                    );
-                    button::Style {
-                        background: Some(bg.into()),
-                        text_color,
-                        border: iced::Border::default().rounded(6),
-                        ..Default::default()
-                    }
-                })
-                .into()
+                // The texts take button_colors' accent, dimmed while disabled.
+                button(glyph_label(glyph, label, 11, ui_font()))
+                    .on_press_maybe(if is_downloading { None } else { Some(msg) })
+                    .padding([6, 12])
+                    .width(Fill)
+                    .style(|_theme, status| {
+                        let (bg, text_color) = crate::ui::theme::button_colors(
+                            status,
+                            Palette::BG_SELECTED(),
+                            Palette::BG_CARD_HOVER(),
+                            Palette::ACCENT(),
+                        );
+                        button::Style {
+                            background: Some(bg.into()),
+                            text_color,
+                            border: iced::Border::default().rounded(6),
+                            ..Default::default()
+                        }
+                    })
+                    .into()
             }
         } else {
             container(text("")).height(0).into()
@@ -202,7 +174,7 @@ impl App {
         ]
         .spacing(10)
         .padding(16)
-        .width(200);
+        .width(sidebar_width());
 
         container(sidebar_content)
             .style(|_theme| container::Style {
@@ -213,6 +185,8 @@ impl App {
             .into()
     }
 
+    /// One section of the sidebar: its glyph and its name, selected by
+    /// background like every list in a Colony program.
     pub(crate) fn view_section_button(
         &self,
         index: usize,
@@ -220,86 +194,44 @@ impl App {
     ) -> Element<'_, Message> {
         let is_selected = self.selected_section == index && !self.show_github_menu;
 
-        let text_color = if is_selected {
-            Palette::TEXT_PRIMARY()
-        } else {
-            Palette::TEXT_DIM()
-        };
+        // No colour on the texts: they take the button's, which
+        // selection_style sets to contrast_on(accent) when selected.
+        let content = row![
+            text(section.icon.clone())
+                .size(sz(15))
+                .font(fonts::glyph_font()),
+            text(crate::i18n::section_display_name(&section.name))
+                .size(sz(14))
+                .font(ui_font()),
+        ]
+        .spacing(10)
+        .align_y(iced::Alignment::Center);
 
-        // Animated indicator: alpha based on distance from animated position
-        let indicator_alpha = if self.animations && !self.reduce_motion {
-            let button_y = index as f32 * 44.0;
-            let distance = (self.sidebar_indicator_pos() - button_y).abs();
-            (1.0 - distance / 44.0).clamp(0.0, 1.0)
-        } else if is_selected {
-            1.0
-        } else {
-            0.0
-        };
-        let accent = Palette::ACCENT();
-        let indicator_color = iced::Color {
-            a: accent.a * indicator_alpha,
-            ..accent
-        };
-
-        let indicator = container(text(""))
-            .width(4)
-            .height(Length::Fill)
-            .style(move |_theme| container::Style {
-                background: Some(indicator_color.into()),
-                ..Default::default()
-            });
-
-        let icon = text(section.icon.clone())
-            .size(self.sz(15))
-            .font(self.app_font())
-            .color(text_color);
-
-        let label = text(crate::i18n::section_display_name(&section.name))
-            .size(self.sz(14))
-            .font(self.app_font())
-            .color(text_color);
-
-        let content = row![indicator, icon, label]
-            .spacing(10)
-            .align_y(iced::Alignment::Center);
-
-        let btn = button(content)
+        button(content)
             .on_press(Message::SectionSelected(index))
             .padding([10, 14])
             .width(Fill)
-            .style(move |theme, status| {
-                if is_selected {
-                    button::Style {
-                        background: Some(Palette::BG_SELECTED().into()),
-                        text_color: Palette::TEXT_PRIMARY(),
-                        border: iced::Border::default().rounded(6),
-                        ..button::primary(theme, status)
-                    }
-                } else {
-                    button::Style {
-                        background: Some(iced::Color::TRANSPARENT.into()),
-                        text_color: Palette::TEXT_DIMMER(),
-                        border: iced::Border::default().rounded(6),
-                        ..button::secondary(theme, status)
-                    }
-                }
-            });
-
-        btn.into()
+            .style(widgets::selection_style(is_selected))
+            .into()
     }
+}
+
+/// The sidebar's width: 200 at a text scale of 1.0, growing with the text so
+/// "Développement" still fits on one line at 1.68x.
+pub(crate) fn sidebar_width() -> f32 {
+    200.0 * colony_ui::font_scale()
 }
 
 /// The sidebar's update badge for an install Colony cannot update itself:
 /// informational text, not a button that is guaranteed to fail.
-fn return_system_managed_badge<'a>(app: &App, version: &str) -> Element<'a, Message> {
+fn return_system_managed_badge<'a>(version: &str) -> Element<'a, Message> {
     container(
         text(crate::i18n::t_fmt(
             "launcher_update_system_managed",
             &[("version", version)],
         ))
-        .size(app.sz(11))
-        .font(app.app_font())
+        .size(sz(11))
+        .font(ui_font())
         .color(Palette::TEXT_DIMMER()),
     )
     .padding([6, 12])

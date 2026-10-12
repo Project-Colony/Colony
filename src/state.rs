@@ -1,7 +1,7 @@
-use iced::font::Weight;
-use iced::Font;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
+
+use colony_ui::preferences::StandardPreferences;
 
 use crate::github::ColonyRepo;
 use crate::oauth::OAuthSession;
@@ -23,29 +23,6 @@ pub fn with_alpha(color: iced::Color, alpha: f32) -> iced::Color {
         a: color.a * alpha,
         ..color
     }
-}
-
-// --- Font constants ---
-
-pub const APP_FONT_NAME: &str = "JetBrainsMono Nerd Font";
-pub const APP_FONT_BYTES: [&[u8]; 3] = [
-    include_bytes!("ui/assets/fonts/JetBrainsMonoNerdFont/JetBrainsMonoNerdFont-Regular.ttf"),
-    include_bytes!("ui/assets/fonts/JetBrainsMonoNerdFont/JetBrainsMonoNerdFont-Medium.ttf"),
-    include_bytes!("ui/assets/fonts/JetBrainsMonoNerdFont/JetBrainsMonoNerdFont-Bold.ttf"),
-];
-
-pub const DYSLEXIA_FONT_NAME: &str = "OpenDyslexic";
-pub const DYSLEXIA_FONT_BYTES: &[u8] =
-    include_bytes!("ui/assets/fonts/OpenDyslexic/OpenDyslexic-Regular.otf");
-
-pub const FA_FONT_NAME: &str = "Font Awesome 6 Free";
-pub const FA_FONT_BYTES: [&[u8]; 2] = [
-    include_bytes!("ui/assets/fonts/FontAwesome/fa-solid-900.ttf"),
-    include_bytes!("ui/assets/fonts/FontAwesome/fa-regular-400.ttf"),
-];
-
-pub fn default_font() -> Font {
-    Font::with_name(APP_FONT_NAME)
 }
 
 // --- Notification system ---
@@ -171,7 +148,6 @@ pub struct App {
     /// is replaced and reordered by every refresh (GitHub sorts by last push),
     /// so an index here would silently swap the open page to a different app.
     pub active_colony_repo: Option<String>,
-    pub font: Font,
     // GitHub / OAuth
     pub github_state: GitHubState,
     pub show_github_menu: bool,
@@ -217,25 +193,17 @@ pub struct App {
     // Settings
     pub show_settings: bool,
     pub settings_category: usize,
-    // Appearance
-    pub selected_theme: String,   // e.g. "gruvbox"
-    pub selected_variant: String, // e.g. "dark"
-    pub selected_accent: String,  // e.g. "blue"
-    pub auto_accent: bool,
+    /// Theme, accent, text sizes, motion: the Appearance and Accessibility
+    /// preferences shared with every Colony program. `update` applies a change
+    /// to colony-ui's globals, which is what every view reads.
+    pub standard: StandardPreferences,
     // General preferences
     pub restore_session: bool,
     pub default_view: String, // "all", "favorites"
     pub language: String,     // "fr", "en"
     pub auto_check_updates: bool,
-    // Appearance extras
-    pub font_size: String, // "small", "default", "large"
-    pub animations: bool,
     // Accessibility
-    pub high_contrast: bool,
-    pub text_size_a11y: String, // "small", "default", "large", "xlarge"
-    pub reduce_motion: bool,
     pub keyboard_nav: bool,
-    pub dyslexia_font: bool,
     // Storage
     pub scan_on_startup: bool,
     // Async operation tracking
@@ -248,7 +216,8 @@ pub struct App {
     /// is on screen is routine and stays in the status line; a click the user
     /// just made deserves a toast, otherwise the button looks broken.
     pub repos_refresh_manual: bool,
-    // Settings section state persistence
+    /// The Preferences sections the user opened. Lives while the page is
+    /// open; closing the page folds them all again.
     pub settings_expanded_sections: HashSet<String>,
     // Detail tabs
     pub detail_tab: DetailTab,
@@ -306,9 +275,6 @@ pub struct App {
     pub launcher_system_managed: bool,
     // Animation state
     pub progress_display: f32, // smoothly interpolated progress bar value
-    pub sidebar_indicator_from: f32, // start Y position of current animation
-    pub sidebar_indicator_target: f32, // target Y position
-    pub sidebar_indicator_start: Option<Instant>, // when the animation started (None = idle)
 }
 
 impl App {
@@ -425,70 +391,10 @@ impl App {
         self.favorites.iter().any(|f| f == name)
     }
 
-    pub fn app_font(&self) -> Font {
-        if self.dyslexia_font {
-            Font::with_name(DYSLEXIA_FONT_NAME)
-        } else {
-            self.font
-        }
-    }
-
-    pub fn app_font_with_weight(&self, weight: Weight) -> Font {
-        if self.dyslexia_font {
-            Font {
-                weight,
-                ..Font::with_name(DYSLEXIA_FONT_NAME)
-            }
-        } else {
-            Font {
-                weight,
-                ..self.font
-            }
-        }
-    }
-
-    /// Compute the font scale factor from combined font_size + text_size_a11y settings.
-    pub fn font_scale(&self) -> f32 {
-        let base = match self.font_size.as_str() {
-            "small" => 0.85,
-            "large" => 1.2,
-            _ => 1.0, // "default"
-        };
-        let a11y = match self.text_size_a11y.as_str() {
-            "small" => 0.85,
-            "large" => 1.2,
-            "xlarge" => 1.4,
-            _ => 1.0, // "default"
-        };
-        base * a11y
-    }
-
-    /// Return a font size scaled by the user's font preferences.
-    pub fn sz(&self, base: u16) -> f32 {
-        (base as f32 * self.font_scale()).round()
-    }
-
-    /// Duration of the sidebar slide animation.
-    pub const SIDEBAR_ANIM_MS: f32 = 200.0;
-
-    /// Compute the current sidebar indicator Y position (time-based easing).
-    pub fn sidebar_indicator_pos(&self) -> f32 {
-        match self.sidebar_indicator_start {
-            Some(start) => {
-                let elapsed = start.elapsed().as_secs_f32() * 1000.0;
-                let t = (elapsed / Self::SIDEBAR_ANIM_MS).min(1.0);
-                let eased = ease_out_cubic(t);
-                self.sidebar_indicator_from
-                    + (self.sidebar_indicator_target - self.sidebar_indicator_from) * eased
-            }
-            None => self.sidebar_indicator_target,
-        }
-    }
-
     /// Returns true if any animation is currently in-flight.
     /// Used to conditionally activate the 60fps tick subscription.
     pub fn has_active_animations(&self) -> bool {
-        if !self.animations || self.reduce_motion {
+        if !colony_ui::effects_enabled() {
             return false;
         }
         // Notification fade-in or fade-out in progress
@@ -502,10 +408,6 @@ impl App {
             if (self.progress_display - target).abs() > 0.001 {
                 return true;
             }
-        }
-        // Sidebar indicator animating
-        if self.sidebar_indicator_start.is_some() {
-            return true;
         }
         false
     }
@@ -540,9 +442,10 @@ pub fn capitalize_platform(p: &str) -> String {
 
 #[cfg(test)]
 impl App {
-    /// A hermetic App for update-loop tests: no disk reads, no network, no
-    /// animation/auto-dismiss tasks (reduce_motion on, animations off,
-    /// auto_check_updates off). Tests that exercise disk-writing handlers must
+    /// A hermetic App for update-loop tests: no disk reads, no network, and
+    /// preferences that ask for no animation (reduce_motion on, animations
+    /// off, auto_check_updates off). It does not apply them: colony-ui's
+    /// globals are process-wide and tests run in parallel. Tests that exercise disk-writing handlers must
     /// additionally redirect XDG dirs - see `update::tests::with_temp_dirs`.
     pub(crate) fn new_for_test() -> Self {
         Self {
@@ -552,7 +455,6 @@ impl App {
             selected_section: 0,
             status_message: String::new(),
             active_colony_repo: None,
-            font: default_font(),
             github_state: GitHubState::Disconnected,
             show_github_menu: false,
             colony_repo_list: Vec::new(),
@@ -572,21 +474,16 @@ impl App {
             tutorial_bounds: Default::default(),
             show_settings: false,
             settings_category: 0,
-            selected_theme: "gruvbox".into(),
-            selected_variant: "dark".into(),
-            selected_accent: "blue".into(),
-            auto_accent: false,
+            standard: StandardPreferences {
+                animations: false,
+                reduce_motion: true,
+                ..Default::default()
+            },
             restore_session: true,
             default_view: "all".into(),
             language: "en".into(),
             auto_check_updates: false,
-            font_size: "default".into(),
-            animations: false,
-            high_contrast: false,
-            text_size_a11y: "default".into(),
-            reduce_motion: true,
             keyboard_nav: true,
-            dyslexia_font: false,
             scan_on_startup: false,
             is_scanning: false,
             is_downloading: false,
@@ -612,9 +509,6 @@ impl App {
             launcher_update_staged: None,
             launcher_system_managed: false,
             progress_display: 0.0,
-            sidebar_indicator_from: 0.0,
-            sidebar_indicator_target: 0.0,
-            sidebar_indicator_start: None,
         }
     }
 }

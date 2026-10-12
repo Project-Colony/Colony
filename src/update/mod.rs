@@ -160,34 +160,29 @@ impl App {
     /// (`close_behavior`, `update_channel`, `auto_install_updates`) were read
     /// by nothing and are gone.
     pub fn save_preferences(&self) {
-        let prefs = crate::persistence::UserPreferences {
+        if let Err(e) = crate::persistence::save_preferences(&self.user_preferences()) {
+            tracing::warn!("Failed to save preferences: {e}");
+        }
+    }
+
+    /// What [`save_preferences`](Self::save_preferences) writes.
+    pub(crate) fn user_preferences(&self) -> crate::persistence::UserPreferences {
+        crate::persistence::UserPreferences {
             selected_section: Some(self.selected_section),
             window_width: Some(self.window_size.0),
             window_height: Some(self.window_size.1),
             first_launch_done: Some(!self.show_first_launch),
-            selected_theme: Some(self.selected_theme.clone()),
-            selected_variant: Some(self.selected_variant.clone()),
-            selected_accent: Some(self.selected_accent.clone()),
-            auto_accent: Some(self.auto_accent),
+            standard: self.standard.clone(),
+            prefs_version: crate::persistence::PREFS_VERSION,
             // General
             restore_session: Some(self.restore_session),
             default_view: Some(self.default_view.clone()),
             language: Some(self.language.clone()),
             auto_check_updates: Some(self.auto_check_updates),
-            // Appearance
-            font_size: Some(self.font_size.clone()),
-            animations: Some(self.animations),
             // Accessibility
-            high_contrast: Some(self.high_contrast),
-            text_size_a11y: Some(self.text_size_a11y.clone()),
-            reduce_motion: Some(self.reduce_motion),
             keyboard_nav: Some(self.keyboard_nav),
-            dyslexia_font: Some(self.dyslexia_font),
             // Storage
             scan_on_startup: Some(self.scan_on_startup),
-        };
-        if let Err(e) = crate::persistence::save_preferences(&prefs) {
-            tracing::warn!("Failed to save preferences: {e}");
         }
     }
 
@@ -202,10 +197,6 @@ impl App {
             }
             Message::SectionSelected(index) => {
                 if index < self.sections.len() {
-                    // Start sidebar animation from current visual position
-                    self.sidebar_indicator_from = self.sidebar_indicator_pos();
-                    self.sidebar_indicator_target = index as f32 * 44.0;
-                    self.sidebar_indicator_start = Some(std::time::Instant::now());
                     self.selected_section = index;
                     self.active_colony_repo = None;
                     self.keyboard_cursor = None;
@@ -214,7 +205,7 @@ impl App {
                     // GitHub / Settings panel even though the underlying
                     // filter just changed.
                     self.show_github_menu = false;
-                    self.show_settings = false;
+                    self.close_settings();
                     self.save_preferences();
                 }
                 Task::none()
@@ -360,7 +351,6 @@ impl App {
                 );
                 Task::none()
             }
-            Message::FontLoaded(_) => Task::none(),
 
             // --- GitHub / OAuth (update/github_auth.rs) ---
             Message::ToggleGitHubMenu => self.toggle_github_menu(),
@@ -405,7 +395,7 @@ impl App {
                 Task::none()
             }
             Message::TickNotifications => {
-                if self.animations && !self.reduce_motion {
+                if colony_ui::effects_enabled() {
                     // Mark expired toasts for fade-out instead of dropping
                     // them: `removing` re-arms the animation subscription
                     // (has_active_animations), which previously stopped
@@ -462,15 +452,6 @@ impl App {
                     self.progress_display = 0.0;
                 }
 
-                // Sidebar indicator: clear animation when duration elapsed
-                if let Some(start) = self.sidebar_indicator_start {
-                    let elapsed_ms = start.elapsed().as_secs_f32() * 1000.0;
-                    if elapsed_ms >= App::SIDEBAR_ANIM_MS {
-                        self.sidebar_indicator_start = None;
-                        self.sidebar_indicator_from = self.sidebar_indicator_target;
-                    }
-                }
-
                 Task::none()
             }
             Message::KeyboardEvent(event) => self.keyboard_event(event),
@@ -513,22 +494,12 @@ impl App {
             Message::ToggleSettings => self.toggle_settings(),
             Message::SettingsCategory(idx) => self.select_settings_category(idx),
             Message::SettingsToggleSection(key) => self.toggle_settings_section(key),
-            Message::SelectThemeVariant(theme, variant) => {
-                self.select_theme_variant(theme, variant)
-            }
-            Message::SelectAccentColor(color) => self.select_accent_color(color),
-            Message::ToggleAutoAccent => self.toggle_auto_accent(),
+            Message::Preference(change) => self.change_preference(change),
             Message::ToggleRestoreSession => self.toggle_restore_session(),
             Message::PickDefaultView(v) => self.pick_default_view(v),
             Message::PickLanguage(v) => self.pick_language(v),
             Message::ToggleAutoCheckUpdates => self.toggle_auto_check_updates(),
-            Message::PickFontSize(v) => self.pick_font_size(v),
-            Message::ToggleAnimations => self.toggle_animations(),
-            Message::ToggleHighContrast => self.toggle_high_contrast(),
-            Message::PickTextSizeA11y(v) => self.pick_text_size_a11y(v),
-            Message::ToggleReduceMotion => self.toggle_reduce_motion(),
             Message::ToggleKeyboardNav => self.toggle_keyboard_nav(),
-            Message::ToggleDyslexiaFont => self.toggle_dyslexia_font(),
             Message::ToggleScanOnStartup => self.toggle_scan_on_startup(),
             Message::DetailTabSelected(tab) => {
                 self.detail_tab = tab;
@@ -722,43 +693,24 @@ mod tests {
     #[test]
     fn every_app_preference_survives_a_save_and_load_round_trip() {
         let mut app = App::new_for_test();
-        app.auto_accent = true;
-        app.high_contrast = true;
-        app.reduce_motion = true;
-        app.selected_accent = "amber".into();
+        app.standard.auto_accent = true;
+        app.standard.high_contrast = true;
+        app.standard.reduce_motion = true;
+        app.standard.selected_accent = Some("amber".into());
+        app.keyboard_nav = false;
 
-        // Go through the same struct save_preferences builds, without touching
-        // the real config dir (that path is covered by the linux-gated test).
-        let prefs = crate::persistence::UserPreferences {
-            selected_section: Some(app.selected_section),
-            window_width: Some(app.window_size.0),
-            window_height: Some(app.window_size.1),
-            first_launch_done: Some(!app.show_first_launch),
-            selected_theme: Some(app.selected_theme.clone()),
-            selected_variant: Some(app.selected_variant.clone()),
-            selected_accent: Some(app.selected_accent.clone()),
-            auto_accent: Some(app.auto_accent),
-            restore_session: Some(app.restore_session),
-            default_view: Some(app.default_view.clone()),
-            language: Some(app.language.clone()),
-            auto_check_updates: Some(app.auto_check_updates),
-            font_size: Some(app.font_size.clone()),
-            animations: Some(app.animations),
-            high_contrast: Some(app.high_contrast),
-            text_size_a11y: Some(app.text_size_a11y.clone()),
-            reduce_motion: Some(app.reduce_motion),
-            keyboard_nav: Some(app.keyboard_nav),
-            dyslexia_font: Some(app.dyslexia_font),
-            scan_on_startup: Some(app.scan_on_startup),
-        };
-        let json = serde_json::to_string(&prefs).expect("serializes");
+        // The struct save_preferences writes, without touching the real config
+        // dir (that path is covered by the linux-gated test).
+        let json = serde_json::to_string(&app.user_preferences()).expect("serializes");
         let back: crate::persistence::UserPreferences =
             serde_json::from_str(&json).expect("round-trips");
 
-        assert_eq!(back.auto_accent, Some(true), "the field that was lost");
-        assert_eq!(back.selected_accent.as_deref(), Some("amber"));
-        assert_eq!(back.high_contrast, Some(true));
-        assert_eq!(back.reduce_motion, Some(true));
+        assert_eq!(
+            back.standard, app.standard,
+            "auto_accent was the field once lost"
+        );
+        assert_eq!(back.keyboard_nav, Some(false));
+        assert_eq!(back.prefs_version, crate::persistence::PREFS_VERSION);
 
         // Every field carries a value: a None here would mean save_preferences
         // is dropping something on the floor.
@@ -850,8 +802,8 @@ mod tests {
         // no animation tick, nothing ever expired the toasts, and the overlay
         // grows upward from the bottom so the oldest scrolled out of clicking
         // range and could never be dismissed at all.
-        app.animations = false;
-        app.reduce_motion = true;
+        app.standard.animations = false;
+        app.standard.reduce_motion = true;
         for i in 0..12 {
             let _ = app.push_notification(format!("toast {i}"), NotificationLevel::Info);
         }

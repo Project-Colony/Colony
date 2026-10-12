@@ -3,6 +3,7 @@
 //! module holds pure on-disk storage and does not touch the GitHub API.
 
 use anyhow::Result;
+use colony_ui::preferences::StandardPreferences;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -581,36 +582,55 @@ pub fn save_favorites(favorites: &[String]) -> Result<()> {
     write_atomic(&path, serde_json::to_string(favorites)?.as_bytes())
 }
 
+/// The format [`save_preferences`] writes. Bump it when an older file needs
+/// [`UserPreferences::migrate`] to rewrite a value rather than just read it.
+pub const PREFS_VERSION: u32 = 1;
+
 /// User preferences saved between sessions.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UserPreferences {
+    /// Theme, accent, text sizes, motion and the other Appearance and
+    /// Accessibility choices every Colony program shares, from colony-ui.
+    /// Flattened, so the file keeps the field names it has always had, and
+    /// lenient: a value this build does not understand falls back to its
+    /// default instead of discarding the whole file.
+    #[serde(flatten)]
+    pub standard: StandardPreferences,
+    /// Format version. Files written before versioning have none and read as 0.
+    #[serde(default)]
+    pub prefs_version: u32,
     pub selected_section: Option<usize>,
     pub window_width: Option<f32>,
     pub window_height: Option<f32>,
     pub first_launch_done: Option<bool>,
-    pub selected_theme: Option<String>,
-    pub selected_variant: Option<String>,
-    pub selected_accent: Option<String>,
-    /// Whether the accent follows the theme. The toggle existed and was
-    /// applied at boot, but was never written, so it silently reset every
-    /// restart.
-    pub auto_accent: Option<bool>,
     // General
     pub restore_session: Option<bool>,
     pub default_view: Option<String>,
     pub language: Option<String>,
     pub auto_check_updates: Option<bool>,
-    // Appearance
-    pub font_size: Option<String>,
-    pub animations: Option<bool>,
     // Accessibility
-    pub high_contrast: Option<bool>,
-    pub text_size_a11y: Option<String>,
-    pub reduce_motion: Option<bool>,
     pub keyboard_nav: Option<bool>,
-    pub dyslexia_font: Option<bool>,
     // Storage
     pub scan_on_startup: Option<bool>,
+}
+
+impl UserPreferences {
+    /// Bring a file written by an older Colony up to [`PREFS_VERSION`].
+    ///
+    /// Version 0 wrote `"selected_accent": "blue"` for everyone who never
+    /// picked an accent, because blue was the default, and applied it over the
+    /// theme's own accent. Nothing in such a file tells a deliberate blue from
+    /// the default, so it becomes `None`, the theme's own accent, once. The
+    /// version written back afterwards is what keeps a later deliberate blue.
+    pub fn migrate(&mut self) {
+        if self.prefs_version < 1
+            && !self.standard.auto_accent
+            && self.standard.selected_accent.as_deref() == Some("blue")
+        {
+            self.standard.selected_accent = None;
+        }
+        self.prefs_version = PREFS_VERSION;
+    }
 }
 
 fn preferences_path() -> Result<PathBuf> {
@@ -619,12 +639,14 @@ fn preferences_path() -> Result<PathBuf> {
     Ok(dir.join("preferences.json"))
 }
 
-/// Load user preferences.
+/// Load user preferences, migrated to [`PREFS_VERSION`].
 pub fn load_preferences() -> UserPreferences {
-    preferences_path()
+    let mut prefs: UserPreferences = preferences_path()
         .ok()
         .and_then(|p| load_json_or_quarantine(&p))
-        .unwrap_or_default()
+        .unwrap_or_default();
+    prefs.migrate();
+    prefs
 }
 
 /// Save user preferences.
@@ -1020,6 +1042,109 @@ mod tests {
         let loaded: UserPreferences = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.selected_section, Some(2));
         assert_eq!(loaded.first_launch_done, Some(true));
+    }
+
+    /// What Colony 0.10.4 writes: every field present, the accent at its old
+    /// default, no format version.
+    const V0_10_4: &str = r#"{
+      "selected_section": 3,
+      "window_width": 1280.0,
+      "window_height": 820.0,
+      "first_launch_done": true,
+      "selected_theme": "catppuccin",
+      "selected_variant": "mocha",
+      "selected_accent": "blue",
+      "auto_accent": false,
+      "restore_session": false,
+      "default_view": "favorites",
+      "language": "fr",
+      "auto_check_updates": false,
+      "font_size": "large",
+      "animations": false,
+      "high_contrast": true,
+      "text_size_a11y": "xlarge",
+      "reduce_motion": true,
+      "keyboard_nav": false,
+      "dyslexia_font": true,
+      "scan_on_startup": false
+    }"#;
+
+    fn load(json: &str) -> UserPreferences {
+        let mut prefs: UserPreferences = serde_json::from_str(json).expect("parses");
+        prefs.migrate();
+        prefs
+    }
+
+    #[test]
+    fn a_0_10_4_file_keeps_everything_but_the_default_accent() {
+        use colony_ui::{FontSize, TextSize};
+
+        let prefs = load(V0_10_4);
+        let s = &prefs.standard;
+        assert_eq!(
+            s.selected_accent, None,
+            "the old default is the theme's own accent now"
+        );
+        assert_eq!(
+            (s.selected_theme.as_str(), s.selected_variant.as_str()),
+            ("catppuccin", "mocha")
+        );
+        assert!(!s.auto_accent && !s.animations);
+        assert!(s.high_contrast && s.reduce_motion && s.dyslexia_font);
+        assert_eq!(s.font_size, FontSize::Large);
+        assert_eq!(s.text_size_a11y, TextSize::XLarge);
+        assert_eq!(prefs.selected_section, Some(3));
+        assert_eq!(prefs.window_width, Some(1280.0));
+        assert_eq!(prefs.first_launch_done, Some(true));
+        assert_eq!(prefs.restore_session, Some(false));
+        assert_eq!(prefs.default_view.as_deref(), Some("favorites"));
+        assert_eq!(prefs.language.as_deref(), Some("fr"));
+        assert_eq!(prefs.auto_check_updates, Some(false));
+        assert_eq!(prefs.keyboard_nav, Some(false));
+        assert_eq!(prefs.scan_on_startup, Some(false));
+        assert_eq!(prefs.prefs_version, PREFS_VERSION);
+    }
+
+    #[test]
+    fn the_accent_migration_runs_once() {
+        // Written back after the migration, a blue picked since is kept.
+        let mut migrated = load(V0_10_4);
+        migrated.standard.selected_accent = Some("blue".into());
+        let written = serde_json::to_string(&migrated).unwrap();
+        assert!(written.contains("\"prefs_version\":1"));
+        assert_eq!(
+            load(&written).standard.selected_accent.as_deref(),
+            Some("blue")
+        );
+
+        // Any other pick, or blue behind auto accent, was never the default.
+        let violet = V0_10_4.replace("\"blue\"", "\"violet\"");
+        assert_eq!(
+            load(&violet).standard.selected_accent.as_deref(),
+            Some("violet")
+        );
+        let auto = V0_10_4.replace("\"auto_accent\": false", "\"auto_accent\": true");
+        assert_eq!(
+            load(&auto).standard.selected_accent.as_deref(),
+            Some("blue")
+        );
+    }
+
+    #[test]
+    fn values_this_build_does_not_know_fall_back_and_keep_the_rest() {
+        let odd = V0_10_4
+            .replace("\"large\"", "\"huge\"")
+            .replace("\"xlarge\"", "7")
+            .replace("\"high_contrast\": true", "\"high_contrast\": \"yes\"");
+        let prefs = load(&odd);
+        let defaults = StandardPreferences::default();
+        assert_eq!(prefs.standard.font_size, defaults.font_size);
+        assert_eq!(prefs.standard.text_size_a11y, defaults.text_size_a11y);
+        assert_eq!(prefs.standard.high_contrast, defaults.high_contrast);
+        // The neighbours survive.
+        assert!(prefs.standard.reduce_motion);
+        assert_eq!(prefs.standard.selected_theme, "catppuccin");
+        assert_eq!(prefs.language.as_deref(), Some("fr"));
     }
 }
 

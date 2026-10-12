@@ -9,7 +9,7 @@ use std::collections::HashMap;
 pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     // Sidebar
     strings.insert("categories".into(), "Catégories".into());
-    strings.insert("rescan".into(), "Rescan".into());
+    strings.insert("rescan".into(), "Relancer l'analyse".into());
 
     // GitHub panel
     strings.insert("github_connect_desc".into(), "Connectez-vous à GitHub pour détecter les dépôts Colony (colony.json) de l'organisation Project-Colony.".into());
@@ -59,7 +59,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
 
     // Detail view
     strings.insert("back".into(), "Retour".into());
-    strings.insert("language_label".into(), "Langage: {lang}".into());
+    strings.insert("language_label".into(), "Langage : {lang}".into());
     strings.insert("launch".into(), "Lancer {name}".into());
     strings.insert("update".into(), "Mettre à jour".into());
     strings.insert("download".into(), "Télécharger".into());
@@ -80,29 +80,29 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("installed".into(), "Installé : {path}".into());
     strings.insert(
         "download_error".into(),
-        "Erreur téléchargement : {error}".into(),
+        "Erreur de téléchargement : {error}".into(),
     );
     strings.insert("downloading".into(), "Téléchargement de {file}…".into());
     strings.insert(
         "no_release_for".into(),
-        "Pas de release pour {platform}".into(),
+        "Aucune version publiée pour {platform}".into(),
     );
     strings.insert("uninstalled".into(), "{name} désinstallé.".into());
     strings.insert(
         "launch_error".into(),
-        "Impossible de lancer: {error}".into(),
+        "Impossible de lancer : {error}".into(),
     );
     strings.insert(
         "launch_error_empty".into(),
-        "Impossible de lancer: commande vide".into(),
+        "Impossible de lancer : commande vide".into(),
     );
     strings.insert(
         "uninstall_error".into(),
-        "Erreur désinstallation : {error}".into(),
+        "Erreur de désinstallation : {error}".into(),
     );
 
     // OAuth errors
-    strings.insert("oauth_error".into(), "Erreur OAuth: {error}".into());
+    strings.insert("oauth_error".into(), "Erreur OAuth : {error}".into());
     strings.insert(
         "oauth_device_expired".into(),
         "Délai dépassé : l'autorisation GitHub n'a pas été confirmée à temps.".into(),
@@ -111,11 +111,11 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "oauth_device_failed".into(),
         "Échec de la connexion GitHub : {error} — {desc}".into(),
     );
-    strings.insert("github_api_error".into(), "Erreur GitHub: {error}".into());
-    strings.insert("scan_error".into(), "Erreur: {error}".into());
+    strings.insert("github_api_error".into(), "Erreur GitHub : {error}".into());
+    strings.insert("scan_error".into(), "Erreur : {error}".into());
     strings.insert(
         "launch_error_msg".into(),
-        "Erreur lancement : {error}".into(),
+        "Erreur de lancement : {error}".into(),
     );
     strings.insert(
         "updates_available".into(),
@@ -157,7 +157,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     // Thread errors
     strings.insert(
         "error_thread_panic".into(),
-        "Erreur interne : le thread a paniqué".into(),
+        "Erreur interne : une tâche d'arrière-plan s'est arrêtée brutalement".into(),
     );
 
     // Download cancellation
@@ -184,23 +184,26 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("welcome_next".into(), "Suivant".into());
     strings.insert("welcome_back".into(), "Retour".into());
     strings.insert("welcome_skip".into(), "Passer".into());
-    strings.insert("welcome_connect_now".into(), "Connecter maintenant".into());
+    strings.insert(
+        "welcome_connect_now".into(),
+        "Se connecter maintenant".into(),
+    );
     strings.insert("welcome_later".into(), "Plus tard".into());
 
-    // Tutoriel guidé (spotlight sur l'UI réelle)
+    // Guided tutorial (spotlight on the real UI)
     strings.insert("tut_sidebar_title".into(), "Les catégories".into());
     strings.insert("tut_sidebar_desc".into(), "Filtrez vos apps par type : jeux, outils, favoris, ou par origine (écosystème Colony vs. système). La barre latérale reste toujours visible.".into());
     strings.insert("tut_search_title".into(), "La recherche".into());
     strings.insert("tut_search_desc".into(), "Tapez le nom d'une app pour la retrouver instantanément, peu importe la catégorie sélectionnée.".into());
     strings.insert("tut_grid_title".into(), "Vos applications".into());
-    strings.insert("tut_grid_desc".into(), "Voici toutes vos apps installées et les apps Colony disponibles. Cliquez une carte pour voir son README, son changelog et l'installer en un clic.".into());
+    strings.insert("tut_grid_desc".into(), "Voici toutes vos apps installées et les apps Colony disponibles. Cliquez sur une carte pour voir son README, son journal des modifications et l'installer en un clic.".into());
     strings.insert(
         "tut_github_title".into(),
         "Connexion GitHub (optionnel)".into(),
     );
-    strings.insert("tut_github_desc".into(), "Sans compte : 60 requêtes/h. Avec compte : 5000/h + accès aux repos privés. Recommandé si vous explorez beaucoup. Le bouton Rescan juste en dessous relance l'analyse système.".into());
+    strings.insert("tut_github_desc".into(), "Sans compte : 60 requêtes/h. Avec un compte : 5000/h. Recommandé si vous explorez beaucoup. Le bouton Relancer l'analyse, juste en dessous, actualise les applications trouvées sur le système.".into());
     strings.insert("tut_finish_title".into(), "Vous êtes prêt !".into());
-    strings.insert("tut_finish_desc".into(), "L'icône d'engrenage à côté du titre ouvre les préférences : 24 familles de thèmes, raccourcis clavier, accessibilité. Bon voyage dans Colony !".into());
+    strings.insert("tut_finish_desc".into(), "Le nom Colony, en haut de la barre latérale, ouvre les préférences : thèmes, raccourcis clavier, accessibilité. Bon voyage dans Colony !".into());
 
     // Loading / async feedback
     strings.insert("scanning".into(), "Analyse en cours...".into());
@@ -220,29 +223,32 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "n_results_found".into(),
         "{count} résultat(s) pour « {query} »".into(),
     );
-    strings.insert("theme_applied".into(), "Thème appliqué.".into());
 
     // Keyboard shortcuts
     strings.insert("shortcuts_title".into(), "Raccourcis clavier".into());
     strings.insert(
+        "shortcuts_desc".into(),
+        "Ce que font les touches quand la navigation au clavier est activée.".into(),
+    );
+    strings.insert(
         "shortcut_esc".into(),
-        "Échap — Fermer le panneau, la boîte de dialogue ou la fiche en cours".into(),
+        "Échap - Fermer le panneau, la boîte de dialogue ou la fiche en cours".into(),
     );
     strings.insert(
         "shortcut_tab".into(),
-        "Tab / Maj+Tab — Naviguer entre les catégories".into(),
+        "Tab / Maj+Tab - Naviguer entre les catégories".into(),
     );
     strings.insert(
         "shortcut_arrows".into(),
-        "↑ ↓ — Naviguer dans les réglages et la grille".into(),
+        "↑ ↓ - Naviguer dans les préférences et la grille".into(),
     );
     strings.insert(
         "shortcut_enter".into(),
-        "Entrée — Ouvrir l'élément sélectionné (lance directement une app locale)".into(),
+        "Entrée - Ouvrir l'élément sélectionné (lance directement une app locale)".into(),
     );
     strings.insert(
         "shortcut_pageupdown".into(),
-        "Page ↑/↓ — Naviguer plus vite dans les paramètres".into(),
+        "Page ↑/↓ - Naviguer plus vite dans les préférences".into(),
     );
 
     // Tooltips / hints
@@ -260,25 +266,10 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "Utilisez Tab et les flèches pour naviguer".into(),
     );
 
-    // Settings
-    strings.insert("settings_title".into(), "Préférences".into());
-    strings.insert("settings_close".into(), "Fermer".into());
-    strings.insert("settings_cat_general".into(), "Général".into());
-    strings.insert("settings_cat_appearance".into(), "Apparences".into());
-    strings.insert("settings_cat_accessibility".into(), "Accessibilité".into());
+    // Preferences: Colony's own categories. The shared ones ship in colony-ui.
     strings.insert("settings_cat_storage".into(), "Stockage".into());
-    strings.insert("settings_cat_about".into(), "À propos".into());
     strings.insert("settings_cat_shortcuts".into(), "Raccourcis".into());
-    // General
-    strings.insert(
-        "settings_general_title".into(),
-        "Paramètres généraux".into(),
-    );
-    strings.insert(
-        "settings_general_desc".into(),
-        "Les préférences sont enregistrées automatiquement.".into(),
-    );
-    // Startup
+    // General: startup
     strings.insert("settings_section_startup".into(), "Démarrage".into());
     strings.insert(
         "settings_startup_section_desc".into(),
@@ -303,7 +294,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("settings_section_language".into(), "Langue".into());
     strings.insert(
         "settings_language_desc".into(),
-        "Personnalisez l'interface et le format horaire.".into(),
+        "La langue de tous les libellés de Colony.".into(),
     );
     strings.insert(
         "settings_current_language".into(),
@@ -311,13 +302,13 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert(
         "settings_current_language_desc".into(),
-        "Synchronisée avec le système.".into(),
+        "Par défaut, celle du système.".into(),
     );
     // Updates
     strings.insert("settings_section_updates".into(), "Mises à jour".into());
     strings.insert(
         "settings_updates_desc".into(),
-        "Gérez la vérification et le canal des mises à jour.".into(),
+        "La recherche de nouvelles versions de Colony et de vos applications.".into(),
     );
     strings.insert(
         "settings_auto_check_updates".into(),
@@ -331,152 +322,49 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "settings_check_updates".into(),
         "Vérifier les mises à jour".into(),
     );
-    // Privacy
-    // Appearance
-    strings.insert(
-        "settings_appearance_title".into(),
-        "Paramètres d'apparence".into(),
-    );
-    strings.insert(
-        "settings_appearance_desc".into(),
-        "Ajustez le thème, les accents et les effets visuels.".into(),
-    );
-    strings.insert("settings_section_theme".into(), "Thème".into());
-    // Theme families
-    // New theme families
-    // Colors & accents
-    strings.insert(
-        "settings_section_colors".into(),
-        "Couleurs & accents".into(),
-    );
-    strings.insert(
-        "settings_auto_accent".into(),
-        "Accent automatique selon le fond".into(),
-    );
-    strings.insert(
-        "settings_auto_accent_desc".into(),
-        "Adapte automatiquement l'accent aux arrière-plans.".into(),
-    );
-    strings.insert("settings_section_typography".into(), "Typographie".into());
-    strings.insert(
-        "settings_typography_desc".into(),
-        "Configurez la police et la taille du texte.".into(),
-    );
-    strings.insert("settings_font_size".into(), "Taille du texte".into());
-    strings.insert(
-        "settings_font_size_desc".into(),
-        "Taille de base du texte.".into(),
-    );
-    strings.insert("settings_font_size_default".into(), "Par défaut".into());
-    strings.insert("settings_font_size_small".into(), "Petit".into());
-    strings.insert("settings_font_size_large".into(), "Grand".into());
-    strings.insert("settings_font_size_xlarge".into(), "Très grand".into());
-    strings.insert(
-        "settings_section_effects".into(),
-        "Arrière-plans & effets".into(),
-    );
-    strings.insert(
-        "settings_effects_desc".into(),
-        "Gérez les animations et effets visuels.".into(),
-    );
-    strings.insert("settings_animations".into(), "Animations".into());
-    strings.insert(
-        "settings_animations_desc".into(),
-        "Activer les transitions animées.".into(),
-    );
-    strings.insert("settings_section_preview".into(), "Aperçu".into());
-    strings.insert(
-        "settings_preview_card".into(),
-        "Carte de prévisualisation".into(),
-    );
-    strings.insert(
-        "settings_preview_summary".into(),
-        "Thème: Sombre · Accent: Bleu · Texte: Par défaut · Effets: Activés".into(),
-    );
     // Accessibility
     strings.insert(
-        "settings_accessibility_title".into(),
-        "Paramètres d'accessibilité".into(),
-    );
-    strings.insert(
-        "settings_accessibility_desc".into(),
-        "Facilitez la lecture, la navigation et la lecture média.".into(),
-    );
-    strings.insert("settings_section_vision".into(), "Vision".into());
-    strings.insert(
-        "settings_vision_desc".into(),
-        "Options pour améliorer la lisibilité.".into(),
-    );
-    strings.insert("settings_high_contrast".into(), "Contraste élevé".into());
-    strings.insert(
-        "settings_high_contrast_desc".into(),
-        "Augmente le contraste des éléments.".into(),
-    );
-    strings.insert("settings_text_size_a11y".into(), "Taille du texte".into());
-    strings.insert(
-        "settings_text_size_a11y_desc".into(),
-        "Ajustez la taille du texte pour le confort.".into(),
-    );
-    strings.insert("settings_section_motion".into(), "Mouvement".into());
-    strings.insert(
-        "settings_motion_desc".into(),
-        "Réduisez les animations pour le confort.".into(),
-    );
-    strings.insert(
-        "settings_reduce_motion".into(),
-        "Réduire les animations".into(),
-    );
-    strings.insert(
-        "settings_reduce_motion_desc".into(),
-        "Limite les transitions et mouvements.".into(),
-    );
-    strings.insert(
         "settings_section_navigation".into(),
-        "Navigation & interaction".into(),
+        "Navigation et interaction".into(),
     );
     strings.insert(
         "settings_navigation_desc".into(),
-        "Options de navigation au clavier et interaction.".into(),
+        "Options de navigation au clavier et d'interaction.".into(),
     );
     strings.insert("settings_keyboard_nav".into(), "Navigation clavier".into());
     strings.insert(
         "settings_keyboard_nav_desc".into(),
         "Naviguer avec Tab et les flèches.".into(),
     );
-    strings.insert("settings_section_reading".into(), "Lecture".into());
-    strings.insert(
-        "settings_reading_desc".into(),
-        "Options de confort de lecture.".into(),
-    );
-    strings.insert("settings_dyslexia_font".into(), "Police dyslexie".into());
-    strings.insert(
-        "settings_dyslexia_font_desc".into(),
-        "Utiliser une police adaptée à la dyslexie.".into(),
-    );
     // Storage
-    strings.insert("settings_storage_title".into(), "Stockage".into());
     strings.insert(
         "settings_storage_desc".into(),
-        "Gérez l'emplacement des applications et du cache.".into(),
+        "Ce que Colony trouve, met en cache et installe.".into(),
     );
-    strings.insert("settings_section_scan".into(), "Scan".into());
+    strings.insert("settings_section_scan".into(), "Analyse".into());
     strings.insert(
         "settings_scan_desc".into(),
-        "Configurez les dossiers analysés au démarrage.".into(),
+        "Colony recherche les applications déjà installées sur cet ordinateur.".into(),
     );
-    strings.insert("settings_startup".into(), "Scanner au démarrage".into());
+    strings.insert("settings_startup".into(), "Analyser au démarrage".into());
     strings.insert(
         "settings_startup_desc".into(),
         "Met à jour la bibliothèque au démarrage.".into(),
     );
     strings.insert("settings_section_install".into(), "Installation".into());
+    strings.insert(
+        "settings_install_desc".into(),
+        "Ce que Colony a trouvé sur cet ordinateur, dans le catalogue et dans vos favoris.".into(),
+    );
     strings.insert("settings_local_apps".into(), "Applications locales".into());
     strings.insert("settings_colony_repos".into(), "Dépôts Colony".into());
     strings.insert("settings_favorites".into(), "Favoris".into());
-    // Placeholders
     // About
     strings.insert("settings_about_title".into(), "À propos de Colony".into());
-    strings.insert("settings_about".into(), "À propos".into());
+    strings.insert(
+        "settings_about_desc".into(),
+        "La version utilisée, sa provenance et ses mises à jour.".into(),
+    );
     // Launcher self-update
     strings.insert(
         "launcher_update_available".into(),
@@ -484,7 +372,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert(
         "launcher_update_available_short".into(),
-        "\u{f0aa}  Mise à jour {version}".into(),
+        "Mise à jour {version}".into(),
     );
     strings.insert(
         "launcher_update_ready".into(),
@@ -492,7 +380,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert(
         "launcher_restart_to_update".into(),
-        "\u{f021}  Relancer pour mettre à jour".into(),
+        "Relancer pour mettre à jour".into(),
     );
     strings.insert(
         "launcher_download_update".into(),
@@ -510,8 +398,11 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("launch_action".into(), "Lancer".into());
     strings.insert("section_security".into(), "Sécurité".into());
     strings.insert("language_changed".into(), "Langue changée".into());
-    strings.insert("clear_caches".into(), "Vider les caches du store".into());
-    strings.insert("clear_caches_desc".into(), "Supprime les descriptions et icônes mises en cache (elles se re-téléchargent au prochain rafraîchissement). Les applications installées ne sont pas touchées.".into());
+    strings.insert(
+        "clear_caches".into(),
+        "Vider les caches du catalogue".into(),
+    );
+    strings.insert("clear_caches_desc".into(), "Supprime les descriptions et icônes mises en cache (elles sont retéléchargées à la prochaine actualisation). Les applications installées ne sont pas touchées.".into());
     strings.insert(
         "caches_cleared".into(),
         "{count} cache(s) supprimé(s)".into(),
@@ -519,7 +410,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("launcher_update_system_managed".into(), "Mise à jour {version} disponible - cette installation est gérée par le gestionnaire de paquets, mettez à jour via « pacman -Syu » (colony-bin)".into());
     // Detail tabs
     strings.insert("tab_readme".into(), "ReadMe".into());
-    strings.insert("tab_license".into(), "License".into());
-    strings.insert("tab_changelog".into(), "Changelog".into());
+    strings.insert("tab_license".into(), "Licence".into());
+    strings.insert("tab_changelog".into(), "Journal des modifications".into());
     strings.insert("tab_not_available".into(), "Non disponible".into());
 }

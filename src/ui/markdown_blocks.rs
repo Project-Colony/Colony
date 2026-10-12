@@ -12,7 +12,10 @@
 //!
 //! Everything else flows through iced's `markdown::view_with` using a
 //! caller-supplied `Viewer`.
-use iced::font::Weight;
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
+use colony_ui::{contrast_on, sz, ui_font, ui_font_bold};
 use iced::widget::{column, container, markdown, row, table as tbl, text, Row};
 use iced::{alignment, Color, Element, Length};
 
@@ -257,37 +260,43 @@ fn parse_shields_url(url: &str) -> Option<(String, String, [u8; 3])> {
     Some((decode(label_raw), decode(value_raw), color))
 }
 
-/// Approximate shields.io color names → RGB. Unknown names fall back to
-/// a neutral grey.
+/// shields.io's named colours, approximated: data, so it lives with the other
+/// data in `config/`.
+const SHIELDS_COLORS: &str = include_str!("../../config/shields-colors.json");
+
+/// What a badge with a colour this table does not know is drawn in.
+const UNKNOWN_BADGE_COLOR: [u8; 3] = [0x80, 0x80, 0x80];
+
+fn named_badge_colors() -> &'static HashMap<String, String> {
+    static TABLE: OnceLock<HashMap<String, String>> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        serde_json::from_str(SHIELDS_COLORS)
+            .expect("config/shields-colors.json is embedded and checked by a test")
+    })
+}
+
+/// `rrggbb` or `#rrggbb`, nothing else.
+fn parse_hex(raw: &str) -> Option<[u8; 3]> {
+    let h = raw.strip_prefix('#').unwrap_or(raw);
+    // Checked byte by byte before slicing: a README is remote data, and slicing
+    // a six-byte string with a multi-byte character in it panics.
+    if h.len() != 6 || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let byte = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
+    Some([byte(0)?, byte(2)?, byte(4)?])
+}
+
+/// A badge colour as shields.io takes it: hex, or one of its names. Unknown
+/// names fall back to a neutral grey.
 fn badge_color_rgb(name: &str) -> [u8; 3] {
-    // Accept hex as `#rrggbb` or `rrggbb`.
-    if let Some(h) = name.strip_prefix('#').or(Some(name)) {
-        if h.len() == 6 {
-            if let (Ok(r), Ok(g), Ok(b)) = (
-                u8::from_str_radix(&h[0..2], 16),
-                u8::from_str_radix(&h[2..4], 16),
-                u8::from_str_radix(&h[4..6], 16),
-            ) {
-                return [r, g, b];
-            }
-        }
-    }
-    match name.to_ascii_lowercase().as_str() {
-        "brightgreen" => [0x4c, 0xc1, 0x40],
-        "green" => [0x97, 0xca, 0x00],
-        "yellowgreen" => [0xa4, 0xa6, 0x1d],
-        "yellow" => [0xdf, 0xb3, 0x17],
-        "orange" => [0xfe, 0x7d, 0x37],
-        "red" => [0xe0, 0x5d, 0x44],
-        "blue" => [0x00, 0x7e, 0xc6],
-        "lightgrey" | "lightgray" => [0x9f, 0x9f, 0x9f],
-        "grey" | "gray" => [0x55, 0x55, 0x55],
-        "purple" => [0x94, 0x3a, 0xa0],
-        "pink" => [0xe7, 0x30, 0xa8],
-        "black" => [0x1f, 0x1f, 0x1f],
-        "white" => [0xee, 0xee, 0xee],
-        _ => [0x80, 0x80, 0x80],
-    }
+    parse_hex(name)
+        .or_else(|| {
+            named_badge_colors()
+                .get(&name.to_ascii_lowercase())
+                .and_then(|hex| parse_hex(hex))
+        })
+        .unwrap_or(UNKNOWN_BADGE_COLOR)
 }
 
 // --- Rendering ---
@@ -319,9 +328,16 @@ fn view_badges(badges: &[Badge]) -> Element<'_, Message> {
 fn badge_pill(b: &Badge) -> Element<'_, Message> {
     let color = Color::from_rgb8(b.color_hex[0], b.color_hex[1], b.color_hex[2]);
     let label_text = text(b.label.clone())
-        .size(12)
+        .size(sz(12))
+        .font(ui_font())
         .color(Palette::TEXT_PRIMARY());
-    let value_text = text(b.value.clone()).size(12).color(Color::WHITE);
+    // The badge's own colour comes from the README, so its text has to be
+    // whichever of near-black and near-white reads on it: white vanished on
+    // the light ones (yellow, brightgreen).
+    let value_text = text(b.value.clone())
+        .size(sz(12))
+        .font(ui_font())
+        .color(contrast_on(color));
 
     let label_box = container(label_text)
         .padding([3, 8])
@@ -378,15 +394,16 @@ fn view_table(data: &TableData) -> Element<'_, Message> {
         let h_idx = i;
         tbl::column(
             text(header.clone())
-                .size(13)
-                .font(iced::Font {
-                    weight: Weight::Bold,
-                    ..iced::Font::default()
-                })
+                .size(sz(13))
+                .font(ui_font_bold())
                 .color(Palette::TEXT_PRIMARY()),
             move |row: Vec<String>| -> Element<'_, Message> {
                 let cell = row.get(h_idx).cloned().unwrap_or_default();
-                text(cell).size(13).color(Palette::TEXT_SECONDARY()).into()
+                text(cell)
+                    .size(sz(13))
+                    .font(ui_font())
+                    .color(Palette::TEXT_SECONDARY())
+                    .into()
             },
         )
         .align_x(alignment::Horizontal::Left)
@@ -450,7 +467,23 @@ mod tests {
         assert_eq!(badge_color_rgb("blue"), [0x00, 0x7e, 0xc6]);
         assert_eq!(badge_color_rgb("#ff8800"), [0xff, 0x88, 0x00]);
         assert_eq!(badge_color_rgb("00ff00"), [0x00, 0xff, 0x00]);
-        assert_eq!(badge_color_rgb("totally-unknown"), [0x80, 0x80, 0x80]);
+        assert_eq!(badge_color_rgb("totally-unknown"), UNKNOWN_BADGE_COLOR);
+        // Six bytes, but not six hex digits: refused, not sliced mid-character.
+        assert_eq!(badge_color_rgb("a\u{e9}123"), UNKNOWN_BADGE_COLOR);
+    }
+
+    #[test]
+    fn every_named_shields_color_is_a_hex_color() {
+        let table = named_badge_colors();
+        assert!(table.contains_key("brightgreen") && table.contains_key("lightgrey"));
+        for (name, hex) in table {
+            assert_eq!(
+                name,
+                &name.to_ascii_lowercase(),
+                "names are looked up lowercased"
+            );
+            assert!(parse_hex(hex).is_some(), "{name}: {hex:?} is not #rrggbb");
+        }
     }
 
     #[test]

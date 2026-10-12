@@ -4,32 +4,16 @@
 //! point. The message handling lives in [`crate::update`], the widgets in
 //! [`crate::ui`].
 
-use iced::font;
+use colony_ui::{fonts, sz, ui_font};
 use iced::keyboard;
 use iced::widget::{button, column, container, mouse_area, opaque, row, stack, text, Column};
 use iced::{Element, Fill, Subscription, Task, Theme};
 use std::collections::HashSet;
 
 use crate::message::Message;
-use crate::state::{
-    default_font, App, DetailTab, GitHubState, APP_FONT_BYTES, DYSLEXIA_FONT_BYTES, FA_FONT_BYTES,
-};
-use crate::ui::theme::{
-    accent_key_to_color, set_active_accent, set_active_theme, set_high_contrast, Palette,
-};
+use crate::state::{App, DetailTab, GitHubState};
+use crate::ui::theme::Palette;
 use crate::{download, github, i18n, oauth, scan, sections, state, ui};
-
-fn load_fonts() -> Task<Message> {
-    let main_fonts = APP_FONT_BYTES
-        .iter()
-        .map(|data| font::load(data.to_vec()).map(Message::FontLoaded));
-    let dyslexia_font =
-        std::iter::once(font::load(DYSLEXIA_FONT_BYTES.to_vec()).map(Message::FontLoaded));
-    let fa_fonts = FA_FONT_BYTES
-        .iter()
-        .map(|data| font::load(data.to_vec()).map(Message::FontLoaded));
-    Task::batch(main_fonts.chain(dyslexia_font).chain(fa_fonts))
-}
 
 impl App {
     pub(crate) fn boot() -> (Self, Task<Message>) {
@@ -69,8 +53,6 @@ impl App {
         };
 
         let sections = sections::load_sections();
-
-        let font = default_font();
 
         let favorites = crate::persistence::load_favorites();
 
@@ -129,7 +111,6 @@ impl App {
             selected_section,
             status_message,
             active_colony_repo: None,
-            font,
             github_state,
             show_github_menu: false,
             colony_repo_list,
@@ -149,19 +130,7 @@ impl App {
             tutorial_bounds: Default::default(),
             show_settings: false,
             settings_category: 0,
-            selected_theme: prefs
-                .selected_theme
-                .clone()
-                .unwrap_or_else(|| "gruvbox".into()),
-            selected_variant: prefs
-                .selected_variant
-                .clone()
-                .unwrap_or_else(|| "dark".into()),
-            selected_accent: prefs
-                .selected_accent
-                .clone()
-                .unwrap_or_else(|| "blue".into()),
-            auto_accent: prefs.auto_accent.unwrap_or(false),
+            standard: prefs.standard.clone(),
             // General
             restore_session: prefs.restore_session.unwrap_or(true),
             default_view: prefs.default_view.clone().unwrap_or_else(|| "all".into()),
@@ -170,18 +139,7 @@ impl App {
             // badges permanently invisible. The check is cheap (batched; zero
             // API calls for apps pinned to a fixed tag).
             auto_check_updates: prefs.auto_check_updates.unwrap_or(true),
-            // Appearance extras
-            font_size: prefs.font_size.clone().unwrap_or_else(|| "default".into()),
-            animations: prefs.animations.unwrap_or(true),
-            // Accessibility
-            high_contrast: prefs.high_contrast.unwrap_or(false),
-            text_size_a11y: prefs
-                .text_size_a11y
-                .clone()
-                .unwrap_or_else(|| "default".into()),
-            reduce_motion: prefs.reduce_motion.unwrap_or(false),
             keyboard_nav: prefs.keyboard_nav.unwrap_or(true),
-            dyslexia_font: prefs.dyslexia_font.unwrap_or(false),
             // Storage
             scan_on_startup: prefs.scan_on_startup.unwrap_or(true),
             // Async operation tracking
@@ -192,7 +150,6 @@ impl App {
             is_fetching_repos: true,
             // The boot fetch is not a click.
             repos_refresh_manual: false,
-            // Settings section state persistence
             settings_expanded_sections: HashSet::new(),
             // Detail tabs
             detail_tab: DetailTab::ReadMe,
@@ -201,9 +158,6 @@ impl App {
             detail_is_placeholder: false,
             // Animation state
             progress_display: 0.0,
-            sidebar_indicator_from: selected_section as f32 * 44.0,
-            sidebar_indicator_target: selected_section as f32 * 44.0,
-            sidebar_indicator_start: None,
             available_updates: std::collections::HashMap::new(),
             update_queue: Vec::new(),
             release_notes: std::collections::HashMap::new(),
@@ -239,11 +193,7 @@ impl App {
             );
         }
 
-        set_active_theme(&app.selected_theme, &app.selected_variant);
-        set_high_contrast(app.high_contrast);
-        if !app.auto_accent {
-            set_active_accent(accent_key_to_color(&app.selected_accent));
-        }
+        app.standard.apply();
 
         // No direct launcher-update check here: with auto-check on, the boot
         // catalog fetch chains GitHubReposFetched -> CheckUpdates ->
@@ -266,13 +216,7 @@ impl App {
 
         (
             app,
-            Task::batch([
-                load_fonts(),
-                startup_task,
-                launcher_check_task,
-                tutorial_task,
-                scan_task,
-            ]),
+            Task::batch([startup_task, launcher_check_task, tutorial_task, scan_task]),
         )
     }
 
@@ -305,8 +249,8 @@ impl App {
         } else {
             let status_bar = container(
                 text(&self.status_message)
-                    .size(self.sz(12))
-                    .font(self.app_font())
+                    .size(sz(12))
+                    .font(ui_font())
                     .color(Palette::TEXT_DIMMER()),
             )
             .padding([6, 16])
@@ -336,7 +280,7 @@ impl App {
                         String::new()
                     };
                     format!(
-                        "\u{f019}  {} — {} / {} ({}%){}",
+                        "{}: {} / {} ({}%){}",
                         filename,
                         state::human_bytes(done),
                         state::human_bytes(total),
@@ -350,19 +294,14 @@ impl App {
                     } else {
                         String::new()
                     };
-                    format!(
-                        "\u{f019}  {} — {}{}",
-                        filename,
-                        state::human_bytes(done),
-                        speed
-                    )
+                    format!("{}: {}{}", filename, state::human_bytes(done), speed)
                 }
-                None => format!("\u{f019}  {} — {}%", filename, pct),
+                None => format!("{}: {}%", filename, pct),
             };
             let cancel_btn = button(
                 text("\u{f00d}")
-                    .size(self.sz(12))
-                    .font(self.app_font())
+                    .size(sz(12))
+                    .font(fonts::glyph_font())
                     .color(Palette::TEXT_DIMMER()),
             )
             .on_press(Message::CancelDownload)
@@ -374,7 +313,7 @@ impl App {
 
             // Graphical progress bar (smooth interpolation when animations enabled)
             let bar_width: f32 = 200.0;
-            let display_progress = if self.animations && !self.reduce_motion {
+            let display_progress = if colony_ui::effects_enabled() {
                 self.progress_display
             } else {
                 progress
@@ -400,9 +339,13 @@ impl App {
             let progress_widget = container(
                 column![
                     row![
+                        text("\u{f019}")
+                            .size(sz(13))
+                            .font(fonts::glyph_font())
+                            .color(Palette::ACCENT_PROGRESS()),
                         text(bar_label)
-                            .size(self.sz(13))
-                            .font(self.app_font())
+                            .size(sz(13))
+                            .font(ui_font())
                             .color(Palette::ACCENT_PROGRESS()),
                         cancel_btn,
                     ]
@@ -424,7 +367,7 @@ impl App {
         // Notification toasts (with fade-in / fade-out animation)
         for notif in &self.notifications {
             let dismiss_id = notif.id;
-            let alpha = if self.animations && !self.reduce_motion {
+            let alpha = if colony_ui::effects_enabled() {
                 notif.opacity()
             } else {
                 1.0
@@ -437,12 +380,12 @@ impl App {
             let toast = button(
                 row![
                     text(&notif.message)
-                        .size(self.sz(13))
-                        .font(self.app_font())
+                        .size(sz(13))
+                        .font(ui_font())
                         .color(text_color),
                     text("\u{f00d}")
-                        .size(self.sz(12))
-                        .font(self.app_font())
+                        .size(sz(12))
+                        .font(fonts::glyph_font())
                         .color(dismiss_color),
                 ]
                 .spacing(12)
@@ -468,7 +411,7 @@ impl App {
                     top: 0.0,
                     right: 0.0,
                     bottom: 12.0,
-                    left: 216.0,
+                    left: ui::sidebar_width() + 16.0,
                 })
                 .width(Fill)
                 .height(Fill)
@@ -485,49 +428,41 @@ impl App {
             let dialog = container(
                 column![
                     text(confirm_msg)
-                        .size(self.sz(16))
-                        .font(self.app_font())
+                        .size(sz(16))
+                        .font(ui_font())
                         .color(Palette::TEXT_PRIMARY()),
                     container(text("")).height(16),
                     row![
-                        button(
-                            text(i18n::t("cancel"))
-                                .size(self.sz(13))
-                                .font(self.app_font())
-                        )
-                        .on_press(Message::CancelUninstall)
-                        .padding([10, 20])
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => Palette::BTN_HOVER(),
-                                _ => Palette::BTN_DEFAULT(),
-                            };
-                            button::Style {
-                                background: Some(bg.into()),
-                                text_color: Palette::TEXT_PRIMARY(),
-                                border: iced::Border::default().rounded(8),
-                                ..Default::default()
-                            }
-                        }),
-                        button(
-                            text(i18n::t("confirm_delete"))
-                                .size(self.sz(13))
-                                .font(self.app_font())
-                        )
-                        .on_press(Message::UninstallColonyApp(repo_clone))
-                        .padding([10, 20])
-                        .style(|_theme, status| {
-                            let bg = match status {
-                                button::Status::Hovered => Palette::BTN_DANGER_HOVER(),
-                                _ => Palette::BTN_DANGER_BG(),
-                            };
-                            button::Style {
-                                background: Some(bg.into()),
-                                text_color: Palette::ERROR_LIGHT(),
-                                border: iced::Border::default().rounded(8),
-                                ..Default::default()
-                            }
-                        }),
+                        button(text(i18n::t("cancel")).size(sz(13)).font(ui_font()))
+                            .on_press(Message::CancelUninstall)
+                            .padding([10, 20])
+                            .style(|_theme, status| {
+                                let bg = match status {
+                                    button::Status::Hovered => Palette::BTN_HOVER(),
+                                    _ => Palette::BTN_DEFAULT(),
+                                };
+                                button::Style {
+                                    background: Some(bg.into()),
+                                    text_color: Palette::TEXT_PRIMARY(),
+                                    border: iced::Border::default().rounded(8),
+                                    ..Default::default()
+                                }
+                            }),
+                        button(text(i18n::t("confirm_delete")).size(sz(13)).font(ui_font()))
+                            .on_press(Message::UninstallColonyApp(repo_clone))
+                            .padding([10, 20])
+                            .style(|_theme, status| {
+                                let bg = match status {
+                                    button::Status::Hovered => Palette::BTN_DANGER_HOVER(),
+                                    _ => Palette::BTN_DANGER_BG(),
+                                };
+                                button::Style {
+                                    background: Some(bg.into()),
+                                    text_color: Palette::ERROR_LIGHT(),
+                                    border: iced::Border::default().rounded(8),
+                                    ..Default::default()
+                                }
+                            }),
                     ]
                     .spacing(12)
                 ]
@@ -600,10 +535,8 @@ impl App {
     }
 
     pub(crate) fn theme(&self) -> Theme {
-        use ui::theme::active_palette;
-        let bg = active_palette().bg_primary;
-        let luma = bg.r * 0.299 + bg.g * 0.587 + bg.b * 0.114;
-        if luma > 0.5 {
+        use colony_ui::ColorExt;
+        if ui::theme::active_palette().bg_primary.is_light() {
             Theme::Light
         } else {
             Theme::Dark
