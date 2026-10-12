@@ -9,6 +9,8 @@ mod download;
 mod github;
 mod i18n;
 mod icons;
+mod logging;
+mod manifest;
 mod message;
 mod oauth;
 mod persistence;
@@ -20,35 +22,6 @@ mod ui;
 mod update;
 
 use state::App;
-
-/// Run `f` with its log lines held in memory, and return them.
-///
-/// The startup migration must run before anything creates a directory, the
-/// log file included, yet what it reports belongs in that file.
-fn capture_log(f: impl FnOnce()) -> Vec<u8> {
-    #[derive(Clone, Default)]
-    struct Buffer(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
-    impl std::io::Write for Buffer {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            let mut buffer = self.0.lock().unwrap_or_else(|e| e.into_inner());
-            buffer.extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    let buffer = Buffer::default();
-    let writer = buffer.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .with_writer(move || writer.clone())
-        .with_ansi(false)
-        .finish();
-    tracing::subscriber::with_default(subscriber, f);
-    let mut lines = buffer.0.lock().unwrap_or_else(|e| e.into_inner());
-    std::mem::take(&mut *lines)
-}
 
 /// Answer `--version` / `--help` without opening a window. The bug template
 /// makes `colony --version` a required field, and on Windows
@@ -73,7 +46,7 @@ fn handle_cli_flags() -> bool {
             // one - a structurally perfect manifest still resolves to nothing
             // if the release names its files differently.
             let assets: Vec<String> = rest.collect();
-            std::process::exit(validate_manifest(&path, &assets));
+            std::process::exit(manifest::validate(&path, &assets));
         }
         "--version" | "-V" => {
             println!("colony {}", env!("CARGO_PKG_VERSION"));
@@ -106,106 +79,6 @@ fn handle_cli_flags() -> bool {
     }
 }
 
-/// Report on a `colony.json`. Returns the process exit code: 0 clean, 1 invalid,
-/// 2 unreadable.
-fn validate_manifest(path: &str, assets: &[String]) -> i32 {
-    let raw = match std::fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            eprintln!("cannot read {path}: {e}");
-            return 2;
-        }
-    };
-    let manifest: github::ColonyManifest = match serde_json::from_slice(&raw) {
-        Ok(m) => m,
-        Err(e) => {
-            eprintln!("{path} is not a valid colony.json: {e}");
-            return 1;
-        }
-    };
-    let mut errors = manifest.validation_errors();
-
-    if assets.is_empty() {
-        if manifest.release_files.is_empty() {
-            println!(
-                "  note: no releaseFiles - Colony auto-detects platforms from asset names \
-                 following the <name>-<platform> convention. Pass your release asset names \
-                 (colony validate-manifest {path} <asset>...) to check that this actually \
-                 resolves; without them this is a shape check only."
-            );
-        }
-    } else {
-        errors.extend(resolution_errors(&manifest, path, assets));
-    }
-
-    if errors.is_empty() {
-        println!("{path}: OK ({}, {})", manifest.name, manifest.category);
-        return 0;
-    }
-    eprintln!("{path}: {} problem(s)", errors.len());
-    for e in &errors {
-        eprintln!("  - {e}");
-    }
-    1
-}
-
-/// Check that the manifest resolves to something installable against the asset
-/// names a release actually publishes.
-///
-/// This is the check that catches the failure that really happens: a manifest
-/// declaring only a name and a category is structurally perfect, and still
-/// renders as a card with no Download button because none of its assets match
-/// the `<name>-<platform>` convention auto-detection looks for.
-fn resolution_errors(
-    manifest: &github::ColonyManifest,
-    path: &str,
-    assets: &[String],
-) -> Vec<String> {
-    let mut errors = Vec::new();
-
-    if manifest.release_files.is_empty() {
-        // Auto-detection is the only path. `<repo>` is not in the manifest, so
-        // derive it the way Colony does: from the manifest name, then from the
-        // file's own directory, since app authors run this in their repo root.
-        let repo_hint = std::path::Path::new(path)
-            .parent()
-            .and_then(|p| p.canonicalize().ok())
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-            .unwrap_or_else(|| manifest.name.clone());
-        let detected = github::detect_platforms_from_assets(&repo_hint, assets);
-        if detected.is_empty() {
-            errors.push(format!(
-                "no releaseFiles, and none of the {} published asset(s) match the \
-                 <name>-<platform> convention for {repo_hint:?} (expected e.g. \
-                 {}-linux). The app will list in Colony with no Download button. \
-                 Declare releaseFiles explicitly, or rename the assets.",
-                assets.len(),
-                repo_hint.to_lowercase()
-            ));
-        } else {
-            println!("  auto-detected platforms: {}", detected.join(", "));
-        }
-        return errors;
-    }
-
-    for (platform, entry) in &manifest.release_files {
-        let at = format!("releaseFiles.{platform}");
-        if let Some(file) = &entry.file {
-            if !assets.iter().any(|a| a == file) {
-                errors.push(format!(
-                    "`{at}.file` is {file:?}, which this release does not publish"
-                ));
-            }
-        } else if let Some(pattern) = &entry.file_pattern {
-            match github::find_asset_by_pattern(assets, pattern) {
-                Ok(resolved) => println!("  {platform} -> {resolved}"),
-                Err(e) => errors.push(format!("`{at}.filePattern` does not resolve: {e}")),
-            }
-        }
-    }
-    errors
-}
-
 pub fn main() -> iced::Result {
     if handle_cli_flags() {
         return Ok(());
@@ -216,44 +89,8 @@ pub fn main() -> iced::Result {
     // directory is the very config directory the first move targets, and a
     // move skips a target that already exists. No-op once done, and on a fresh
     // install.
-    let migration_log = capture_log(crate::persistence::migrate_legacy_paths);
-
-    // `EnvFilter::from_default_env().add_directive(INFO)` looked like "default
-    // to info", but a bare `RUST_LOG=debug` parses to a directive that compares
-    // Equal to the added one, so add_directive REPLACED it and the user's
-    // request was silently discarded. Build the default only when RUST_LOG is
-    // absent or unparseable, and otherwise honour it verbatim.
-    //
-    // The default is scoped rather than a bare "info": iced_winit and wgpu are
-    // chatty at info (a full pretty-printed WindowAttributes and adapter dump
-    // per launch), which drowned Colony's own lines in the very file a bug
-    // report is supposed to attach. Their warnings still come through.
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,colony=info"));
-
-    // Log to a file as well as stderr: a .desktop launch has no terminal, and
-    // on Windows there is no console at all, so stderr-only meant that every
-    // warning in the codebase reached nobody in any shipped configuration.
-    // A plain truncate-on-start file in the data directory, not a rolling
-    // appender: one run's worth of log is what a bug report needs, and it keeps
-    // the dependency set unchanged.
-    use std::io::Write as _;
-    use tracing_subscriber::fmt::writer::MakeWriterExt;
-    let _ = std::io::stderr().write_all(&migration_log);
-    let log_file = crate::persistence::colony_log_path()
-        .ok()
-        .and_then(|path| std::fs::File::create(path).ok());
-    match log_file {
-        Some(mut file) => {
-            let _ = file.write_all(&migration_log);
-            tracing_subscriber::fmt()
-                .with_env_filter(filter)
-                .with_writer(std::sync::Mutex::new(file).and(std::io::stderr))
-                .with_ansi(false)
-                .init()
-        }
-        None => tracing_subscriber::fmt().with_env_filter(filter).init(),
-    }
+    let migration_log = logging::capture(persistence::migrate_legacy_paths);
+    logging::init(&migration_log);
 
     // Honor the saved language preference over environment locale detection,
     // and reopen at the last persisted window size (clamped to sanity).

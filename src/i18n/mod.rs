@@ -258,7 +258,9 @@ mod tests {
             include_str!("../download.rs"),
             include_str!("../persistence.rs"),
             include_str!("../config.rs"),
+            include_str!("../logging.rs"),
             include_str!("../main.rs"),
+            include_str!("../manifest.rs"),
         ];
 
         let mut dead = Vec::new();
