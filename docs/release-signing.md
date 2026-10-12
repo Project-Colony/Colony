@@ -18,7 +18,7 @@ so the shipped binary needs no OpenSSL.
   `"signed": true`. Once an install of an app has verified a signature, that
   app is pinned: a later release that stops publishing `.sig` is refused,
   whatever the manifest now says. The same applies to the `.meta` sidecar
-  ([`src/download.rs`](../src/download.rs), `download_release_asset`). The
+  ([`src/download/install.rs`](../src/download/install.rs), `download_release_asset`). The
   optional `sha256` field in `colony.json` is checked on top of that.
 
 The organisation signs every program with one key, so the keys embedded here

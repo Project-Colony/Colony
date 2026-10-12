@@ -103,16 +103,16 @@ libgtk-3-dev libxdo-dev libdbus-1-dev pkg-config
 
 See [docs/architecture.md](docs/architecture.md) for the full layout. Short version:
 
-- `src/main.rs` — entry, Elm-architecture `update()` / `view()`.
-- `src/update.rs` — `Message` handlers.
-- `src/github.rs` — GitHub API layer: manifest fetching, release asset resolution, update checks.
-- `src/download.rs` — release/asset downloads, archive extraction, launcher self-update.
-- `src/signing.rs` — ed25519 verification of signed launcher updates (see [docs/release-signing.md](docs/release-signing.md)).
-- `src/persistence.rs` — data directories, install state, on-disk caches, favorites.
-- `src/config.rs` — locating external config files (`categories.json`, `colony.toml`).
-- `src/scan.rs` — system app detection (Linux `.desktop`, Windows Start Menu, macOS `.app`).
-- `src/sections.rs` — categories + filter logic.
-- `src/ui/` — widgets and panels (sidebar, app grid, detail view, settings).
+- `src/main.rs` - entry point: CLI flags, startup order, the iced launch.
+- `src/app.rs` - Elm-architecture `view()`, `subscription()` and `theme()`; `src/update/` - `Message` handlers.
+- `src/github/` - GitHub API layer: manifest fetching, release asset resolution, update checks.
+- `src/download/` - release/asset downloads, archive extraction, launcher self-update.
+- `src/signing.rs` - ed25519 verification of signed launcher updates (see [docs/release-signing.md](docs/release-signing.md)).
+- `src/persistence.rs` - data directories, preferences, install state, on-disk caches, favorites.
+- `src/config.rs` - locating external config files (`categories.json`, `colony.toml`).
+- `src/scan.rs` - system app detection (Linux `.desktop`, Windows Start Menu, macOS `.app`).
+- `src/sections.rs` - categories + filter logic.
+- `src/ui/` - widgets and panels (sidebar, app grid, detail view, Preferences), on colony-ui's kit.
 - `src/ui/theme.rs` — a re-export of [colony-ui](https://crates.io/crates/colony-ui)
   plus Colony's own button styling. The 26 theme families and 59 palettes live
   in that crate, generated from the design tokens in

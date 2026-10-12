@@ -25,43 +25,60 @@ Colony is an application launcher written in Rust with Iced 0.14 (Elm architectu
 
 ```
 src/
-├── main.rs          — Crate root: modules, CLI flags, logging, entry point
-├── state.rs         — App struct (global state), GitHubState, UI fields
-├── message.rs       — Message enum (all events)
-├── app.rs           — impl App: boot(), view(), subscription(), theme()
-├── update/          — Message dispatch table (mod.rs) + handlers
-│   ├── store.rs     — install / update / uninstall / notes / favorites
-│   ├── github_auth.rs — device flow, catalog refresh
-│   ├── launcher.rs  — self-update state machine
+├── main.rs          - Entry point: CLI flags (--version, --help,
+│                      validate-manifest), startup order, iced launch
+├── manifest.rs      - `colony validate-manifest`: checks an app's colony.json
+├── logging.rs       - Log file + stderr, with the startup migration's lines
+├── state.rs         - App struct (global state), GitHubState, UI fields
+├── message.rs       - Message enum (all events)
+├── app.rs           - impl App: boot(), view(), subscription(), theme()
+├── update/          - Message dispatch table (mod.rs) + handlers
+│   ├── store.rs     - install / update / uninstall / notes / favorites
+│   ├── github_auth.rs - device flow, catalog refresh
+│   ├── launcher.rs  - self-update state machine
 │   ├── preferences.rs, keyboard.rs, onboarding.rs
-├── github/          — split by layer, mod.rs re-exports everything
-│   ├── http.rs      — client, conditional-request cache, typed statuses
-│   ├── types.rs     — colony.json / API wire shapes
-│   ├── catalog.rs   — store listing
-│   └── releases.rs  — tags, assets, platform auto-detection
-├── download.rs      — Asset/archive downloads, extraction, app-signature
-│                      verification, self-update
-├── signing.rs       — ed25519 verification (launcher AND app releases)
-├── icons.rs         — PNG decoding for per-app grid icons
-├── persistence.rs   — Data dirs, install state, on-disk caches, favorites,
-│                      desktop entries (Linux)
-├── config.rs        — Locating external config (categories.json, colony.toml)
-├── oauth.rs         — Device Flow OAuth (login, token, keychain)
-├── scan.rs          — System application scanning (Linux/Windows/macOS)
-├── sections.rs      — Categories, origin/category filters, JSON config
-├── i18n/            — fr.rs, en.rs, and the Locale lookup (mod.rs)
+├── github/          - split by layer, mod.rs re-exports everything
+│   ├── http.rs      - client, conditional-request cache, typed statuses
+│   ├── types.rs     - colony.json / API wire shapes
+│   ├── catalog.rs   - store listing
+│   └── releases.rs  - tags, assets, platform auto-detection
+├── download/        - split by concern, mod.rs re-exports the public API
+│   ├── http.rs      - download client, resumable transfers, bounded sidecar
+│   │                  reads, safe URL building
+│   ├── files.rs     - path-component checks, no-follow creates, replacing a
+│   │                  running binary, zip / tar.gz extraction
+│   ├── verify.rs    - SHA-256, signed .meta bindings, downgrade rules
+│   ├── install.rs   - app install: download, verify, extract, promote
+│   └── launcher.rs  - self-update: staging, apply with rollback
+├── signing.rs       - ed25519 verification (launcher AND app releases)
+├── icons.rs         - PNG decoding for per-app grid icons
+├── persistence.rs   - Data dirs, preferences (with colony-ui's
+│                      StandardPreferences), install state, on-disk caches,
+│                      favorites, desktop entries (Linux)
+├── config.rs        - Locating external config (categories.json, colony.toml)
+├── oauth.rs         - Device Flow OAuth (login, token, keychain)
+├── scan.rs          - System application scanning (Linux/Windows/macOS)
+├── sections.rs      - Categories, origin/category filters, JSON config
+├── i18n/            - fr.rs, en.rs, and the Locale lookup (mod.rs); the
+│                      shared Preferences labels come from colony-ui
 └── ui/
-    ├── mod.rs       — UI module declarations
-    ├── theme.rs     — colony-ui's 26 theme families and 59 palettes, Colony's button styles
-    ├── sidebar.rs   — Sidebar (the Colony name into Preferences, sections, GitHub, rescan,
-    │                  update badge)
-    ├── app_grid.rs  — Application card grid with search
-    ├── detail.rs    — Detail view (README, changelog, license, actions)
-    ├── settings.rs  — Preferences page on colony-ui's kit (General, Appearance,
-    │                  Accessibility, Storage, Shortcuts, About)
-    ├── github_panel.rs — GitHub connect/disconnect, Device Flow UI
-    ├── markdown_blocks.rs — Cached-block Markdown rendering
-    └── tutorial.rs  — First-launch guided tour (spotlight overlay)
+    ├── mod.rs       - UI module declarations, the glyph + label helper
+    ├── theme.rs     - colony-ui's 26 theme families and 59 palettes, Colony's
+    │                  button styles
+    ├── sidebar.rs   - Sidebar (the Colony name into Preferences, sections,
+    │                  GitHub, rescan, update badge)
+    ├── app_grid.rs  - Application card grid with search
+    ├── detail.rs    - Detail view (README, changelog, license, actions)
+    ├── settings.rs  - Preferences page on colony-ui's kit (General,
+    │                  Appearance, Accessibility, Storage, Shortcuts, About)
+    ├── github_panel.rs - GitHub connect/disconnect, Device Flow UI
+    ├── markdown_blocks.rs - Cached-block Markdown rendering
+    └── tutorial.rs  - First-launch guided tour (spotlight overlay)
+
+config/
+├── categories.json     - Sidebar sections (embedded; can be overridden)
+├── colony.toml         - Scan directories
+└── shields-colors.json - shields.io colour names for README badges (embedded)
 ```
 
 ## Data flow (Elm architecture)
@@ -134,6 +151,8 @@ Unit tests (`cargo test`) cover:
 - Localization (EN/FR, key parity between languages)
 - Preferences serialization, and the migration of a file an older Colony wrote
 - Preferences category order
+- `validate-manifest` exit codes (0 clean, 1 invalid, 2 unreadable)
+- Escaped Nerd Font glyphs in categories.json, shields colour names
 - Update-loop state transitions (catalog refresh, update queue, badges,
   launcher-check outcomes, cancel semantics) via a hermetic test App
 - filePattern globs with exclusions, signature parsing (strict ed25519),
