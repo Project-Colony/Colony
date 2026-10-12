@@ -8,6 +8,7 @@ use crate::github::ColonyRepo;
 use crate::message::Message;
 use crate::scan::{AppCategory, Application};
 use crate::state::App;
+use crate::ui::glyph_label;
 use crate::ui::theme::{self, Palette};
 
 /// Filled Material-Design hexagon glyph from the embedded Nerd Font — the
@@ -377,26 +378,22 @@ impl App {
                 "update_all",
                 &[("count", &self.available_updates.len().to_string())],
             );
-            let btn = button(
-                text(format!("\u{f021}  {label}"))
-                    .size(sz(13))
-                    .font(ui_font()),
-            )
-            .padding([8, 14])
-            .style(|_theme, status| {
-                let (bg, text_color) = theme::button_colors(
-                    status,
-                    Palette::BG_SELECTED(),
-                    Palette::BG_CARD_HOVER(),
-                    Palette::ACCENT(),
-                );
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color,
-                    border: iced::Border::default().rounded(6),
-                    ..Default::default()
-                }
-            });
+            let btn = button(glyph_label("\u{f021}", label, 13, ui_font()))
+                .padding([8, 14])
+                .style(|_theme, status| {
+                    let (bg, text_color) = theme::button_colors(
+                        status,
+                        Palette::BG_SELECTED(),
+                        Palette::BG_CARD_HOVER(),
+                        Palette::ACCENT(),
+                    );
+                    button::Style {
+                        background: Some(bg.into()),
+                        text_color,
+                        border: iced::Border::default().rounded(6),
+                        ..Default::default()
+                    }
+                });
             let btn = if self.is_downloading {
                 btn
             } else {
@@ -708,11 +705,12 @@ impl App {
 
         // Launching is an explicit button, not the whole row: an accidental
         // click on a full-width card used to start the program immediately.
-        let launch_btn = button(
-            text(format!("\u{f04b}  {}", crate::i18n::t("launch_action")))
-                .size(sz(13))
-                .font(ui_font()),
-        )
+        let launch_btn = button(glyph_label(
+            "\u{f04b}",
+            crate::i18n::t("launch_action"),
+            13,
+            ui_font(),
+        ))
         .on_press(Message::LaunchApp(app.exec.clone()))
         .padding([8, 14])
         .style(move |_theme, status| {

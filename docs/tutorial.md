@@ -79,15 +79,15 @@ When you open Colony for the first time you'll see three zones:
 └───────────┴──────────────────────────────────────────┘
 ```
 
-- **Sidebar** — Categories. The top group (`All` / `Windows` / `Linux`) is
+- **Sidebar**: Categories. The top group (`All` / `Windows` / `Linux`) is
   the *origin* filter: Colony apps, apps already installed on your system, or
   both. The middle group is Colony categories (`Development`, `Graphics`,
   `Network`, `Office`, `Multimedia`, `System`, `Utilities`, `Security`, `Games`,
   `Other`).
-- **App grid** — Cards for every app matching the current filters. Click a
+- **App grid**: Cards for every app matching the current filters. Click a
   card to open its detail view.
-- **Search** — A search bar above the grid filters by app name.
-- **Colony** — The name at the top of the sidebar opens Preferences: General,
+- **Search**: A search bar above the grid filters by app name.
+- **Colony**: The name at the top of the sidebar opens Preferences: General,
   Appearance, Accessibility, Storage, Shortcuts and About. Click it again, or
   Close, to go back.
 

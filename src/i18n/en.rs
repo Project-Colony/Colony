@@ -338,7 +338,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert(
         "launcher_update_available_short".into(),
-        "\u{f0aa}  Update {version}".into(),
+        "Update {version}".into(),
     );
     strings.insert(
         "launcher_update_ready".into(),
@@ -346,7 +346,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert(
         "launcher_restart_to_update".into(),
-        "\u{f021}  Restart to update".into(),
+        "Restart to update".into(),
     );
     strings.insert(
         "launcher_download_update".into(),

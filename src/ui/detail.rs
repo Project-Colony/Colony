@@ -5,6 +5,7 @@ use iced::{Element, Fill, Length};
 use crate::github::{self, ColonyRepo};
 use crate::message::Message;
 use crate::state::{capitalize_platform, App, DetailTab};
+use crate::ui::glyph_label;
 use crate::ui::theme::Palette;
 
 /// Custom markdown viewer: same defaults as iced, minus the internal
@@ -254,11 +255,8 @@ impl App {
 
         let action_row = if let Some(app_path) = installed_path {
             // App is installed — show Launch + Update buttons, and uninstall trash button
-            let launch_label = format!(
-                "\u{f04b}  {}",
-                crate::i18n::t_fmt("launch", &[("name", &repo.manifest.name)])
-            );
-            let launch_btn = button(text(launch_label).size(sz(14)).font(ui_font_medium()))
+            let launch_label = crate::i18n::t_fmt("launch", &[("name", &repo.manifest.name)]);
+            let launch_btn = button(glyph_label("\u{f04b}", launch_label, 14, ui_font_medium()))
                 .on_press_maybe(if self.is_downloading {
                     None
                 } else {
@@ -276,11 +274,12 @@ impl App {
 
             let repo_name = repo.name.clone();
             let platform_key = current_platform.to_string();
-            let update_btn = button(
-                text(format!("\u{f021}  {}", crate::i18n::t("update")))
-                    .size(sz(13))
-                    .font(ui_font()),
-            )
+            let update_btn = button(glyph_label(
+                "\u{f021}",
+                crate::i18n::t("update"),
+                13,
+                ui_font(),
+            ))
             .on_press_maybe(if self.is_downloading {
                 None
             } else {
@@ -341,11 +340,12 @@ impl App {
                 let repo_name = repo.name.clone();
                 let platform_key = current_platform.to_string();
                 let is_dl = self.is_downloading;
-                let dl_btn = button(
-                    text(format!("\u{f019}  {}", crate::i18n::t("download")))
-                        .size(sz(14))
-                        .font(ui_font_medium()),
-                )
+                let dl_btn = button(glyph_label(
+                    "\u{f019}",
+                    crate::i18n::t("download"),
+                    14,
+                    ui_font_medium(),
+                ))
                 .on_press_maybe(if is_dl {
                     None
                 } else {
@@ -391,11 +391,12 @@ impl App {
         // "View on GitHub": html_url is fetched with the catalog but was never
         // surfaced anywhere in the UI.
         let github_url = repo.html_url.clone();
-        let github_btn = button(
-            text(format!("\u{f09b}  {}", crate::i18n::t("view_on_github")))
-                .size(sz(13))
-                .font(ui_font()),
-        )
+        let github_btn = button(glyph_label(
+            "\u{f09b}",
+            crate::i18n::t("view_on_github"),
+            13,
+            ui_font(),
+        ))
         .on_press(Message::OpenUrl(github_url))
         .padding([8, 12])
         .style(|_theme, status| {
@@ -483,18 +484,9 @@ impl App {
                     }
                     _ => {
                         let fetching = self.fetching_notes.contains(&repo.name);
-                        let label = if fetching {
-                            format!(
-                                "\u{f110}  {}",
-                                crate::i18n::t_fmt("whats_new", &[("version", new_tag)])
-                            )
-                        } else {
-                            format!(
-                                "\u{f05a}  {}",
-                                crate::i18n::t_fmt("whats_new", &[("version", new_tag)])
-                            )
-                        };
-                        let btn = button(text(label).size(sz(13)).font(ui_font()))
+                        let glyph = if fetching { "\u{f110}" } else { "\u{f05a}" };
+                        let label = crate::i18n::t_fmt("whats_new", &[("version", new_tag)]);
+                        let btn = button(glyph_label(glyph, label, 13, ui_font()))
                             .padding([8, 14])
                             .style(|_theme, status| {
                                 let bg = match status {

@@ -425,11 +425,12 @@ impl App {
         };
 
         if let Some(path) = &self.launcher_update_staged {
-            return button(
-                text(i18n::t("launcher_restart_to_update"))
-                    .size(typo.sz(13))
-                    .font(typo.regular),
-            )
+            return button(crate::ui::glyph_label(
+                "\u{f021}",
+                i18n::t("launcher_restart_to_update"),
+                13,
+                typo.regular,
+            ))
             .on_press(Message::ApplyLauncherUpdate(path.clone()))
             .padding([6, 14])
             .style(style)

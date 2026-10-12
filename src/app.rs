@@ -280,7 +280,7 @@ impl App {
                         String::new()
                     };
                     format!(
-                        "\u{f019}  {} — {} / {} ({}%){}",
+                        "{}: {} / {} ({}%){}",
                         filename,
                         state::human_bytes(done),
                         state::human_bytes(total),
@@ -294,14 +294,9 @@ impl App {
                     } else {
                         String::new()
                     };
-                    format!(
-                        "\u{f019}  {} — {}{}",
-                        filename,
-                        state::human_bytes(done),
-                        speed
-                    )
+                    format!("{}: {}{}", filename, state::human_bytes(done), speed)
                 }
-                None => format!("\u{f019}  {} — {}%", filename, pct),
+                None => format!("{}: {}%", filename, pct),
             };
             let cancel_btn = button(
                 text("\u{f00d}")
@@ -344,6 +339,10 @@ impl App {
             let progress_widget = container(
                 column![
                     row![
+                        text("\u{f019}")
+                            .size(sz(13))
+                            .font(fonts::glyph_font())
+                            .color(Palette::ACCENT_PROGRESS()),
                         text(bar_label)
                             .size(sz(13))
                             .font(ui_font())

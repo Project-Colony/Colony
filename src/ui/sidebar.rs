@@ -7,6 +7,7 @@ use iced::{Element, Fill, Length};
 use crate::message::Message;
 use crate::sections::Section;
 use crate::state::{App, GitHubState};
+use crate::ui::glyph_label;
 use crate::ui::theme::Palette;
 
 impl App {
@@ -48,24 +49,26 @@ impl App {
             Palette::TEXT_DIM()
         };
 
-        let github_label = if github_connected {
-            "GitHub \u{f00c}"
-        } else {
-            "GitHub"
-        };
-
-        let github_btn_content = row![
+        let mut github_btn_content = row![
             text("\u{f09b}")
                 .size(sz(18))
                 .font(fonts::glyph_font())
                 .color(github_icon_color),
-            text(github_label)
+            text("GitHub")
                 .size(sz(13))
                 .font(ui_font())
                 .color(github_icon_color),
         ]
         .spacing(10)
         .align_y(iced::Alignment::Center);
+        if github_connected {
+            github_btn_content = github_btn_content.push(
+                text("\u{f00c}")
+                    .size(sz(13))
+                    .font(fonts::glyph_font())
+                    .color(github_icon_color),
+            );
+        }
 
         let show_menu = self.show_github_menu;
         let github_btn = button(github_btn_content)
@@ -86,14 +89,15 @@ impl App {
                 ..Default::default()
             });
 
-        let rescan_label = if self.is_scanning {
-            format!("\u{f110}  {}", crate::i18n::t("scanning"))
+        let rescan_label: Element<'_, Message> = if self.is_scanning {
+            glyph_label("\u{f110}", crate::i18n::t("scanning"), 13, ui_font()).into()
         } else {
-            crate::i18n::t("rescan")
+            text(crate::i18n::t("rescan"))
+                .size(sz(13))
+                .font(ui_font())
+                .into()
         };
-        let rescan_btn_base = button(text(rescan_label).size(sz(13)).font(ui_font()))
-            .padding([8, 16])
-            .width(Fill);
+        let rescan_btn_base = button(rescan_label).padding([8, 16]).width(Fill);
         let rescan_btn = if self.is_scanning {
             rescan_btn_base
         } else {
@@ -112,46 +116,42 @@ impl App {
             if self.launcher_system_managed {
                 return_system_managed_badge(&update_info.0)
             } else {
-                let (label, msg): (String, Message) = if let Some(ref path) =
-                    self.launcher_update_staged
-                {
+                let (glyph, label, msg) = if let Some(ref path) = self.launcher_update_staged {
                     (
+                        "\u{f021}",
                         crate::i18n::t("launcher_restart_to_update"),
                         Message::ApplyLauncherUpdate(path.clone()),
                     )
                 } else {
                     let tag = &update_info.0;
                     (
+                        "\u{f0aa}",
                         crate::i18n::t_fmt("launcher_update_available_short", &[("version", tag)]),
                         Message::DownloadLauncherUpdate,
                     )
                 };
 
                 let is_downloading = self.is_downloading;
-                button(
-                    text(label)
-                        .size(sz(11))
-                        .font(ui_font())
-                        .color(Palette::ACCENT()),
-                )
-                .on_press_maybe(if is_downloading { None } else { Some(msg) })
-                .padding([6, 12])
-                .width(Fill)
-                .style(|_theme, status| {
-                    let (bg, text_color) = crate::ui::theme::button_colors(
-                        status,
-                        Palette::BG_SELECTED(),
-                        Palette::BG_CARD_HOVER(),
-                        Palette::ACCENT(),
-                    );
-                    button::Style {
-                        background: Some(bg.into()),
-                        text_color,
-                        border: iced::Border::default().rounded(6),
-                        ..Default::default()
-                    }
-                })
-                .into()
+                // The texts take button_colors' accent, dimmed while disabled.
+                button(glyph_label(glyph, label, 11, ui_font()))
+                    .on_press_maybe(if is_downloading { None } else { Some(msg) })
+                    .padding([6, 12])
+                    .width(Fill)
+                    .style(|_theme, status| {
+                        let (bg, text_color) = crate::ui::theme::button_colors(
+                            status,
+                            Palette::BG_SELECTED(),
+                            Palette::BG_CARD_HOVER(),
+                            Palette::ACCENT(),
+                        );
+                        button::Style {
+                            background: Some(bg.into()),
+                            text_color,
+                            border: iced::Border::default().rounded(6),
+                            ..Default::default()
+                        }
+                    })
+                    .into()
             }
         } else {
             container(text("")).height(0).into()
