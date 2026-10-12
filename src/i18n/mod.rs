@@ -255,10 +255,17 @@ mod tests {
             include_str!("../github/catalog.rs"),
             include_str!("../github/releases.rs"),
             include_str!("../oauth.rs"),
-            include_str!("../download.rs"),
+            include_str!("../download/mod.rs"),
+            include_str!("../download/files.rs"),
+            include_str!("../download/http.rs"),
+            include_str!("../download/install.rs"),
+            include_str!("../download/launcher.rs"),
+            include_str!("../download/verify.rs"),
             include_str!("../persistence.rs"),
             include_str!("../config.rs"),
+            include_str!("../logging.rs"),
             include_str!("../main.rs"),
+            include_str!("../manifest.rs"),
         ];
 
         let mut dead = Vec::new();

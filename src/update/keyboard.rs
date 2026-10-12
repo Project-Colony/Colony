@@ -9,6 +9,8 @@ use iced::Task;
 use crate::message::Message;
 use crate::state::App;
 
+const LAST_CATEGORY: usize = crate::ui::SETTINGS_CATEGORIES.len() - 1;
+
 impl App {
     pub(super) fn keyboard_event(&mut self, event: keyboard::Event) -> Task<Message> {
         if !self.keyboard_nav {
@@ -18,7 +20,7 @@ impl App {
             match key {
                 iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape) => {
                     if self.show_settings {
-                        self.show_settings = false;
+                        self.close_settings();
                     } else if self.confirm_uninstall.is_some() {
                         self.confirm_uninstall = None;
                     } else if self.show_first_launch {
@@ -35,7 +37,6 @@ impl App {
                 {
                     let len = self.sections.len();
                     if len > 0 {
-                        self.sidebar_indicator_from = self.sidebar_indicator_pos();
                         if modifiers.shift() {
                             self.selected_section = if self.selected_section == 0 {
                                 len - 1
@@ -45,8 +46,6 @@ impl App {
                         } else {
                             self.selected_section = (self.selected_section + 1) % len;
                         }
-                        self.sidebar_indicator_target = self.selected_section as f32 * 44.0;
-                        self.sidebar_indicator_start = Some(std::time::Instant::now());
                         self.active_colony_repo = None;
                         self.save_preferences();
                     }
@@ -54,7 +53,7 @@ impl App {
                 iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown)
                     if self.show_settings =>
                 {
-                    self.settings_category = (self.settings_category + 1).min(5);
+                    self.settings_category = (self.settings_category + 1).min(LAST_CATEGORY);
                 }
                 iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp)
                     if self.show_settings =>
@@ -106,7 +105,7 @@ impl App {
                 iced::keyboard::Key::Named(iced::keyboard::key::Named::PageDown)
                     if self.show_settings =>
                 {
-                    self.settings_category = (self.settings_category + 3).min(5);
+                    self.settings_category = (self.settings_category + 3).min(LAST_CATEGORY);
                 }
                 iced::keyboard::Key::Named(iced::keyboard::key::Named::PageUp)
                     if self.show_settings =>

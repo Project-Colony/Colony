@@ -1,4 +1,4 @@
-use iced::font;
+use colony_ui::preferences::Change;
 use iced::keyboard;
 use std::path::PathBuf;
 
@@ -21,7 +21,6 @@ pub enum Message {
     ColonyRepoSelected(String),
     ColonyRepoBack,
     ClearStatus,
-    FontLoaded(Result<(), font::Error>),
     // GitHub / OAuth messages
     ToggleGitHubMenu,
     GitHubLogin,
@@ -71,26 +70,20 @@ pub enum Message {
     WelcomeBack,
     WelcomeConnectGithub,
     TutorialBoundsUpdated(TutorialBounds),
-    // Settings
+    // Preferences
+    /// The Colony name at the top of the sidebar and the page's Close button:
+    /// one message, two ways out.
     ToggleSettings,
     SettingsCategory(usize),
-    SettingsToggleSection(String),
-    // Appearance
-    SelectThemeVariant(String, String), // (theme, variant)
-    SelectAccentColor(String),
-    ToggleAutoAccent,
-    // Preference toggles
+    SettingsToggleSection(&'static str),
+    /// A shared Appearance or Accessibility preference (colony-ui).
+    Preference(Change),
+    // Colony's own preferences
     ToggleRestoreSession,
     PickDefaultView(String),
     PickLanguage(String),
     ToggleAutoCheckUpdates,
-    PickFontSize(String),
-    ToggleAnimations,
-    ToggleHighContrast,
-    PickTextSizeA11y(String),
-    ToggleReduceMotion,
     ToggleKeyboardNav,
-    ToggleDyslexiaFont,
     ToggleScanOnStartup,
     // Detail tabs
     DetailTabSelected(DetailTab),

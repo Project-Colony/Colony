@@ -1,4 +1,4 @@
-use iced::font::Weight;
+use colony_ui::{fonts, sz, ui_font, ui_font_bold, ui_font_medium};
 use iced::widget::{button, column, container, row, scrollable, text, Column};
 use iced::{Element, Fill, Length};
 
@@ -10,22 +10,22 @@ use crate::ui::theme::Palette;
 impl App {
     pub(crate) fn view_github_panel(&self) -> Element<'_, Message> {
         let header_text = text("GitHub")
-            .size(self.sz(24))
-            .font(self.app_font_with_weight(Weight::Bold))
+            .size(sz(24))
+            .font(ui_font_bold())
             .color(Palette::TEXT_PRIMARY());
 
         let content: Element<'_, Message> = match &self.github_state {
             GitHubState::Disconnected => {
                 let desc = text(crate::i18n::t("github_connect_desc"))
-                    .size(self.sz(14))
-                    .font(self.app_font())
+                    .size(sz(14))
+                    .font(ui_font())
                     .color(Palette::TEXT_SECONDARY());
 
                 let login_btn_content = row![
-                    text("\u{f09b}").size(self.sz(18)).font(self.app_font()),
+                    text("\u{f09b}").size(sz(18)).font(fonts::glyph_font()),
                     text(crate::i18n::t("github_login"))
-                        .size(self.sz(14))
-                        .font(self.app_font()),
+                        .size(sz(14))
+                        .font(ui_font()),
                 ]
                 .spacing(10)
                 .align_y(iced::Alignment::Center);
@@ -52,8 +52,8 @@ impl App {
                     });
 
                 let info = text(crate::i18n::t("github_public_api"))
-                    .size(self.sz(12))
-                    .font(self.app_font())
+                    .size(sz(12))
+                    .font(ui_font())
                     .color(Palette::TEXT_MUTED());
 
                 // Browsing the catalog is anonymous, so a user whose boot fetch
@@ -63,8 +63,8 @@ impl App {
                 // already runs; no token, no sign-in required.
                 let retry_btn = button(
                     text(crate::i18n::t("github_refresh"))
-                        .size(self.sz(13))
-                        .font(self.app_font()),
+                        .size(sz(13))
+                        .font(ui_font()),
                 )
                 .on_press_maybe((!self.is_fetching_repos).then_some(Message::GitHubRefreshRepos))
                 .padding([8, 16])
@@ -95,17 +95,17 @@ impl App {
             } => match user_code {
                 Some(code) => {
                     let spinner_label = text("\u{f110}  ")
-                        .size(self.sz(14))
-                        .font(self.app_font())
+                        .size(sz(14))
+                        .font(fonts::glyph_font())
                         .color(Palette::ACCENT());
                     let label = text(crate::i18n::t("github_enter_code"))
-                        .size(self.sz(14))
-                        .font(self.app_font())
+                        .size(sz(14))
+                        .font(ui_font())
                         .color(Palette::TEXT_MUTED());
                     let code_btn = button(
                         text(code.as_str())
-                            .size(self.sz(28))
-                            .font(self.app_font())
+                            .size(sz(28))
+                            .font(ui_font())
                             .color(Palette::TEXT_SECONDARY()),
                     )
                     .on_press(Message::CopyToClipboard(code.clone()))
@@ -123,8 +123,8 @@ impl App {
                         }
                     });
                     let hint = text(crate::i18n::t("github_copy_hint"))
-                        .size(self.sz(12))
-                        .font(self.app_font())
+                        .size(sz(12))
+                        .font(ui_font())
                         .color(Palette::TEXT_DIMMEST());
 
                     // The browser open is best-effort; if it failed, this line
@@ -132,8 +132,8 @@ impl App {
                     let where_to: Element<'_, Message> = match verification_uri {
                         Some(uri) => button(
                             text(uri.as_str())
-                                .size(self.sz(12))
-                                .font(self.app_font())
+                                .size(sz(12))
+                                .font(ui_font())
                                 .color(Palette::ACCENT()),
                         )
                         .on_press(Message::OpenUrl(uri.clone()))
@@ -153,12 +153,12 @@ impl App {
                 }
                 None => row![
                     text("\u{f110}")
-                        .size(self.sz(16))
-                        .font(self.app_font())
+                        .size(sz(16))
+                        .font(fonts::glyph_font())
                         .color(Palette::ACCENT()),
                     text(crate::i18n::t("github_connecting"))
-                        .size(self.sz(16))
-                        .font(self.app_font())
+                        .size(sz(16))
+                        .font(ui_font())
                         .color(Palette::TEXT_SECONDARY()),
                 ]
                 .spacing(8)
@@ -179,16 +179,16 @@ impl App {
                 let user_label: Element<'_, Message> = if self.is_fetching_repos {
                     row![
                         text("\u{f110}")
-                            .size(self.sz(14))
-                            .font(self.app_font())
+                            .size(sz(14))
+                            .font(fonts::glyph_font())
                             .color(Palette::ACCENT()),
                         text(format!(
                             "{} ({})",
                             connected_text,
                             crate::i18n::t("syncing_repos")
                         ))
-                        .size(self.sz(14))
-                        .font(self.app_font())
+                        .size(sz(14))
+                        .font(ui_font())
                         .color(Palette::SUCCESS()),
                     ]
                     .spacing(8)
@@ -196,8 +196,8 @@ impl App {
                     .into()
                 } else {
                     text(connected_text)
-                        .size(self.sz(14))
-                        .font(self.app_font())
+                        .size(sz(14))
+                        .font(ui_font())
                         .color(Palette::SUCCESS())
                         .into()
                 };
@@ -206,8 +206,8 @@ impl App {
                     "github_repos_detected",
                     &[("count", &repos.len().to_string())],
                 ))
-                .size(self.sz(16))
-                .font(self.app_font_with_weight(Weight::Medium))
+                .size(sz(16))
+                .font(ui_font_medium())
                 .color(Palette::TEXT_PRIMARY());
 
                 let mut repo_list_items: Vec<Element<'_, Message>> = Vec::new();
@@ -217,8 +217,8 @@ impl App {
 
                 let repo_list = if repo_list_items.is_empty() {
                     column![text(crate::i18n::t("github_no_repos"))
-                        .size(self.sz(13))
-                        .font(self.app_font())
+                        .size(sz(13))
+                        .font(ui_font())
                         .color(Palette::TEXT_DIMMER())]
                 } else {
                     Column::with_children(repo_list_items).spacing(8)
@@ -226,8 +226,8 @@ impl App {
 
                 let refresh_btn_base = button(
                     text(crate::i18n::t("github_refresh"))
-                        .size(self.sz(13))
-                        .font(self.app_font()),
+                        .size(sz(13))
+                        .font(ui_font()),
                 )
                 .padding([8, 16]);
                 let refresh_btn = if self.is_fetching_repos {
@@ -252,8 +252,8 @@ impl App {
 
                 let logout_btn = button(
                     text(crate::i18n::t("github_logout"))
-                        .size(self.sz(13))
-                        .font(self.app_font()),
+                        .size(sz(13))
+                        .font(ui_font()),
                 )
                 .on_press(Message::GitHubLogout)
                 .padding([8, 16])
@@ -286,14 +286,14 @@ impl App {
             }
             GitHubState::Error(e) => {
                 let err = text(crate::i18n::t_fmt("github_error", &[("error", e.as_str())]))
-                    .size(self.sz(14))
-                    .font(self.app_font())
+                    .size(sz(14))
+                    .font(ui_font())
                     .color(Palette::ERROR());
 
                 let retry_btn = button(
                     text(crate::i18n::t("github_retry"))
-                        .size(self.sz(13))
-                        .font(self.app_font()),
+                        .size(sz(13))
+                        .font(ui_font()),
                 )
                 .on_press(Message::GitHubLogin)
                 .padding([8, 16]);
@@ -303,8 +303,8 @@ impl App {
                 // it needs no account at all.
                 let refresh_btn = button(
                     text(crate::i18n::t("github_refresh"))
-                        .size(self.sz(13))
-                        .font(self.app_font()),
+                        .size(sz(13))
+                        .font(ui_font()),
                 )
                 .on_press_maybe((!self.is_fetching_repos).then_some(Message::GitHubRefreshRepos))
                 .padding([8, 16]);
@@ -337,8 +337,8 @@ impl App {
 
     pub(crate) fn view_repo_card<'a>(&'a self, repo: &'a ColonyRepo) -> Element<'a, Message> {
         let name = text(&repo.name)
-            .size(self.sz(15))
-            .font(self.app_font_with_weight(Weight::Medium))
+            .size(sz(15))
+            .font(ui_font_medium())
             .color(Palette::TEXT_PRIMARY());
 
         // Clickable: opens the repo's detail page (the panel used to render an
