@@ -87,8 +87,9 @@ When you open Colony for the first time you'll see three zones:
 - **App grid** — Cards for every app matching the current filters. Click a
   card to open its detail view.
 - **Search** — A search bar above the grid filters by app name.
-- **Settings gear** — Bottom of the sidebar opens preferences (theme,
-  language, scan directories, about).
+- **Colony** — The name at the top of the sidebar opens Preferences: General,
+  Appearance, Accessibility, Storage, Shortcuts and About. Click it again, or
+  Close, to go back.
 
 ## 3. Install your first Colony app
 
@@ -121,9 +122,10 @@ Switch the sidebar origin to **Linux** (or **Windows**) to see only those.
 
 ## 5. Customize the theme
 
-Click the **gear icon** at the bottom of the sidebar → **Theme**. Colony ships
-26 theme families and 59 palettes (Catppuccin, Gruvbox, Nord, Dracula, Rosé
-Pine, Tokyo Night, etc.). Theme changes apply instantly, no restart needed.
+Click **Colony** at the top of the sidebar, then **Appearance** → **Theme**.
+Colony ships 26 theme families and 59 palettes (Catppuccin, Gruvbox, Nord,
+Dracula, Rosé Pine, Tokyo Night, etc.). Theme changes apply instantly, no
+restart needed.
 
 ## 6. Connect your GitHub account (optional)
 

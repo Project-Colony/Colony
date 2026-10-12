@@ -186,9 +186,9 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "tut_github_title".into(),
         "GitHub connection (optional)".into(),
     );
-    strings.insert("tut_github_desc".into(), "Without an account: 60 requests/h. With one: 5000/h + private repo access. Recommended if you plan to browse a lot. The Rescan button below refreshes the system scan.".into());
+    strings.insert("tut_github_desc".into(), "Without an account: 60 requests/h. With one: 5000/h. Recommended if you plan to browse a lot. The Rescan button below refreshes the system scan.".into());
     strings.insert("tut_finish_title".into(), "You're all set!".into());
-    strings.insert("tut_finish_desc".into(), "The gear icon next to the title opens Preferences: 24 theme families, keyboard shortcuts, accessibility. Enjoy Colony!".into());
+    strings.insert("tut_finish_desc".into(), "The Colony name at the top of the sidebar opens Preferences: themes, keyboard shortcuts, accessibility. Enjoy Colony!".into());
 
     // Loading / async feedback
     strings.insert("scanning".into(), "Scanning...".into());
@@ -199,29 +199,32 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "n_results_found".into(),
         "{count} result(s) for \"{query}\"".into(),
     );
-    strings.insert("theme_applied".into(), "Theme applied.".into());
 
     // Keyboard shortcuts
     strings.insert("shortcuts_title".into(), "Keyboard shortcuts".into());
     strings.insert(
+        "shortcuts_desc".into(),
+        "What the keys do while keyboard navigation is on.".into(),
+    );
+    strings.insert(
         "shortcut_esc".into(),
-        "Esc — Close the current panel, dialog or detail page".into(),
+        "Esc - Close the current panel, dialog or detail page".into(),
     );
     strings.insert(
         "shortcut_tab".into(),
-        "Tab / Shift+Tab — Navigate categories".into(),
+        "Tab / Shift+Tab - Navigate categories".into(),
     );
     strings.insert(
         "shortcut_arrows".into(),
-        "↑ ↓ — Navigate settings and the app grid".into(),
+        "↑ ↓ - Navigate Preferences and the app grid".into(),
     );
     strings.insert(
         "shortcut_enter".into(),
-        "Enter — Open the highlighted item (launches a local app directly)".into(),
+        "Enter - Open the highlighted item (launches a local app directly)".into(),
     );
     strings.insert(
         "shortcut_pageupdown".into(),
-        "Page Up/Down — Fast navigation in settings".into(),
+        "Page Up/Down - Fast navigation in Preferences".into(),
     );
 
     // Tooltips / hints
@@ -236,22 +239,10 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "Use Tab and arrow keys to navigate".into(),
     );
 
-    // Settings
-    strings.insert("settings_title".into(), "Preferences".into());
-    strings.insert("settings_close".into(), "Close".into());
-    strings.insert("settings_cat_general".into(), "General".into());
-    strings.insert("settings_cat_appearance".into(), "Appearance".into());
-    strings.insert("settings_cat_accessibility".into(), "Accessibility".into());
+    // Preferences: Colony's own categories. The shared ones ship in colony-ui.
     strings.insert("settings_cat_storage".into(), "Storage".into());
-    strings.insert("settings_cat_about".into(), "About".into());
     strings.insert("settings_cat_shortcuts".into(), "Shortcuts".into());
-    // General
-    strings.insert("settings_general_title".into(), "General settings".into());
-    strings.insert(
-        "settings_general_desc".into(),
-        "Preferences are saved automatically.".into(),
-    );
-    // Startup
+    // General: startup
     strings.insert("settings_section_startup".into(), "Startup".into());
     strings.insert(
         "settings_startup_section_desc".into(),
@@ -276,7 +267,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("settings_section_language".into(), "Language".into());
     strings.insert(
         "settings_language_desc".into(),
-        "Customize the interface and time format.".into(),
+        "The language of every label in Colony.".into(),
     );
     strings.insert(
         "settings_current_language".into(),
@@ -284,13 +275,13 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert(
         "settings_current_language_desc".into(),
-        "Synced with system.".into(),
+        "Defaults to the system language.".into(),
     );
     // Updates
     strings.insert("settings_section_updates".into(), "Updates".into());
     strings.insert(
         "settings_updates_desc".into(),
-        "Manage update checking and channel.".into(),
+        "Looking for new versions of Colony and your apps.".into(),
     );
     strings.insert(
         "settings_auto_check_updates".into(),
@@ -301,93 +292,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "Check for new versions on launch.".into(),
     );
     strings.insert("settings_check_updates".into(), "Check for updates".into());
-    // Privacy
-    // Appearance
-    strings.insert(
-        "settings_appearance_title".into(),
-        "Appearance settings".into(),
-    );
-    strings.insert(
-        "settings_appearance_desc".into(),
-        "Adjust theme, accents and visual effects.".into(),
-    );
-    strings.insert("settings_section_theme".into(), "Theme".into());
-    // Theme families
-    // New theme families
-    // Colors & accents
-    strings.insert("settings_section_colors".into(), "Colors & accents".into());
-    strings.insert(
-        "settings_auto_accent".into(),
-        "Auto accent from background".into(),
-    );
-    strings.insert(
-        "settings_auto_accent_desc".into(),
-        "Automatically adapts accent to backgrounds.".into(),
-    );
-    strings.insert("settings_section_typography".into(), "Typography".into());
-    strings.insert(
-        "settings_typography_desc".into(),
-        "Configure font and text size.".into(),
-    );
-    strings.insert("settings_font_size".into(), "Text size".into());
-    strings.insert("settings_font_size_desc".into(), "Base text size.".into());
-    strings.insert("settings_font_size_default".into(), "Default".into());
-    strings.insert("settings_font_size_small".into(), "Small".into());
-    strings.insert("settings_font_size_large".into(), "Large".into());
-    strings.insert("settings_font_size_xlarge".into(), "Extra large".into());
-    strings.insert(
-        "settings_section_effects".into(),
-        "Backgrounds & effects".into(),
-    );
-    strings.insert(
-        "settings_effects_desc".into(),
-        "Manage animations and visual effects.".into(),
-    );
-    strings.insert("settings_animations".into(), "Animations".into());
-    strings.insert(
-        "settings_animations_desc".into(),
-        "Enable animated transitions.".into(),
-    );
-    strings.insert("settings_section_preview".into(), "Preview".into());
-    strings.insert("settings_preview_card".into(), "Preview card".into());
-    strings.insert(
-        "settings_preview_summary".into(),
-        "Theme: Dark · Accent: Blue · Text: Default · Effects: Enabled".into(),
-    );
     // Accessibility
-    strings.insert(
-        "settings_accessibility_title".into(),
-        "Accessibility settings".into(),
-    );
-    strings.insert(
-        "settings_accessibility_desc".into(),
-        "Improve reading, navigation and media playback.".into(),
-    );
-    strings.insert("settings_section_vision".into(), "Vision".into());
-    strings.insert(
-        "settings_vision_desc".into(),
-        "Options to improve readability.".into(),
-    );
-    strings.insert("settings_high_contrast".into(), "High contrast".into());
-    strings.insert(
-        "settings_high_contrast_desc".into(),
-        "Increase contrast of elements.".into(),
-    );
-    strings.insert("settings_text_size_a11y".into(), "Text size".into());
-    strings.insert(
-        "settings_text_size_a11y_desc".into(),
-        "Adjust text size for comfort.".into(),
-    );
-    strings.insert("settings_section_motion".into(), "Motion".into());
-    strings.insert(
-        "settings_motion_desc".into(),
-        "Reduce animations for comfort.".into(),
-    );
-    strings.insert("settings_reduce_motion".into(), "Reduce motion".into());
-    strings.insert(
-        "settings_reduce_motion_desc".into(),
-        "Limit transitions and movements.".into(),
-    );
     strings.insert(
         "settings_section_navigation".into(),
         "Navigation & interaction".into(),
@@ -401,26 +306,15 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "settings_keyboard_nav_desc".into(),
         "Navigate with Tab and arrow keys.".into(),
     );
-    strings.insert("settings_section_reading".into(), "Reading".into());
-    strings.insert(
-        "settings_reading_desc".into(),
-        "Reading comfort options.".into(),
-    );
-    strings.insert("settings_dyslexia_font".into(), "Dyslexia font".into());
-    strings.insert(
-        "settings_dyslexia_font_desc".into(),
-        "Use a font adapted for dyslexia.".into(),
-    );
     // Storage
-    strings.insert("settings_storage_title".into(), "Storage".into());
     strings.insert(
         "settings_storage_desc".into(),
-        "Manage application locations and cache.".into(),
+        "What Colony finds, caches and installs.".into(),
     );
     strings.insert("settings_section_scan".into(), "Scan".into());
     strings.insert(
         "settings_scan_desc".into(),
-        "Configure directories scanned at startup.".into(),
+        "Colony looks for the applications already installed on this computer.".into(),
     );
     strings.insert("settings_startup".into(), "Scan on startup".into());
     strings.insert(
@@ -431,10 +325,12 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("settings_local_apps".into(), "Local applications".into());
     strings.insert("settings_colony_repos".into(), "Colony repos".into());
     strings.insert("settings_favorites".into(), "Favorites".into());
-    // Placeholders
     // About
     strings.insert("settings_about_title".into(), "About Colony".into());
-    strings.insert("settings_about".into(), "About".into());
+    strings.insert(
+        "settings_about_desc".into(),
+        "The version you are running, where it comes from, and its updates.".into(),
+    );
     // Launcher self-update
     strings.insert(
         "launcher_update_available".into(),

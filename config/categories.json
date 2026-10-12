@@ -1,13 +1,13 @@
 [
   {
     "name": "All",
-    "icon": "",
+    "icon": "\uf00a",
     "origin": "colony",
     "category": "all"
   },
   {
     "name": "Windows",
-    "icon": "",
+    "icon": "\uf17a",
     "origin": "windows",
     "category": "all",
     "platforms": [
@@ -16,7 +16,7 @@
   },
   {
     "name": "Linux",
-    "icon": "",
+    "icon": "\uf17c",
     "origin": "external",
     "category": "all",
     "platforms": [
@@ -25,7 +25,7 @@
   },
   {
     "name": "macOS",
-    "icon": "",
+    "icon": "\uf179",
     "origin": "external",
     "category": "all",
     "platforms": [
@@ -35,61 +35,61 @@
   },
   {
     "name": "Development",
-    "icon": "",
+    "icon": "\uf121",
     "origin": "colony",
     "category": "development"
   },
   {
     "name": "Graphics",
-    "icon": "",
+    "icon": "\uf1fc",
     "origin": "colony",
     "category": "graphics"
   },
   {
     "name": "Network",
-    "icon": "",
+    "icon": "\uf0ac",
     "origin": "colony",
     "category": "network"
   },
   {
     "name": "Office",
-    "icon": "",
+    "icon": "\uf0f6",
     "origin": "colony",
     "category": "office"
   },
   {
     "name": "Multimedia",
-    "icon": "",
+    "icon": "\uf008",
     "origin": "colony",
     "category": "multimedia"
   },
   {
     "name": "System",
-    "icon": "",
+    "icon": "\uf085",
     "origin": "colony",
     "category": "system"
   },
   {
     "name": "Utilities",
-    "icon": "",
+    "icon": "\uf0ad",
     "origin": "colony",
     "category": "utility"
   },
   {
     "name": "Security",
-    "icon": "",
+    "icon": "\uf132",
     "origin": "colony",
     "category": "Security"
   },
   {
     "name": "Games",
-    "icon": "",
+    "icon": "\uf11b",
     "origin": "colony",
     "category": "game"
   },
   {
     "name": "Other",
-    "icon": "",
+    "icon": "\uf128",
     "origin": "colony",
     "category": "other"
   }

@@ -19,7 +19,7 @@ mod state;
 mod ui;
 mod update;
 
-use state::{default_font, App};
+use state::App;
 
 /// Run `f` with its log lines held in memory, and return them.
 ///
@@ -262,11 +262,18 @@ pub fn main() -> iced::Result {
     let width = prefs.window_width.unwrap_or(1000.0).clamp(640.0, 7680.0);
     let height = prefs.window_height.unwrap_or(700.0).clamp(480.0, 4320.0);
 
-    iced::application(App::boot, App::update, App::view)
+    // The interface, dyslexia and icon fonts ship inside colony-ui, licences
+    // included.
+    colony_ui::fonts::BYTES
+        .into_iter()
+        .fold(
+            iced::application(App::boot, App::update, App::view),
+            |app, font| app.font(font),
+        )
         .title(App::title)
         .theme(App::theme)
         .subscription(App::subscription)
-        .default_font(default_font())
+        .default_font(colony_ui::ui_font())
         .window_size((width, height))
         .run()
 }

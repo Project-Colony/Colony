@@ -1,4 +1,4 @@
-use iced::font::Weight;
+use colony_ui::{fonts, sz, ui_font, ui_font_medium};
 use iced::widget::{
     button, column, container, row, scrollable, stack, text, text_input, Column, Row,
 };
@@ -105,8 +105,8 @@ impl App {
         use iced::alignment::{Horizontal, Vertical};
         let fg = theme::contrast_on(tint);
         let hexagon = text(HEX_FILLED)
-            .size(self.sz(50))
-            .font(self.app_font())
+            .size(sz(50))
+            .font(ui_font())
             .color(tint)
             .width(Fill)
             .height(Fill)
@@ -116,8 +116,8 @@ impl App {
         // Font carries the FontAwesome glyphs too), so the two share identical
         // metrics and centre on the exact same point — no manual nudging.
         let cat = text(glyph)
-            .size(self.sz(15))
-            .font(self.app_font())
+            .size(sz(15))
+            .font(ui_font())
             .color(fg)
             .width(Fill)
             .height(Fill)
@@ -160,8 +160,8 @@ impl App {
     fn chip<'a>(&self, label: String) -> Element<'a, Message> {
         container(
             text(label)
-                .size(self.sz(11))
-                .font(self.app_font())
+                .size(sz(11))
+                .font(ui_font())
                 .color(Palette::TEXT_DIMMER()),
         )
         .padding([2, 7])
@@ -203,22 +203,18 @@ impl App {
                     Palette::TEXT_DIMMEST(),
                 )
             };
-            return text(label)
-                .size(self.sz(12))
-                .font(self.app_font())
-                .color(color)
-                .into();
+            return text(label).size(sz(12)).font(ui_font()).color(color).into();
         }
         let version = cached_version;
         if let Some(new_tag) = self.available_updates.get(&repo.name) {
             let head = row![
                 text(HEX_FILLED)
-                    .size(self.sz(11))
-                    .font(self.app_font())
+                    .size(sz(11))
+                    .font(ui_font())
                     .color(Palette::WARNING()),
                 text(crate::i18n::t("status_update"))
-                    .size(self.sz(12))
-                    .font(self.app_font())
+                    .size(sz(12))
+                    .font(ui_font())
                     .color(Palette::WARNING()),
             ]
             .spacing(6)
@@ -228,8 +224,8 @@ impl App {
                 version.as_deref().unwrap_or("?"),
                 new_tag
             ))
-            .size(self.sz(11))
-            .font(self.app_font())
+            .size(sz(11))
+            .font(ui_font())
             .color(Palette::TEXT_DIMMER());
             column![head, delta]
                 .spacing(3)
@@ -238,12 +234,12 @@ impl App {
         } else {
             let head = row![
                 text(HEX_FILLED)
-                    .size(self.sz(11))
-                    .font(self.app_font())
+                    .size(sz(11))
+                    .font(ui_font())
                     .color(Palette::SUCCESS()),
                 text(crate::i18n::t("status_installed"))
-                    .size(self.sz(12))
-                    .font(self.app_font())
+                    .size(sz(12))
+                    .font(ui_font())
                     .color(Palette::SUCCESS()),
             ]
             .spacing(6)
@@ -252,8 +248,8 @@ impl App {
             if let Some(v) = version {
                 col = col.push(
                     text(v)
-                        .size(self.sz(11))
-                        .font(self.app_font())
+                        .size(sz(11))
+                        .font(ui_font())
                         .color(Palette::TEXT_DIMMER()),
                 );
             }
@@ -296,7 +292,7 @@ impl App {
             .on_press(on_press)
             .padding(0)
             .width(Fill)
-            .height(Length::Fixed(self.sz(96)))
+            .height(Length::Fixed(sz(96)))
             .style(move |_theme, status| {
                 let bg = match status {
                     _ if selected => Palette::BG_SELECTED(),
@@ -329,7 +325,7 @@ impl App {
         let search_input = text_input(&crate::i18n::t("search_placeholder"), &self.search_query)
             .on_input(Message::SearchChanged)
             .padding(12)
-            .size(self.sz(16))
+            .size(sz(16))
             .width(Fill);
         let search = container(search_input)
             .id(crate::ui::tutorial::ID_SEARCH)
@@ -358,16 +354,16 @@ impl App {
         // Show spinner indicator for async operations
         let spinner = if self.is_scanning || self.is_checking_updates || self.is_fetching_repos {
             text("\u{f110} ")
-                .size(self.sz(12))
-                .font(self.app_font())
+                .size(sz(12))
+                .font(fonts::glyph_font())
                 .color(Palette::ACCENT())
         } else {
-            text("").size(self.sz(12))
+            text("").size(sz(12))
         };
 
         let status = text(status_text)
-            .size(self.sz(12))
-            .font(self.app_font())
+            .size(sz(12))
+            .font(ui_font())
             .color(Palette::TEXT_DIMMER());
 
         let mut header = row![search, spinner, status]
@@ -383,8 +379,8 @@ impl App {
             );
             let btn = button(
                 text(format!("\u{f021}  {label}"))
-                    .size(self.sz(13))
-                    .font(self.app_font()),
+                    .size(sz(13))
+                    .font(ui_font()),
             )
             .padding([8, 14])
             .style(|_theme, status| {
@@ -464,13 +460,13 @@ impl App {
             };
             let mut empty = column![
                 text("\u{f002}")
-                    .size(self.sz(32))
-                    .font(self.app_font())
+                    .size(sz(32))
+                    .font(fonts::glyph_font())
                     .color(Palette::TEXT_DIMMEST()),
                 container(text("")).height(12),
                 text(empty_msg)
-                    .size(self.sz(16))
-                    .font(self.app_font())
+                    .size(sz(16))
+                    .font(ui_font())
                     .color(Palette::TEXT_PLACEHOLDER()),
             ]
             .align_x(iced::Alignment::Center);
@@ -483,8 +479,8 @@ impl App {
                 empty = empty.push(container(text("")).height(16)).push(
                     button(
                         text(crate::i18n::t("github_refresh"))
-                            .size(self.sz(13))
-                            .font(self.app_font()),
+                            .size(sz(13))
+                            .font(ui_font()),
                     )
                     .on_press_maybe(
                         (!self.is_fetching_repos).then_some(Message::GitHubRefreshRepos),
@@ -531,7 +527,7 @@ impl App {
         if repos.is_empty() {
             return container(
                 text(crate::i18n::t("no_apps_found"))
-                    .size(self.sz(16))
+                    .size(sz(16))
                     .color(Palette::TEXT_PLACEHOLDER()),
             )
             .width(Fill)
@@ -559,8 +555,8 @@ impl App {
         let tile = self.icon_tile(&repo.name, tint, category.glyph());
 
         let name = text(repo.display_name())
-            .size(self.sz(15))
-            .font(self.app_font_with_weight(Weight::Medium))
+            .size(sz(15))
+            .font(ui_font_medium())
             .color(Palette::TEXT_PRIMARY());
 
         // One-line summary so every card keeps a uniform, aligned height.
@@ -570,12 +566,12 @@ impl App {
         } else {
             container(
                 text(summary)
-                    .size(self.sz(12))
-                    .font(self.app_font())
+                    .size(sz(12))
+                    .font(ui_font())
                     .color(Palette::TEXT_SECONDARY()),
             )
             .width(Fill)
-            .max_height(self.sz(12) * 1.6)
+            .max_height(sz(12) * 1.6)
             .clip(true)
             .into()
         };
@@ -641,7 +637,7 @@ impl App {
         .height(Fill);
         container(inner)
             .width(Fill)
-            .height(Length::Fixed(self.sz(96)))
+            .height(Length::Fixed(sz(96)))
             .style(move |_theme| container::Style {
                 background: Some(
                     if selected {
@@ -670,8 +666,8 @@ impl App {
         let tile = self.hex_tile(tint, app.category.glyph());
 
         let name = text(app.name.clone())
-            .size(self.sz(15))
-            .font(self.app_font_with_weight(Weight::Medium))
+            .size(sz(15))
+            .font(ui_font_medium())
             .color(Palette::TEXT_PRIMARY());
 
         let chips = row![self.chip(format!("{:?}", app.category))].spacing(7);
@@ -680,21 +676,21 @@ impl App {
         // Favorites were a dead feature for local apps: the section filtered
         // on them but nothing could ever star one.
         let is_fav = self.is_favorite(&app.name);
-        let star_font = iced::Font {
-            weight: if is_fav {
-                Weight::Black
-            } else {
-                Weight::Normal
-            },
-            ..iced::Font::with_name(crate::state::FA_FONT_NAME)
+        let star_font = if is_fav {
+            fonts::icon_font()
+        } else {
+            fonts::icon_font_regular()
         };
-        let star_btn = button(text("\u{f005}").size(self.sz(14)).font(star_font).color(
-            if is_fav {
-                Palette::WARNING()
-            } else {
-                Palette::TEXT_DIM()
-            },
-        ))
+        let star_btn = button(
+            text("\u{f005}")
+                .size(sz(14))
+                .font(star_font)
+                .color(if is_fav {
+                    Palette::WARNING()
+                } else {
+                    Palette::TEXT_DIM()
+                }),
+        )
         .on_press(Message::ToggleFavorite(app.name.clone()))
         .padding([8, 10])
         .style(|_theme, status| {
@@ -714,8 +710,8 @@ impl App {
         // click on a full-width card used to start the program immediately.
         let launch_btn = button(
             text(format!("\u{f04b}  {}", crate::i18n::t("launch_action")))
-                .size(self.sz(13))
-                .font(self.app_font()),
+                .size(sz(13))
+                .font(ui_font()),
         )
         .on_press(Message::LaunchApp(app.exec.clone()))
         .padding([8, 14])

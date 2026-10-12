@@ -1,4 +1,4 @@
-use iced::font::Weight;
+use colony_ui::{fonts, sz, ui_font, ui_font_bold, ui_font_medium};
 use iced::widget::{button, column, container, markdown, rich_text, row, scrollable, text, Row};
 use iced::{Element, Fill, Length};
 
@@ -48,17 +48,13 @@ impl<'a> markdown::Viewer<'a, Message> for ColonyMdViewer {
 
 impl App {
     pub(crate) fn view_colony_detail<'a>(&'a self, repo: &'a ColonyRepo) -> Element<'a, Message> {
-        let back_button = button(
-            text(crate::i18n::t("back"))
-                .size(self.sz(13))
-                .font(self.app_font()),
-        )
-        .on_press(Message::ColonyRepoBack)
-        .padding([8, 16]);
+        let back_button = button(text(crate::i18n::t("back")).size(sz(13)).font(ui_font()))
+            .on_press(Message::ColonyRepoBack)
+            .padding([8, 16]);
 
         let title = text(repo.display_name())
-            .size(self.sz(24))
-            .font(self.app_font_with_weight(Weight::Bold))
+            .size(sz(24))
+            .font(ui_font_bold())
             .color(Palette::TEXT_PRIMARY());
 
         // Tab bar
@@ -71,7 +67,7 @@ impl App {
         for (tab_val, label) in tabs {
             let is_selected = self.detail_tab == tab_val;
             tab_buttons.push(
-                button(text(label).size(self.sz(13)).font(self.app_font()))
+                button(text(label).size(sz(13)).font(ui_font()))
                     .on_press(Message::DetailTabSelected(tab_val))
                     .padding([6, 14])
                     .style(move |_theme, status| {
@@ -106,13 +102,13 @@ impl App {
         // Parsed Markdown comes from self.detail_blocks, kept up-to-date by the
         // update-side helper. Placeholder text falls back to plain muted text.
         let md_settings = markdown::Settings::with_text_size(
-            self.sz(14),
+            sz(14),
             markdown::Style::from_palette(iced::Theme::Dark.palette()),
         );
         let description: Element<'_, Message> = if is_placeholder {
             text(crate::i18n::t("tab_not_available"))
-                .size(self.sz(14))
-                .font(self.app_font())
+                .size(sz(14))
+                .font(ui_font())
                 .color(Palette::TEXT_MUTED())
                 .into()
         } else {
@@ -123,8 +119,8 @@ impl App {
             "language_label",
             &[("lang", &repo.language)],
         ))
-        .size(self.sz(12))
-        .font(self.app_font())
+        .size(sz(12))
+        .font(ui_font())
         .color(Palette::TEXT_MUTED());
 
         // Favorite button — FontAwesome 6 Free, solid/regular variant for filled/empty.
@@ -135,17 +131,14 @@ impl App {
         } else {
             Palette::TEXT_DIM()
         };
-        let fav_font = iced::Font {
-            weight: if is_fav {
-                Weight::Black
-            } else {
-                Weight::Normal
-            },
-            ..iced::Font::with_name(crate::state::FA_FONT_NAME)
+        let fav_font = if is_fav {
+            fonts::icon_font()
+        } else {
+            fonts::icon_font_regular()
         };
         let fav_btn = button(
             text("\u{f005}")
-                .size(self.sz(18))
+                .size(sz(18))
                 .font(fav_font)
                 .color(fav_color),
         )
@@ -171,8 +164,8 @@ impl App {
             .iter()
             .map(|p| {
                 text(capitalize_platform(p))
-                    .size(self.sz(12))
-                    .font(self.app_font())
+                    .size(sz(12))
+                    .font(ui_font())
                     .color(Palette::TEXT_DIM())
                     .into()
             })
@@ -191,8 +184,8 @@ impl App {
                     "installed_version",
                     &[("version", &installed)],
                 ))
-                .size(self.sz(12))
-                .font(self.app_font())
+                .size(sz(12))
+                .font(ui_font())
                 .color(Palette::TEXT_DIM())
                 .into(),
             );
@@ -218,8 +211,8 @@ impl App {
                         "offered_version",
                         &[("version", offered_tag)],
                     ))
-                    .size(self.sz(12))
-                    .font(self.app_font())
+                    .size(sz(12))
+                    .font(ui_font())
                     .color(Palette::TEXT_DIM())
                     .into(),
                 );
@@ -227,8 +220,8 @@ impl App {
             if let Some(size) = facts.and_then(|f| f.size) {
                 footer_items.push(
                     text(crate::state::human_bytes(size))
-                        .size(self.sz(12))
-                        .font(self.app_font())
+                        .size(sz(12))
+                        .font(ui_font())
                         .color(Palette::TEXT_DIM())
                         .into(),
                 );
@@ -238,8 +231,8 @@ impl App {
                 let day = date.split('T').next().unwrap_or(date);
                 footer_items.push(
                     text(day.to_string())
-                        .size(self.sz(12))
-                        .font(self.app_font())
+                        .size(sz(12))
+                        .font(ui_font())
                         .color(Palette::TEXT_DIM())
                         .into(),
                 );
@@ -265,32 +258,28 @@ impl App {
                 "\u{f04b}  {}",
                 crate::i18n::t_fmt("launch", &[("name", &repo.manifest.name)])
             );
-            let launch_btn = button(
-                text(launch_label)
-                    .size(self.sz(14))
-                    .font(self.app_font_with_weight(Weight::Medium)),
-            )
-            .on_press_maybe(if self.is_downloading {
-                None
-            } else {
-                Some(Message::LaunchColonyApp(app_path))
-            })
-            .padding([12, 24])
-            .style(move |_theme, status| {
-                crate::ui::theme::action_button_style(
-                    status,
-                    Palette::BTN_SUCCESS(),
-                    Palette::BTN_SUCCESS_HOVER(),
-                    Palette::BTN_SUCCESS_PRESSED(),
-                )
-            });
+            let launch_btn = button(text(launch_label).size(sz(14)).font(ui_font_medium()))
+                .on_press_maybe(if self.is_downloading {
+                    None
+                } else {
+                    Some(Message::LaunchColonyApp(app_path))
+                })
+                .padding([12, 24])
+                .style(move |_theme, status| {
+                    crate::ui::theme::action_button_style(
+                        status,
+                        Palette::BTN_SUCCESS(),
+                        Palette::BTN_SUCCESS_HOVER(),
+                        Palette::BTN_SUCCESS_PRESSED(),
+                    )
+                });
 
             let repo_name = repo.name.clone();
             let platform_key = current_platform.to_string();
             let update_btn = button(
                 text(format!("\u{f021}  {}", crate::i18n::t("update")))
-                    .size(self.sz(13))
-                    .font(self.app_font()),
+                    .size(sz(13))
+                    .font(ui_font()),
             )
             .on_press_maybe(if self.is_downloading {
                 None
@@ -311,8 +300,8 @@ impl App {
             let uninstall_repo_name = repo.name.clone();
             let uninstall_btn = button(
                 text("\u{f1f8}")
-                    .size(self.sz(14))
-                    .font(self.app_font())
+                    .size(sz(14))
+                    .font(fonts::glyph_font())
                     .center(),
             )
             // The only action here that was not gated on a running download.
@@ -354,8 +343,8 @@ impl App {
                 let is_dl = self.is_downloading;
                 let dl_btn = button(
                     text(format!("\u{f019}  {}", crate::i18n::t("download")))
-                        .size(self.sz(14))
-                        .font(self.app_font_with_weight(Weight::Medium)),
+                        .size(sz(14))
+                        .font(ui_font_medium()),
                 )
                 .on_press_maybe(if is_dl {
                     None
@@ -391,8 +380,8 @@ impl App {
                     "no_release_platform"
                 };
                 let no_release = text(crate::i18n::t(key))
-                    .size(self.sz(12))
-                    .font(self.app_font())
+                    .size(sz(12))
+                    .font(ui_font())
                     .color(Palette::TEXT_MUTED());
                 let spacer2: Element<'_, Message> = container(text("")).width(Fill).into();
                 Row::new().push(spacer2).push(no_release)
@@ -404,8 +393,8 @@ impl App {
         let github_url = repo.html_url.clone();
         let github_btn = button(
             text(format!("\u{f09b}  {}", crate::i18n::t("view_on_github")))
-                .size(self.sz(13))
-                .font(self.app_font()),
+                .size(sz(13))
+                .font(ui_font()),
         )
         .on_press(Message::OpenUrl(github_url))
         .padding([8, 12])
@@ -465,18 +454,18 @@ impl App {
                 match self.release_notes.get(&repo.name) {
                     Some((tag, blocks)) if tag == new_tag => {
                         let md_settings = markdown::Settings::with_text_size(
-                            self.sz(13),
+                            sz(13),
                             markdown::Style::from_palette(iced::Theme::Dark.palette()),
                         );
                         let notes_title =
                             text(crate::i18n::t_fmt("whats_new", &[("version", new_tag)]))
-                                .size(self.sz(14))
-                                .font(self.app_font_with_weight(Weight::Medium))
+                                .size(sz(14))
+                                .font(ui_font_medium())
                                 .color(Palette::ACCENT());
                         let notes_body: Element<'_, Message> = if blocks.is_empty() {
                             text(crate::i18n::t("tab_not_available"))
-                                .size(self.sz(13))
-                                .font(self.app_font())
+                                .size(sz(13))
+                                .font(ui_font())
                                 .color(Palette::TEXT_MUTED())
                                 .into()
                         } else {
@@ -505,7 +494,7 @@ impl App {
                                 crate::i18n::t_fmt("whats_new", &[("version", new_tag)])
                             )
                         };
-                        let btn = button(text(label).size(self.sz(13)).font(self.app_font()))
+                        let btn = button(text(label).size(sz(13)).font(ui_font()))
                             .padding([8, 14])
                             .style(|_theme, status| {
                                 let bg = match status {

@@ -10,6 +10,7 @@ Colony is an application launcher written in Rust with Iced 0.14 (Elm architectu
 |-----------|-----------|
 | Language | Rust (edition 2021) |
 | UI | Iced 0.14 (Elm architecture) |
+| Shared UI | colony-ui: theme palettes, fonts, text sizing, motion, the Preferences kit |
 | Async | Tokio (integrated via Iced runtime) |
 | HTTP | reqwest (async + streaming), rustls checking certificates against the OS trust store (no OpenSSL) |
 | Auth | GitHub Device Flow OAuth |
@@ -51,11 +52,13 @@ src/
 ├── i18n/            — fr.rs, en.rs, and the Locale lookup (mod.rs)
 └── ui/
     ├── mod.rs       — UI module declarations
-    ├── theme.rs     — 26 theme families, 59 palettes, semantic tokens
-    ├── sidebar.rs   — Sidebar (sections, GitHub, rescan, update badge)
+    ├── theme.rs     — colony-ui's 26 theme families and 59 palettes, Colony's button styles
+    ├── sidebar.rs   — Sidebar (the Colony name into Preferences, sections, GitHub, rescan,
+    │                  update badge)
     ├── app_grid.rs  — Application card grid with search
     ├── detail.rs    — Detail view (README, changelog, license, actions)
-    ├── settings.rs  — Settings panel (theme, language, about, updates)
+    ├── settings.rs  — Preferences page on colony-ui's kit (General, Appearance,
+    │                  Accessibility, Storage, Shortcuts, About)
     ├── github_panel.rs — GitHub connect/disconnect, Device Flow UI
     ├── markdown_blocks.rs — Cached-block Markdown rendering
     └── tutorial.rs  — First-launch guided tour (spotlight overlay)
@@ -129,7 +132,8 @@ Unit tests (`cargo test`) cover:
 - Application categorization
 - Section filters
 - Localization (EN/FR, key parity between languages)
-- Preferences serialization
+- Preferences serialization, and the migration of a file an older Colony wrote
+- Preferences category order
 - Update-loop state transitions (catalog refresh, update queue, badges,
   launcher-check outcomes, cancel semantics) via a hermetic test App
 - filePattern globs with exclusions, signature parsing (strict ed25519),
