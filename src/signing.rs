@@ -2,7 +2,7 @@
 //!
 //! Colony's own release binaries are signed with an ed25519 private key that
 //! only the organisation's shared signing workflow can use (see
-//! `docs/release-signing.md`); the matching public key is embedded below.
+//! `docs/internals/release-signing.md`); the matching public key is embedded below.
 //! Before a launcher self-update is applied, the downloaded binary is verified
 //! against a detached `<asset>.sig` signature. Verification is mandatory and
 //! fail-closed: a missing, malformed, or invalid signature aborts the update
@@ -36,7 +36,7 @@ use ed25519_dalek::{Signature, VerifyingKey};
 /// 3. Drop `old` from this list in N+2 to complete the revocation.
 ///
 /// Order is irrelevant to verification; keep the newest first for readability.
-/// See `docs/release-signing.md`.
+/// See `docs/internals/release-signing.md`.
 const RELEASE_PUBLIC_KEYS: &[[u8; 32]] = &[[
     0x44, 0xd8, 0xe0, 0xdc, 0xd9, 0xfc, 0x1f, 0xaf, 0xda, 0x06, 0x0d, 0x6e, 0x9f, 0x01, 0xa3, 0x91,
     0x44, 0xdc, 0xad, 0xd4, 0xf1, 0x11, 0x13, 0x5e, 0x7d, 0x56, 0xaa, 0x53, 0xc7, 0x05, 0xbb, 0x4b,

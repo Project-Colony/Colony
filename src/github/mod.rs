@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn spec_conformant_manifest_parses_field_for_field() {
-        // Locks docs/colony-spec.md <-> code parity: this sample uses every
+        // Locks docs/guide/colony-spec.md <-> code parity: this sample uses every
         // documented manifest field with the spec's exact camelCase names.
         // If a rename or removal breaks the spec, this test fails first.
         let json = r#"{

@@ -1,7 +1,7 @@
 # Release signing
 
 Colony checks an **ed25519 signature** before it runs anything it downloads.
-The trusted public keys are embedded in [`src/signing.rs`](../src/signing.rs)
+The trusted public keys are embedded in [`src/signing.rs`](../../src/signing.rs)
 (`RELEASE_PUBLIC_KEYS`) and verified with the pure-Rust `ed25519-dalek` crate,
 so the shipped binary needs no OpenSSL.
 
@@ -18,7 +18,7 @@ so the shipped binary needs no OpenSSL.
   `"signed": true`. Once an install of an app has verified a signature, that
   app is pinned: a later release that stops publishing `.sig` is refused,
   whatever the manifest now says. The same applies to the `.meta` sidecar
-  ([`src/download/install.rs`](../src/download/install.rs), `download_release_asset`). The
+  ([`src/download/install.rs`](../../src/download/install.rs), `download_release_asset`). The
   optional `sha256` field in `colony.json` is checked on top of that.
 
 The organisation signs every program with one key, so the keys embedded here
