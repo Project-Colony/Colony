@@ -1,4 +1,4 @@
-# Specification — Colony App Discovery via GitHub
+# colony.json specification: how Colony discovers apps on GitHub
 
 ## Context
 
@@ -7,7 +7,7 @@ Colony is an application launcher that downloads, updates, and launches software
 ## Official source
 
 - **Official GitHub organization:** `Project-Colony` (https://github.com/Project-Colony)
-- Colony automatically scans **all GitHub repositories** in the Project-Colony organization to detect compatible software.
+- Colony automatically scans **every public repository** of the Project-Colony organization to detect compatible software.
 
 ## Detecting a Colony app
 
@@ -24,8 +24,9 @@ The manifest serves to:
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/Project-Colony/Project-Colony-Resources/main/generated/colony.schema.json",
   "name": "orCAL",
-  "category": "Utilities"
+  "category": "utility"
 }
 ```
 
@@ -44,8 +45,9 @@ This is the **recommended format** for new Colony apps using the standard releas
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/Project-Colony/Project-Colony-Resources/main/generated/colony.schema.json",
   "name": "Lilypad",
-  "category": "Security",
+  "category": "security",
   "platforms": ["windows", "linux", "macos"],
   "releaseFiles": {
     "windows": {
@@ -72,8 +74,9 @@ This is the **recommended format** for new Colony apps using the standard releas
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/Project-Colony/Project-Colony-Resources/main/generated/colony.schema.json",
   "name": "Lilypad",
-  "category": "Security",
+  "category": "security",
   "platforms": ["windows", "linux", "macos"],
   "releaseFiles": {
     "windows": {
@@ -110,7 +113,7 @@ Signature and checksum siblings (`.sig`, `.sha256`, `.yml`, ...) are never match
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | `string` | yes | Display name in Colony. Should match the repository name. |
-| `category` | `string` | yes | Colony category, as shown in the sidebar (case-insensitive). Values: `Development`, `Graphics`, `Network`, `Office`, `Multimedia`, `System`, `Utility` (alias `Utilities`), `Security`, `Game` (alias `Games`), `Other`. Unknown values fall back to `Other`. |
+| `category` | `string` | yes | Colony category, which picks the sidebar section (case-insensitive). Canonical values: `development`, `graphics`, `network`, `office`, `multimedia`, `system`, `utility`, `security`, `game`, `other`; `utilities` and `games` are accepted too. Unknown values fall back to `other`, and `colony validate-manifest` reports them. |
 | `platforms` | `string[]` | no | Supported platforms. Values: `"windows"`, `"linux"`, `"macos"` (Apple Silicon), `"macos-x86"` (Intel). Auto-detected if omitted. |
 | `releaseFiles` | `object` | no | Map of platform → release entry. Each key is a platform. Auto-detected if omitted. |
 | `icon` | `string` | no | Path (relative to the repo root) to a square **PNG** app icon shown in the Colony grid. See [App icon](#app-icon). |
@@ -161,13 +164,13 @@ Colony extracts information from the repository to enrich the display:
 
 Colony shows a per-app icon in the grid. It is resolved, in order:
 
-1. The `icon` manifest field — a path relative to the repo root (e.g. `"assets/icons/icon.png"`), fetched from the repo like the README.
+1. The `icon` manifest field: a path relative to the repo root (e.g. `"assets/icons/icon.png"`), fetched from the repo like the README.
 2. If `icon` is absent, a conventional **`icon.png`** at the repo root.
 3. If neither exists, Colony draws a generated category tile (a tinted hexagon with the category glyph).
 
 The icon is fetched once and cached on disk (`<cache>/repo-icons/<repo>/icon.png`), decoded to an image, and rendered at a fixed ~54 px tile.
 
-**Format**: a square **PNG** (transparent or opaque). PNG is the only format Colony decodes — not `.ico` / `.svg` / `.icns` (those are for a platform's *own* application icon, which is separate from the Colony grid icon). A 48–128 px source works well; pixel-art icons should be authored at their native size.
+**Format**: a square **PNG** (transparent or opaque). PNG is the only format Colony decodes, not `.ico` / `.svg` / `.icns` (those are for a platform's *own* application icon, which is separate from the Colony grid icon). A 48 to 128 px source works well; pixel-art icons should be authored at their native size.
 
 ### Standard icon layout
 
@@ -175,30 +178,30 @@ Project-Colony repos keep every icon format in one uniform folder, so tooling (r
 
 ```
 assets/icons/
-├── icon.png    — canonical square PNG; the Colony grid icon (declared via `icon`)
-├── icon.ico    — Windows application icon (multi-size container, 16–256 px)
-└── icon.icns   — macOS application icon (multi-size container)
+├── icon.png    canonical square PNG; the Colony grid icon (declared via `icon`)
+├── icon.ico    Windows application icon (multi-size container, 16 to 256 px)
+└── icon.icns   macOS application icon (multi-size container)
 ```
 
 ```json
 { "icon": "assets/icons/icon.png" }
 ```
 
-Declaring the path explicitly is preferred over relying on the root-`icon.png` convention: it documents the layout and spares Colony a probing request. The `.ico` / `.icns` files are not read by Colony — they are staged there for each app's own platform packaging (executable icon, taskbar, dock).
+Declaring the path explicitly is preferred over relying on the root-`icon.png` convention: it documents the layout and spares Colony a probing request. The `.ico` / `.icns` files are not read by Colony: they are staged there for each app's own platform packaging (executable icon, taskbar, dock).
 
 ## GitHub OAuth authentication
 
-Colony offers a **"Connect"** button that initiates a GitHub Device Flow OAuth.
+Colony offers a **Sign in with GitHub** button, in the panel the sidebar's **GitHub** button opens, that starts a GitHub Device Flow OAuth.
 
 ### Flow
 
 - **Device Flow**: user receives a code, opens a URL in their browser, enters the code to authorize Colony.
-- Minimal scopes (public repos need no scope; auth increases rate limits to 5000 req/h).
+- Scope `read:user` only: enough to read the user name. Public repositories need no scope, and signing in only raises the rate limit to 5000 requests per hour.
 
 ### Token management
 
-- Stored in the OS keychain (keyring crate), with a file fallback (chmod 600).
-- Revocation via disconnect button (local deletion).
+- Stored in the OS credential store (keyring-core with the macOS Keychain, Windows Credential Manager or Secret Service store), with a file fallback (chmod 600).
+- **Sign out** deletes it locally; the authorisation itself is revoked from the user's GitHub settings.
 - Authenticated calls use: `Authorization: Bearer <token>`.
 
 ### Unauthenticated mode
@@ -211,8 +214,8 @@ Colony offers a **"Connect"** button that initiates a GitHub Device Flow OAuth.
 When a release publishes a detached signature named `<asset>.sig` next to an
 asset, Colony **requires** it to verify: the raw 64-byte ed25519 signature over
 the asset bytes, made with the Project-Colony release key (the same key that
-signs the launcher itself - see `docs/release-signing.md` and the embedded
-public key in `src/signing.rs`). An invalid signature aborts the install.
+signs the launcher itself: see [release-signing.md](../internals/release-signing.md) and the embedded
+public key in [`src/signing.rs`](../../src/signing.rs)). An invalid signature aborts the install.
 
 An asset without a `.sig` sibling installs as before (legacy unsigned app) -
 signing is adopted per-app, no flag day - **unless** the manifest declares:
@@ -247,8 +250,8 @@ org-signed artefact under a new tag.
 Sidecars are **opportunistic and pinned**: an app that publishes none still
 installs, but once Colony has verified one for an app, a later release that
 stops publishing them is refused. So the ecosystem can adopt them repo by repo
-with no flag day, and no repo can quietly stop. The release template ships the
-`sign` job that emits them.
+with no flag day, and no repo can quietly stop. The release template's
+`sign-and-publish` job, which calls the shared signing workflow, emits them.
 
 ## Validating your manifest
 

@@ -14,7 +14,7 @@ Colony is an application launcher written in Rust with Iced 0.14 (Elm architectu
 | Async | Tokio (integrated via Iced runtime) |
 | HTTP | reqwest (async + streaming), rustls checking certificates against the OS trust store (no OpenSSL) |
 | Auth | GitHub Device Flow OAuth |
-| Secret storage | keyring (OS keychain) + file fallback |
+| Secret storage | keyring-core with the native store of each OS (Keychain, Credential Manager, Secret Service) + file fallback |
 | Serialization | serde + serde_json |
 | Configuration | TOML (scan dirs), JSON (categories, preferences) |
 | Versioning | semver |
@@ -94,8 +94,8 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
 ## Security
 
 - **OAuth**: Device Flow (no client_secret exposed)
-- **Tokens**: Stored in OS keychain, file fallback (chmod 600)
-- **Downloads**: HTTPS only, optional SHA256 verification, resumable via Range with an ETag+length identity check before any partial file is continued
+- **Tokens**: Stored in the OS credential store, file fallback (chmod 600). The file is deleted only after the token reads back from the store
+- **Downloads**: HTTPS only, ed25519 signature and signed `.meta` checks when the release publishes them (pinned once seen, see [release-signing.md](release-signing.md)), optional SHA256 from the manifest, resumable via Range with an ETag+length identity check before any partial file is continued
 - **URLs**: every remote-controlled path segment is percent-encoded, never interpolated - the WHATWG parser collapses `..` before the request is sent
 - **Timeouts**: 30s total for API requests, 10s connect, 60s read (inactivity) for downloads - a total deadline on a download makes a large asset impossible to fetch on a slow line
 - **Self-update**: Binary backup before replacement, automatic rollback on failure
@@ -112,10 +112,12 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
 | Repo icons (cache) | `~/.cache/Colony/Colony/repo-icons/<repo>/` | Offline fallback |
 | Preferences | `~/.config/Colony/Colony/preferences/preferences.json` | Permanent |
 | Favorites | `~/.config/Colony/Colony/preferences/favorites.json` | Permanent |
-| OAuth token | OS Keychain / `~/.config/Colony/Colony/auth/github_token.json` | Permanent |
+| OAuth token | OS credential store; `~/.config/Colony/Colony/auth/github_token.json` only as the fallback | Until sign-out |
 | Diagnostics log | `~/.local/share/Colony/Colony/colony.log` | Truncated per run |
 | Installed versions | `~/.local/share/Colony/apps/<repo>/.colony_version` | Permanent |
 | Resolved asset | `~/.local/share/Colony/apps/<repo>/.colony_asset` | Permanent |
+| Signature pins | `~/.local/share/Colony/apps/<repo>/.colony_signed`, `.colony_meta` | Permanent |
+| Menu entries (Linux) | `~/.local/share/applications/colony-<app>.desktop` | Until uninstall |
 | Colony binaries | `~/.local/share/Colony/apps/<repo>/` | Permanent |
 | Self-update staging | `~/.cache/Colony/Colony/update-staging/` | Emptied at every start |
 

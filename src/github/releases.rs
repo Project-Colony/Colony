@@ -131,7 +131,7 @@ const NON_INSTALLABLE_SUFFIXES: &[&str] = &[
     // already ship `colony-linux.meta`, so the day an ecosystem app adopts the
     // sidecar, a documented legacy substring pattern like "linux" would start
     // matching two assets and fail with "Ambiguous pattern" - which is exactly
-    // what docs/colony-spec.md promises cannot happen.
+    // what docs/guide/colony-spec.md promises cannot happen.
     ".meta",
     ".sha256",
     ".sha256sum",

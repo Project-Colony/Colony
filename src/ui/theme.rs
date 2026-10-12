@@ -92,8 +92,8 @@ mod doc_parity_tests {
         assert_eq!(
             families, 26,
             "the docs say 26 theme families; colony-ui ships {families}. Update README.md \
-             (including its table of family names), docs/faq.md, docs/tutorial.md, \
-             docs/architecture.md and CONTRIBUTING.md."
+             (including its table of family names), docs/guide/faq.md, \
+             docs/guide/tutorial.md, docs/internals/architecture.md and CONTRIBUTING.md."
         );
         assert_eq!(
             palettes, 59,

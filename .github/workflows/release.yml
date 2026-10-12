@@ -180,12 +180,6 @@ jobs:
       # No build cache here: SignPath forbids release builds that reuse
       # outputs of earlier, unverified builds.
 
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libxdo-dev libdbus-1-dev
-
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
