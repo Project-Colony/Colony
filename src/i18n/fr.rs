@@ -352,6 +352,10 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "Met à jour la bibliothèque au démarrage.".into(),
     );
     strings.insert("settings_section_install".into(), "Installation".into());
+    strings.insert(
+        "settings_install_desc".into(),
+        "Ce que Colony a trouvé sur cet ordinateur, dans le catalogue et dans vos favoris.".into(),
+    );
     strings.insert("settings_local_apps".into(), "Applications locales".into());
     strings.insert("settings_colony_repos".into(), "Dépôts Colony".into());
     strings.insert("settings_favorites".into(), "Favoris".into());

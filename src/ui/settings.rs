@@ -103,7 +103,7 @@ impl App {
             typo,
             "startup",
             "settings_section_startup",
-            Some("settings_startup_section_desc"),
+            "settings_startup_section_desc",
             vec![
                 widgets::functional_toggle(
                     typo,
@@ -137,7 +137,7 @@ impl App {
             typo,
             "lang",
             "settings_section_language",
-            Some("settings_language_desc"),
+            "settings_language_desc",
             vec![picker],
         )
     }
@@ -147,7 +147,7 @@ impl App {
             typo,
             "updates",
             "settings_section_updates",
-            Some("settings_updates_desc"),
+            "settings_updates_desc",
             vec![
                 widgets::functional_toggle(
                     typo,
@@ -176,7 +176,7 @@ impl App {
             typo,
             "navigation",
             "settings_section_navigation",
-            Some("settings_navigation_desc"),
+            "settings_navigation_desc",
             vec![widgets::functional_toggle(
                 typo,
                 &i18n::t("settings_keyboard_nav"),
@@ -194,7 +194,7 @@ impl App {
             typo,
             "scan",
             "settings_section_scan",
-            Some("settings_scan_desc"),
+            "settings_scan_desc",
             vec![
                 widgets::functional_toggle(
                     typo,
@@ -218,7 +218,7 @@ impl App {
             typo,
             "caches",
             "clear_caches",
-            Some("clear_caches_desc"),
+            "clear_caches_desc",
             vec![action_button(
                 typo,
                 "\u{f1f8}",
@@ -231,7 +231,7 @@ impl App {
             typo,
             "install",
             "settings_section_install",
-            None,
+            "settings_install_desc",
             vec![
                 info_row(
                     typo,
@@ -461,20 +461,19 @@ impl App {
         typo: &Typography,
         key: &'static str,
         title_key: &str,
-        description_key: Option<&str>,
+        description_key: &str,
         controls: Vec<Element<'a, Message>>,
     ) -> Element<'a, Message> {
-        let mut body = Column::new().width(Fill);
-        if let Some(description) = description_key {
-            body = body.push(widgets::section_description(typo, &i18n::t(description)));
-        }
         widgets::collapsible_section(
             typo,
             &i18n::t(title_key),
             self.settings_expanded_sections.contains(key),
             Message::SettingsToggleSection(key),
-            body.push(Column::with_children(controls).width(Fill))
-                .into(),
+            column![
+                widgets::section_description(typo, &i18n::t(description_key)),
+                Column::with_children(controls).width(Fill),
+            ]
+            .into(),
         )
     }
 }

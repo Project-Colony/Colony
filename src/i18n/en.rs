@@ -322,6 +322,11 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "Updates the library at startup.".into(),
     );
     strings.insert("settings_section_install".into(), "Installation".into());
+    strings.insert(
+        "settings_install_desc".into(),
+        "Counts of what Colony found on this computer, in the catalog and in your favorites."
+            .into(),
+    );
     strings.insert("settings_local_apps".into(), "Local applications".into());
     strings.insert("settings_colony_repos".into(), "Colony repos".into());
     strings.insert("settings_favorites".into(), "Favorites".into());
