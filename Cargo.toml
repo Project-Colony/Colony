@@ -32,18 +32,15 @@ futures = "0.3.34"
 open = "5.4.4"
 base64 = "0.23.1"
 dirs = "7.0.0"
-# apple-native / windows-native are REQUIRED, not optional: keyring 3 has no
-# default feature, and without them its macOS and Windows backends resolve to
-# the in-memory `mock`, whose set_password returns Ok while storing nothing.
-# Colony reads that Ok as success and deletes its plaintext fallback on purpose,
-# so the token was written nowhere and every restart logged the user out. Both
-# are target-gated in keyring's manifest, so they add nothing to the Linux build.
-keyring = { version = "3.6.3", features = [
-    "apple-native",
-    "windows-native",
-    "sync-secret-service",
-    "vendored",
-] }
+# The GitHub token goes to the OS credential store through keyring 4, which is
+# keyring-core plus one store crate per OS (the target tables below). keyring 3
+# fell back to an in-memory mock whenever a platform feature was missing: its
+# set_password returned Ok while storing nothing, Colony deleted the plaintext
+# fallback on that Ok, and every restart logged the user out. keyring-core has
+# no implicit store at all. Colony never sets a default store and builds every
+# entry from the per-target store in src/oauth.rs, so the mock is reachable only
+# from the tests, and the plaintext copy goes only after the token reads back.
+keyring-core = "1.0.0"
 semver = "1.0.28"
 sha2 = "0.11.0"
 # Pure-Rust ed25519 verification for signed launcher self-updates (no openssl).
@@ -56,6 +53,21 @@ flate2 = "1.1.10"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+# One credential store per OS, each gated to its own target so a build pulls in
+# only its own. The stores use the same service, account and Windows target name
+# as keyring 3, so a token saved before the upgrade is still read.
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = "1.1.0"
+
+# Secret Service over libdbus, as with keyring 3. `vendored` builds libdbus from
+# source so no system headers are needed; `crypto-rust` encrypts the session
+# without openssl.
+[target.'cfg(all(unix, not(any(target_os = "macos", target_os = "ios", target_os = "android"))))'.dependencies]
+dbus-secret-service-keyring-store = { version = "1.0.1", features = ["crypto-rust", "vendored"] }
 
 [profile.release]
 lto = "thin"

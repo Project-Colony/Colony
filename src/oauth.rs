@@ -1,5 +1,7 @@
 use anyhow::Result;
-use std::path::PathBuf;
+use keyring_core::{CredentialStore, Entry};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// GitHub OAuth App Client ID.
@@ -219,10 +221,37 @@ async fn fetch_username(token: &str) -> Result<String> {
 }
 
 // --- Token persistence ---
-// Uses OS keychain (via keyring crate) with file fallback.
+// The OS credential store (keyring 4) first, a 0600 file as the fallback.
 
 const KEYRING_SERVICE: &str = "colony-launcher";
 const KEYRING_USER: &str = "github-oauth";
+
+/// The OS credential store for this target.
+///
+/// Built per call rather than once: the three callers run once per launch,
+/// login and logout, and a Secret Service daemon that starts after Colony is
+/// then picked up instead of being missed for the whole session. There is no
+/// arm for other targets on purpose: keyring 3 quietly fell back to an
+/// in-memory mock there, so a missing store is now a build error instead.
+fn os_store() -> keyring_core::Result<Arc<CredentialStore>> {
+    #[cfg(target_os = "macos")]
+    let store = apple_native_keyring_store::keychain::Store::new()?;
+    #[cfg(windows)]
+    let store = windows_native_keyring_store::Store::new()?;
+    #[cfg(all(
+        unix,
+        not(any(target_os = "macos", target_os = "ios", target_os = "android"))
+    ))]
+    let store = dbus_secret_service_keyring_store::Store::new()?;
+    Ok(store)
+}
+
+/// The token's entry in the OS credential store. The service and user match
+/// keyring 3, whose stores used the same identifiers on every OS, so a token
+/// saved before the keyring 4 upgrade is read and overwritten in place.
+fn os_entry() -> keyring_core::Result<Entry> {
+    os_store()?.build(KEYRING_SERVICE, KEYRING_USER, None)
+}
 
 fn token_path() -> PathBuf {
     match crate::persistence::colony_data_dir() {
@@ -249,37 +278,33 @@ struct StoredToken {
 }
 
 fn save_token(session: &OAuthSession) -> Result<()> {
+    save_token_with(os_entry(), &token_path(), session)
+}
+
+fn save_token_with(
+    entry: keyring_core::Result<Entry>,
+    path: &Path,
+    session: &OAuthSession,
+) -> Result<()> {
     let stored = StoredToken {
         access_token: session.access_token.clone(),
         username: session.username.clone(),
     };
     let json = serde_json::to_string_pretty(&stored)?;
 
-    // Try the OS keychain first.
-    let keychain_ok = match keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
-        Ok(entry) => match entry.set_password(&json) {
-            Ok(()) => {
-                tracing::info!("Token saved to OS keychain");
-                true
+    match store_verified(entry, &json) {
+        Ok(()) => {
+            tracing::info!("Token saved to the OS credential store");
+            // The store holds a copy that read back intact: never leave a
+            // plaintext one on disk.
+            if path.exists() {
+                if let Err(e) = std::fs::remove_file(path) {
+                    tracing::warn!("could not delete the plaintext token file: {e}");
+                }
             }
-            Err(e) => {
-                tracing::warn!("Keychain unavailable ({e}); using file fallback");
-                false
-            }
-        },
-        Err(e) => {
-            tracing::warn!("Keychain error ({e}); using file fallback");
-            false
+            return Ok(());
         }
-    };
-
-    let path = token_path();
-    if keychain_ok {
-        // Keychain holds the secret — never leave a plaintext copy on disk.
-        if path.exists() {
-            let _ = std::fs::remove_file(&path);
-        }
-        return Ok(());
+        Err(why) => tracing::warn!("{why}; using the file fallback"),
     }
 
     // Fallback only: write the token to a file created with 0600 from the start
@@ -287,9 +312,26 @@ fn save_token(session: &OAuthSession) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    write_private(&path, json.as_bytes())?;
+    write_private(path, json.as_bytes())?;
     tracing::warn!("Token saved to plaintext file fallback: {}", path.display());
     Ok(())
+}
+
+/// Store the secret, then read it back. Only an identical read-back counts as
+/// saved: an Ok from `set_password` alone is what keyring 3's mock returned
+/// while keeping nothing, and trusting it cost users the plaintext copy.
+fn store_verified(entry: keyring_core::Result<Entry>, secret: &str) -> Result<(), String> {
+    let entry = entry.map_err(|e| format!("OS credential store unavailable ({e})"))?;
+    entry
+        .set_password(secret)
+        .map_err(|e| format!("OS credential store refused the token ({e})"))?;
+    match entry.get_password() {
+        Ok(back) if back == secret => Ok(()),
+        Ok(_) => Err("OS credential store returned a different token on read-back".into()),
+        Err(e) => Err(format!(
+            "OS credential store lost the token on read-back ({e})"
+        )),
+    }
 }
 
 /// Write a file that is owner-only (0600) from creation on Unix, avoiding the
@@ -325,24 +367,30 @@ fn write_private(path: &std::path::Path, contents: &[u8]) -> Result<()> {
 }
 
 /// Try to load a previously stored token.
-/// Checks OS keychain first, then falls back to file.
+/// Checks the OS credential store first, then falls back to the file.
 pub fn load_saved_token() -> Option<OAuthSession> {
-    // Try keychain first
-    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
-        if let Ok(json) = entry.get_password() {
-            if let Ok(stored) = serde_json::from_str::<StoredToken>(&json) {
-                tracing::debug!("Token loaded from OS keychain");
+    load_token_with(os_entry(), &token_path())
+}
+
+fn load_token_with(entry: keyring_core::Result<Entry>, path: &Path) -> Option<OAuthSession> {
+    match entry.and_then(|entry| entry.get_password()) {
+        Ok(json) => match serde_json::from_str::<StoredToken>(&json) {
+            Ok(stored) => {
+                tracing::debug!("Token loaded from the OS credential store");
                 return Some(OAuthSession {
                     access_token: stored.access_token,
                     username: stored.username,
                 });
             }
-        }
+            Err(e) => {
+                tracing::warn!("ignoring an unreadable token in the OS credential store: {e}")
+            }
+        },
+        Err(keyring_core::Error::NoEntry) => {}
+        Err(e) => tracing::debug!("OS credential store not read ({e}); trying the file"),
     }
 
-    // Fallback: file-based
-    let path = token_path();
-    let content = std::fs::read_to_string(&path).ok()?;
+    let content = std::fs::read_to_string(path).ok()?;
     let stored: StoredToken = serde_json::from_str(&content).ok()?;
     tracing::debug!("Token loaded from file: {}", path.display());
     Some(OAuthSession {
@@ -360,26 +408,23 @@ pub fn load_saved_token() -> Option<OAuthSession> {
 /// so a failed deletion still reported "Disconnected" and the next launch
 /// silently restored the session from the credential the user just revoked.
 pub fn delete_saved_token() -> Result<()> {
+    delete_token_with(os_entry(), &token_path())
+}
+
+fn delete_token_with(entry: keyring_core::Result<Entry>, path: &Path) -> Result<()> {
     let mut failure: Option<String> = None;
 
-    match keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
-        Ok(entry) => match entry.delete_credential() {
-            // Nothing stored is the desired end state, not an error.
-            Ok(()) | Err(keyring::Error::NoEntry) => {}
-            Err(e) => {
-                tracing::warn!("could not delete the keychain credential: {e}");
-                failure = Some(e.to_string());
-            }
-        },
+    match entry.and_then(|entry| entry.delete_credential()) {
+        // Nothing stored is the desired end state, not an error.
+        Ok(()) | Err(keyring_core::Error::NoEntry) => {}
         Err(e) => {
-            tracing::warn!("could not open the keychain entry to delete it: {e}");
+            tracing::warn!("could not delete the credential from the OS store: {e}");
             failure = Some(e.to_string());
         }
     }
 
-    let path = token_path();
     if path.exists() {
-        if let Err(e) = std::fs::remove_file(&path) {
+        if let Err(e) = std::fs::remove_file(path) {
             tracing::warn!("could not delete the token file: {e}");
             failure = Some(e.to_string());
         }
@@ -391,5 +436,147 @@ pub fn delete_saved_token() -> Result<()> {
             Ok(())
         }
         Some(e) => anyhow::bail!("{e}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use keyring_core::api::{CredentialApi, CredentialStoreApi};
+    use keyring_core::{mock, Credential, Error};
+    use std::any::Any;
+
+    // The mock store is used here and nowhere else: production code never
+    // sets a default store, and `os_store` has no mock arm.
+    fn mock_entry(store: &Arc<mock::Store>) -> keyring_core::Result<Entry> {
+        store.build(KEYRING_SERVICE, KEYRING_USER, None)
+    }
+
+    fn session(token: &str) -> OAuthSession {
+        OAuthSession {
+            access_token: token.to_string(),
+            username: Some("octocat".to_string()),
+        }
+    }
+
+    /// keyring 3's trap, reproduced: the write answers Ok and keeps nothing.
+    #[derive(Debug)]
+    struct Forgetful;
+
+    impl CredentialApi for Forgetful {
+        fn set_secret(&self, _: &[u8]) -> keyring_core::Result<()> {
+            Ok(())
+        }
+        fn get_secret(&self) -> keyring_core::Result<Vec<u8>> {
+            Err(Error::NoEntry)
+        }
+        fn delete_credential(&self) -> keyring_core::Result<()> {
+            Err(Error::NoEntry)
+        }
+        fn get_credential(&self) -> keyring_core::Result<Option<Arc<Credential>>> {
+            Ok(None)
+        }
+        fn get_specifiers(&self) -> Option<(String, String)> {
+            None
+        }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    #[test]
+    fn os_store_is_the_native_store_never_the_mock() {
+        let expected = if cfg!(target_os = "macos") {
+            "macOS Keychain"
+        } else if cfg!(windows) {
+            "Windows Credential Manager"
+        } else {
+            "Secret Service"
+        };
+        match os_store() {
+            Ok(store) => assert!(
+                store.vendor().starts_with(expected),
+                "unexpected credential store: {}",
+                store.vendor()
+            ),
+            // The Keychain and Credential Manager stores connect to nothing,
+            // so they must always build.
+            Err(e) if cfg!(any(target_os = "macos", windows)) => {
+                panic!("the native store failed to build: {e}")
+            }
+            // Building the Secret Service store connects to the session bus,
+            // which a CI runner may not have.
+            Err(_) => {}
+        }
+    }
+
+    #[test]
+    fn verified_save_removes_the_plaintext_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("github_token.json");
+        std::fs::write(&path, "stale").unwrap();
+        let store = mock::Store::new().unwrap();
+
+        save_token_with(mock_entry(&store), &path, &session("gho_new")).unwrap();
+
+        assert!(
+            !path.exists(),
+            "the plaintext copy must go once the store holds the token"
+        );
+        let loaded = load_token_with(mock_entry(&store), &path).unwrap();
+        assert_eq!(loaded.access_token, "gho_new");
+        assert_eq!(loaded.username.as_deref(), Some("octocat"));
+    }
+
+    #[test]
+    fn a_write_that_does_not_read_back_keeps_the_plaintext_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("github_token.json");
+        let forgetful = Entry::new_with_credential(Arc::new(Forgetful));
+
+        save_token_with(Ok(forgetful), &path, &session("gho_kept")).unwrap();
+
+        let loaded = load_token_with(Err(Error::NoDefaultStore), &path).unwrap();
+        assert_eq!(loaded.access_token, "gho_kept");
+    }
+
+    #[test]
+    fn a_refused_write_keeps_the_plaintext_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("github_token.json");
+        let store = mock::Store::new().unwrap();
+        let entry = mock_entry(&store).unwrap();
+        let cred: &mock::Cred = entry.as_any().downcast_ref().unwrap();
+        cred.set_error(Error::NoStorageAccess("locked".into()));
+
+        save_token_with(Ok(entry), &path, &session("gho_file")).unwrap();
+
+        let loaded = load_token_with(Err(Error::NoDefaultStore), &path).unwrap();
+        assert_eq!(loaded.access_token, "gho_file");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+    }
+
+    #[test]
+    fn logout_clears_both_copies_and_tolerates_an_empty_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("github_token.json");
+        let store = mock::Store::new().unwrap();
+        mock_entry(&store)
+            .unwrap()
+            .set_password("{\"access_token\":\"gho_x\",\"username\":null}")
+            .unwrap();
+        std::fs::write(&path, "{\"access_token\":\"gho_x\",\"username\":null}").unwrap();
+
+        delete_token_with(mock_entry(&store), &path).unwrap();
+
+        assert!(!path.exists());
+        assert!(load_token_with(mock_entry(&store), &path).is_none());
+        // Nothing left to delete is the desired end state, not a failure.
+        delete_token_with(mock_entry(&store), &path).unwrap();
     }
 }

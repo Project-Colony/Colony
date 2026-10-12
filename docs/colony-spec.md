@@ -197,7 +197,7 @@ Colony offers a **"Connect"** button that initiates a GitHub Device Flow OAuth.
 
 ### Token management
 
-- Stored in the OS keychain (keyring crate), with a file fallback (chmod 600).
+- Stored in the OS credential store (keyring-core with the macOS Keychain, Windows Credential Manager or Secret Service store), with a file fallback (chmod 600).
 - Revocation via disconnect button (local deletion).
 - Authenticated calls use: `Authorization: Bearer <token>`.
 

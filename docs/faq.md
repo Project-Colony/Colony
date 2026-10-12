@@ -72,7 +72,7 @@ You get a 5000 req/h limit and Colony can read private repos you have access to 
 
 ### Where is the token stored?
 
-In your OS keychain (GNOME keyring, KWallet, macOS Keychain, Windows Credential Manager) via the [keyring](https://crates.io/crates/keyring) crate. If no keychain is available (headless Linux, CI) it falls back to `~/.config/Colony/Colony/auth/github_token.json` with `chmod 600`.
+In your OS keychain (GNOME keyring, KWallet, macOS Keychain, Windows Credential Manager) via [keyring-core](https://crates.io/crates/keyring-core) and the native store of each OS. If no keychain is available (headless Linux, CI) it falls back to `~/.config/Colony/Colony/auth/github_token.json` with `chmod 600`. That file is removed only once the token reads back from the keychain.
 
 ### How do I disconnect?
 

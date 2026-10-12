@@ -13,7 +13,7 @@ Colony is an application launcher written in Rust with Iced 0.14 (Elm architectu
 | Async | Tokio (integrated via Iced runtime) |
 | HTTP | reqwest (async + streaming), rustls checking certificates against the OS trust store (no OpenSSL) |
 | Auth | GitHub Device Flow OAuth |
-| Secret storage | keyring (OS keychain) + file fallback |
+| Secret storage | keyring-core with the native store of each OS (Keychain, Credential Manager, Secret Service) + file fallback |
 | Serialization | serde + serde_json |
 | Configuration | TOML (scan dirs), JSON (categories, preferences) |
 | Versioning | semver |
@@ -74,7 +74,7 @@ All async operations (API calls, downloads, scanning) return a `Task<Message>` t
 ## Security
 
 - **OAuth**: Device Flow (no client_secret exposed)
-- **Tokens**: Stored in OS keychain, file fallback (chmod 600)
+- **Tokens**: Stored in the OS credential store, file fallback (chmod 600). The file is deleted only after the token reads back from the store
 - **Downloads**: HTTPS only, optional SHA256 verification, resumable via Range with an ETag+length identity check before any partial file is continued
 - **URLs**: every remote-controlled path segment is percent-encoded, never interpolated - the WHATWG parser collapses `..` before the request is sent
 - **Timeouts**: 30s total for API requests, 10s connect, 60s read (inactivity) for downloads - a total deadline on a download makes a large asset impossible to fetch on a slow line
