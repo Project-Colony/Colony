@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/Project-Colony/Colony/compare/v0.11.0...v0.11.1) (2026-10-14)
+
+
+### Fixes
+
+* **ui:** draw every widget from the Colony palette and fonts and finish the French labels ([#97](https://github.com/Project-Colony/Colony/issues/97)) ([eae456f](https://github.com/Project-Colony/Colony/commit/eae456f8fc8638bc51aba98d4ce8a11919c09834))
+
 ## [0.11.0](https://github.com/Project-Colony/Colony/compare/v0.10.4...v0.11.0) (2026-10-12)
 
 
