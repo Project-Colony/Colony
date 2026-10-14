@@ -13,7 +13,7 @@ pub struct ReleaseFileEntry {
     pub file: Option<String>,
     /// Substring pattern to match against release asset names (case-insensitive).
     /// Colony fetches the release assets list and picks the one matching this pattern.
-    /// Mutually exclusive with `file` — use one or the other.
+    /// Mutually exclusive with `file` - use one or the other.
     pub file_pattern: Option<String>,
     /// Optional binary name inside an archive. When present, the downloaded file
     /// is treated as an archive (.zip / .tar.gz) and Colony extracts this binary.

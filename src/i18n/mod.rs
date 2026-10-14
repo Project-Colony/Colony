@@ -146,7 +146,7 @@ fn detect_language() -> String {
 #[cfg(test)]
 mod tests {
     /// The active locale is process-global, so tests that swap it must not run
-    /// concurrently with each other — the failure is a value from whichever
+    /// concurrently with each other - the failure is a value from whichever
     /// language the other test happened to set.
     static LOCALE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -156,7 +156,7 @@ mod tests {
     }
 
     /// Theme and accent labels live in colony-ui, not in en.rs / fr.rs. They
-    /// must still resolve through `t()`, and must follow the active locale —
+    /// must still resolve through `t()`, and must follow the active locale -
     /// otherwise the theme picker would sit in English inside a French page.
     #[test]
     fn shared_labels_resolve_through_colony_ui_and_follow_the_locale() {
@@ -217,7 +217,7 @@ mod tests {
         let only_en: Vec<&&String> = en_keys.difference(&fr_keys).collect();
         assert!(
             only_fr.is_empty() && only_en.is_empty(),
-            "Locale key mismatch — only in fr: {only_fr:?}; only in en: {only_en:?}"
+            "Locale key mismatch: only in fr: {only_fr:?}; only in en: {only_en:?}"
         );
     }
 
@@ -299,6 +299,34 @@ mod tests {
              module that uses them to SOURCES above (this list is hand-maintained, and a \
              missing entry fails LOUDLY here rather than silently letting dead keys back in)."
         );
+    }
+
+    /// A local app's category chip shows `section_display_name` of its
+    /// `AppCategory` Debug name. A variant with no section key would fall back
+    /// to the English enum name inside the French grid.
+    #[test]
+    fn every_app_category_chip_is_localized() {
+        use crate::scan::AppCategory::*;
+        with_locale(|| {
+            set_language("fr");
+            for category in [
+                Development,
+                Graphics,
+                Network,
+                Office,
+                Multimedia,
+                System,
+                Utility,
+                Security,
+                Game,
+                Other,
+            ] {
+                let raw = format!("{category:?}");
+                assert_ne!(section_display_name(&raw), raw, "no French label");
+            }
+            assert_eq!(section_display_name("utility"), "Utilitaires");
+            set_language("en");
+        });
     }
 
     #[test]

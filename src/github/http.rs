@@ -220,7 +220,7 @@ pub(crate) async fn cached_get(client: &reqwest::Client, url: &str) -> Result<St
 
     match resp.status().as_u16() {
         304 => {
-            // Not Modified — return cached body
+            // Not Modified - return cached body
             if let Ok(cache) = HTTP_CACHE.lock() {
                 if let Some(entry) = cache.entries.get(url) {
                     tracing::debug!("Cache hit (304) for {}", url);

@@ -441,7 +441,7 @@ pub(crate) fn build_url(base: &str, segments: &[&str]) -> Result<String> {
 ///
 /// Gate for everything handed to the desktop's URI opener: link destinations in
 /// remote Markdown (READMEs, release notes) reach it verbatim, and `open::that`
-/// is not a browser call — it execs `xdg-open`/`gio open` on Linux and
+/// is not a browser call - it execs `xdg-open`/`gio open` on Linux and
 /// `Start-Process` on Windows, both of which dispatch `file://`, UNC paths and
 /// any registered `x-scheme-handler/*`. A `file://` or custom-scheme link in a
 /// hostile README would otherwise be a one-click execution primitive that

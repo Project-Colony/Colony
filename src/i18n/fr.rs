@@ -28,7 +28,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert(
         "github_copy_hint".into(),
-        "Cliquez pour copier — En attente d'autorisation...".into(),
+        "Cliquez pour copier. En attente d'autorisation...".into(),
     );
     strings.insert("github_connecting".into(), "Connexion en cours...".into());
     strings.insert("github_connected".into(), "Connecté".into());
@@ -66,7 +66,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("offered_version".into(), "Version {version}".into());
     strings.insert(
         "no_release_unrecognized".into(),
-        "Aucune version installable - cette application ne publie pas d'assets reconnus par Colony"
+        "Aucune version installable : cette application ne publie aucun fichier de version reconnu par Colony"
             .into(),
     );
     strings.insert(
@@ -109,7 +109,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert(
         "oauth_device_failed".into(),
-        "Échec de la connexion GitHub : {error} — {desc}".into(),
+        "Échec de la connexion GitHub : {error} ({desc})".into(),
     );
     strings.insert("github_api_error".into(), "Erreur GitHub : {error}".into());
     strings.insert("scan_error".into(), "Erreur : {error}".into());
@@ -135,7 +135,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert(
         "update_check_failed".into(),
-        "Impossible de vérifier {count} application(s) — elles ne sont peut-être pas à jour".into(),
+        "Impossible de vérifier {count} application(s) : elles ne sont peut-être pas à jour".into(),
     );
 
     // Sidebar section names (localized)
@@ -174,11 +174,11 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     // Favorites
     strings.insert("add_favorite".into(), "Ajouter aux favoris".into());
 
-    // First launch — carousel (3 steps)
+    // First launch: carousel (3 steps)
     strings.insert("welcome_title".into(), "Bienvenue dans Colony".into());
     strings.insert("welcome_desc".into(), "Le lanceur centralisé de l'écosystème Project-Colony. Découvrez, installez et lancez vos apps en un clic.".into());
-    // Step 1 — interface tour
-    // Step 2 — GitHub + ready
+    // Step 1: interface tour
+    // Step 2: GitHub + ready
     // Navigation
     strings.insert("welcome_start".into(), "C'est parti !".into());
     strings.insert("welcome_next".into(), "Suivant".into());
@@ -192,7 +192,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
 
     // Guided tutorial (spotlight on the real UI)
     strings.insert("tut_sidebar_title".into(), "Les catégories".into());
-    strings.insert("tut_sidebar_desc".into(), "Filtrez vos apps par type : jeux, outils, favoris, ou par origine (écosystème Colony vs. système). La barre latérale reste toujours visible.".into());
+    strings.insert("tut_sidebar_desc".into(), "Filtrez vos apps par type (jeux, outils, favoris) ou par origine (écosystème Colony ou système). La barre latérale reste toujours visible.".into());
     strings.insert("tut_search_title".into(), "La recherche".into());
     strings.insert("tut_search_desc".into(), "Tapez le nom d'une app pour la retrouver instantanément, peu importe la catégorie sélectionnée.".into());
     strings.insert("tut_grid_title".into(), "Vos applications".into());
@@ -402,14 +402,15 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
         "clear_caches".into(),
         "Vider les caches du catalogue".into(),
     );
-    strings.insert("clear_caches_desc".into(), "Supprime les descriptions et icônes mises en cache (elles sont retéléchargées à la prochaine actualisation). Les applications installées ne sont pas touchées.".into());
+    strings.insert("settings_section_caches".into(), "Données en cache".into());
+    strings.insert("settings_caches_desc".into(), "Supprime les descriptions et icônes mises en cache (elles sont retéléchargées à la prochaine actualisation). Les applications installées ne sont pas touchées.".into());
     strings.insert(
         "caches_cleared".into(),
         "{count} cache(s) supprimé(s)".into(),
     );
     strings.insert("launcher_update_system_managed".into(), "Mise à jour {version} disponible - cette installation est gérée par le gestionnaire de paquets, mettez à jour via « pacman -Syu » (colony-bin)".into());
     // Detail tabs
-    strings.insert("tab_readme".into(), "ReadMe".into());
+    strings.insert("tab_readme".into(), "Présentation".into());
     strings.insert("tab_license".into(), "Licence".into());
     strings.insert("tab_changelog".into(), "Journal des modifications".into());
     strings.insert("tab_not_available".into(), "Non disponible".into());

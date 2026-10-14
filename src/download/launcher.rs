@@ -132,7 +132,7 @@ pub async fn download_launcher_asset(
     }
 
     // Persist the signature next to the staged binary so apply_launcher_update
-    // can re-verify at install time — closing any window in which the staged
+    // can re-verify at install time - closing any window in which the staged
     // file could be swapped between download and apply. The metadata sidecar is
     // staged for the same reason.
     let sig_path = staged_signature_path(&dest_path);

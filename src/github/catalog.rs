@@ -264,7 +264,7 @@ async fn fetch_readme(client: &reqwest::Client, repo_name: &str) -> Result<Strin
     Ok(text)
 }
 
-/// Fetch the repo's LICENSE via GitHub's dedicated license endpoint — one
+/// Fetch the repo's LICENSE via GitHub's dedicated license endpoint - one
 /// request that returns the detected license file, instead of probing several
 /// candidate filenames (which cost one request each, mostly 404s).
 async fn fetch_license(client: &reqwest::Client, repo_name: &str) -> Result<Option<String>> {
@@ -288,7 +288,7 @@ async fn fetch_license(client: &reqwest::Client, repo_name: &str) -> Result<Opti
 }
 
 /// LICENSE for display: try the fast dedicated endpoint first, then fall back
-/// to probing common filenames only if GitHub could not auto-classify one — so
+/// to probing common filenames only if GitHub could not auto-classify one - so
 /// a repo carrying a nonstandard/undetectable license file is still surfaced
 /// while the common case stays a single request.
 async fn fetch_license_with_fallback(

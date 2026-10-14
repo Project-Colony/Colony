@@ -28,10 +28,10 @@ to the applications already on your system.
 > and never an older version than the one running. CI builds and tests every
 > change on Linux, Windows and macOS, and checks that it still builds with Rust
 > 1.88. The Windows and macOS builds work but are best-effort (see
-> [Platforms](#platforms)). Releases now go through the organisation's shared
-> sign-and-publish workflow, which has not yet published a Colony release: the
-> latest, v0.10.4, was signed by the workflow it replaced. Authenticode signing
-> of the Windows build through SignPath is applied for and not active yet. Every
+> [Platforms](#platforms)). v0.11.0 is the first release built, signed and
+> published by the organisation's shared sign-and-publish workflow, and the
+> same run bumped the `colony-bin` AUR package. Authenticode signing of the
+> Windows build through SignPath is applied for and not active yet. Every
 > Project Colony program's release downloads the latest `colony-linux`, verifies
 > its signatures and runs its `validate-manifest`, so a broken Colony release
 > blocks the releases of every other program.
@@ -79,6 +79,26 @@ Project-Colony on GitHub             Colony                         your machine
   accent colour, text size, high contrast, a dyslexia-friendly font, reduced
   motion, English or French, keyboard navigation, and the storage and update
   settings.
+
+### Themes
+
+Colony ships with **26 theme families and 59 palettes**, compiled into the
+binary. They come from
+[colony-ui](https://crates.io/crates/colony-ui) and are shared with every other
+Project Colony program, so a theme looks the same wherever you meet it:
+
+| | | | |
+|---|---|---|---|
+| Catppuccin (Latte, Frappé, Macchiato, Mocha) | Gruvbox | Everblush | Kanagawa (Lotus, Wave, Journal, Dragon) |
+| Nord | Dracula | Solarized | Tokyo Night |
+| Rosé Pine (Main, Moon, Dawn) | One Dark | Monokai Pro (Pro, Classic, Spectrum) | Ayu (Dark, Mirage, Light) |
+| Everforest | Material (Oceanic, Palenight, Deep Ocean) | Flexoki | Nightfox |
+| Sonokai | Oxocarbon | Night Owl | Iceberg |
+| Horizon | Mélange | Synthwave '84 | Modus (Operandi, Vivendi) |
+| Stellar Blade (Eve, Tachy, Lily, Enya, Kaya; fan-made, unofficial) | Parchment | | |
+
+Each palette includes full semantic tokens: backgrounds, text layers, accents,
+success, warning and error states, button states, and more.
 
 New to Colony? The [tutorial](docs/guide/tutorial.md) walks through a first
 install.
@@ -132,67 +152,7 @@ Requires Rust 1.88 or newer and a C compiler. No system libraries are needed:
 on Linux, the D-Bus client Colony uses for the Secret Service is compiled from
 source.
 
-## Design principles
-
-**Single purpose, native performance.** Colony and every app in its ecosystem
-follow the same philosophy:
-
-- **Rust-native**: built with [Iced](https://iced.rs). Startup is instant,
-  memory use is small, and your CPU stays cool.
-- **Async everything**: network calls, file I/O and scanning run in the
-  background. The UI never freezes.
-- **Zero configuration needed**: Colony works out of the box. Scan directories,
-  sidebar sections and themes can all be changed, but the defaults are sensible.
-
-## Theming
-
-Colony ships with **26 theme families and 59 palettes**, compiled into the
-binary with zero runtime cost. They come from
-[colony-ui](https://crates.io/crates/colony-ui) and are shared with every other
-Project Colony program, so a theme looks the same wherever you meet it:
-
-| | | | |
-|---|---|---|---|
-| Catppuccin (Latte, Frappé, Macchiato, Mocha) | Gruvbox | Everblush | Kanagawa (Lotus, Wave, Journal, Dragon) |
-| Nord | Dracula | Solarized | Tokyo Night |
-| Rosé Pine (Main, Moon, Dawn) | One Dark | Monokai Pro (Pro, Classic, Spectrum) | Ayu (Dark, Mirage, Light) |
-| Everforest | Material (Oceanic, Palenight, Deep Ocean) | Flexoki | Nightfox |
-| Sonokai | Oxocarbon | Night Owl | Iceberg |
-| Horizon | Mélange | Synthwave '84 | Modus (Operandi, Vivendi) |
-| Stellar Blade (Eve, Tachy, Lily, Enya, Kaya; fan-made, unofficial) | Parchment | | |
-
-Each palette includes full semantic tokens: backgrounds, text layers, accents,
-success, warning and error states, button states, and more.
-
-## For app developers
-
-Want your desktop app to appear in Colony's catalog? It takes one JSON file plus
-a GitHub release with properly named assets. Colony only lists repositories of
-the [Project-Colony](https://github.com/Project-Colony) GitHub organisation, so
-the repository has to live there.
-
-**Quick version**: add `colony.json` at the root of your repository:
-
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/Project-Colony/Project-Colony-Resources/main/generated/colony.schema.json",
-  "name": "YourApp",
-  "category": "utility"
-}
-```
-
-Then publish a GitHub release with assets named `yourapp-linux`,
-`yourapp-windows.exe`, `yourapp-macos` and `yourapp-macos-x86`. Colony picks
-them up automatically.
-
-**Full walkthrough**: [CONTRIBUTING.md, Adding your app to Colony](CONTRIBUTING.md#adding-your-app-to-colony),
-and the [colony.json reference](docs/guide/colony-spec.md).
-
-The canonical [release workflow template](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/sign-and-publish-caller.yml)
-lives in Project-Colony-Resources, alongside the shared signing workflow it calls
-and the manifest schema.
-
-## Platforms
+### Platforms
 
 Colony is developed and tested on Linux. Windows and macOS builds are produced
 by the same CI, install and update apps, and are genuinely usable, but they get
@@ -215,10 +175,15 @@ that is how these move up.
 Full documentation is in [docs/](docs/). Start at
 [docs/README.md](docs/README.md).
 
-## Code signing policy
+Want your app in Colony's catalog? It takes a `colony.json` at the root of a
+repository of the [Project-Colony](https://github.com/Project-Colony)
+organisation and a release with properly named, signed files. See
+[CONTRIBUTING.md, Adding your app to Colony](CONTRIBUTING.md#adding-your-app-to-colony),
+the [colony.json reference](docs/guide/colony-spec.md) and the
+[release workflow template](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/templates/sign-and-publish-caller.yml)
+in Project-Colony-Resources.
 
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by
-[SignPath Foundation](https://signpath.org).
+## Code signing policy
 
 Windows builds will be Authenticode-signed once SignPath Foundation has accepted
 the project; until then they ship without Authenticode. Every release asset, on
@@ -255,12 +220,20 @@ How releases are built, signed and published:
 [design/releases.md](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/design/releases.md#5-signing),
 and for Colony's side of it, [docs/internals/release-signing.md](docs/internals/release-signing.md).
 
-Team roles and members:
+<!--
+Add the following only once SignPath signs the Windows build, that is once
+`signpath-project-slug` is set in .github/workflows/release.yml. Before that it
+would promise a signature the .exe does not carry.
+
+Windows releases are also Authenticode-signed. Free code signing provided by
+[SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/).
 
 - Committers and reviewers: [MotherSphere](https://github.com/MotherSphere)
 - Approvers: [MotherSphere](https://github.com/MotherSphere)
+-->
 
-### Privacy policy
+## Privacy
 
 Colony talks to GitHub and to no other server. It has no telemetry, no analytics
 and no crash reporting.

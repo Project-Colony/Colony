@@ -202,7 +202,7 @@ fn extract_from_tar_gz(
 /// Extract a binary from an archive based on its extension.
 ///
 /// `asset_name` is the original release asset filename used only to detect the
-/// archive type — `archive_path` may be a staging file (e.g. `foo.zip.part`)
+/// archive type - `archive_path` may be a staging file (e.g. `foo.zip.part`)
 /// whose own extension must not be used for detection.
 pub(super) fn extract_binary_from_archive(
     archive_path: &std::path::Path,
@@ -213,9 +213,9 @@ pub(super) fn extract_binary_from_archive(
     // `binary_name` is a manifest-supplied string that becomes a path component
     // in EVERY branch below, so the traversal guard is hoisted here, before the
     // dispatch. It used to live only inside the zip and tar extractors, which
-    // left the raw-binary branch able to write outside `dest_dir` — and, after
-    // the caller's chmod 0755 and desktop entry, to gain execution at next login
-    // — from a hostile manifest. The extractors keep their own call so they stay
+    // left the raw-binary branch able to write outside `dest_dir` (and, after
+    // the caller's chmod 0755 and desktop entry, to gain execution at next login)
+    // from a hostile manifest. The extractors keep their own call so they stay
     // safe in isolation.
     ensure_safe_component(binary_name)?;
     if asset_name.ends_with(".zip") {
@@ -227,7 +227,7 @@ pub(super) fn extract_binary_from_archive(
         let _ = std::fs::remove_file(archive_path);
         result
     } else {
-        // Raw binary (e.g. .exe, no archive extension) — rename to binary_name in dest_dir
+        // Raw binary (e.g. .exe, no archive extension) - rename to binary_name in dest_dir
         let dest = dest_dir.join(binary_name);
         replace_file(archive_path, &dest)?;
         Ok(dest)

@@ -173,7 +173,7 @@ impl App {
                     session
                         .username
                         .as_ref()
-                        .map(|u| format!(" — {u}"))
+                        .map(|u| format!(" ({u})"))
                         .unwrap_or_default()
                 );
                 let user_label: Element<'_, Message> = if self.is_fetching_repos {

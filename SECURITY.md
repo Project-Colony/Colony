@@ -24,8 +24,9 @@ What to expect:
 
 - **Acknowledgement** within a few days.
 - A fix (or a mitigation plan) before any public disclosure, coordinated with
-  you. Given the project's release automation, a patched release usually ships
-  as soon as the fix lands.
+  you. A fix ships when its release pull request is merged: the release
+  workflow then builds, signs and publishes the patched version, and Colony
+  offers it as a self-update.
 - Credit in the release notes if you want it.
 
 ## Scope and trust model

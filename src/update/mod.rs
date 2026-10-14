@@ -201,7 +201,7 @@ impl App {
                     self.active_colony_repo = None;
                     self.keyboard_cursor = None;
                     // Dismiss any open overlay panel so the section change is
-                    // actually visible — otherwise users stay stuck on the
+                    // actually visible - otherwise users stay stuck on the
                     // GitHub / Settings panel even though the underlying
                     // filter just changed.
                     self.show_github_menu = false;
@@ -906,10 +906,10 @@ mod tests {
     fn search_matches_description_and_display_name() {
         let mut app = App::new_for_test();
         app.colony_repo_list = vec![
-            repo("Grape", "Lecteur musique en Rust"),
+            repo("Grape", "Music player in Rust"),
             repo("orCAL", "Calendar overlay"),
         ];
-        app.search_query = "musique".into();
+        app.search_query = "music".into();
         let hits: Vec<&str> = app
             .filtered_colony_repos()
             .iter()

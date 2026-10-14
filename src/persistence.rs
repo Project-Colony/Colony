@@ -368,7 +368,7 @@ pub fn load_repo_icon(repo_name: &str) -> Option<Vec<u8>> {
 
 /// The shared install root: `<data>/Colony/apps/`.
 ///
-/// Deliberately a sibling of Colony's own directory rather than a child —
+/// Deliberately a sibling of Colony's own directory rather than a child -
 /// installed programs belong to the ecosystem, not to the launcher. Does not
 /// create the directory; callers that write do that themselves.
 pub fn colony_apps_dir() -> Result<PathBuf> {
@@ -386,7 +386,7 @@ pub fn installed_app_path(repo: &ColonyRepo) -> Option<PathBuf> {
     } else if let Some(ref file) = entry.file {
         file.clone()
     } else {
-        // filePattern was used — check saved resolved asset name
+        // filePattern was used - check saved resolved asset name
         load_installed_asset(&repo.name)?
     };
     // The filename comes straight from the repo's own manifest: the same
@@ -1430,14 +1430,14 @@ mod path_migration_tests {
                 "{rel}"
             );
         }
-        // The source survives a copy — that is the whole point of the fallback.
+        // The source survives a copy - that is the whole point of the fallback.
         assert!(from.join("a.json").exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 
     /// The unit tests above cover `relocate` and `copy_tree` in isolation.
-    /// This exercises `migrate_legacy_paths` itself — the thing that actually
-    /// runs on a user's machine — against a planted legacy layout.
+    /// This exercises `migrate_legacy_paths` itself - the thing that actually
+    /// runs on a user's machine - against a planted legacy layout.
     ///
     /// Linux only: it drives the XDG variables, and on Linux the config root is
     /// unchanged by the migration, so what it proves is the cache move, which

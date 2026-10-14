@@ -39,55 +39,37 @@ impl App {
             .id(crate::ui::tutorial::ID_SIDEBAR_CATS)
             .height(Length::Fill);
 
-        // GitHub button — Nerd Font icon  (U+F09B)
+        // GitHub button: Nerd Font icon (U+F09B). Styled like a section entry,
+        // with the open menu as the selected state. The texts take the button's
+        // text colour, except the accent that marks a connected account while
+        // the menu is closed (the open state's accent fill would swallow it).
         let github_connected = matches!(self.github_state, GitHubState::Connected { .. });
-        let github_icon_color = if github_connected {
-            Palette::ACCENT()
-        } else if self.show_github_menu {
-            Palette::TEXT_PRIMARY()
-        } else {
-            Palette::TEXT_DIM()
+        let show_menu = self.show_github_menu;
+        let connected_mark = |t: iced::widget::Text<'static>| {
+            if github_connected && !show_menu {
+                t.color(Palette::ACCENT())
+            } else {
+                t
+            }
         };
 
         let mut github_btn_content = row![
-            text("\u{f09b}")
-                .size(sz(18))
-                .font(fonts::glyph_font())
-                .color(github_icon_color),
-            text("GitHub")
-                .size(sz(13))
-                .font(ui_font())
-                .color(github_icon_color),
+            connected_mark(text("\u{f09b}").size(sz(18)).font(fonts::glyph_font())),
+            text("GitHub").size(sz(13)).font(ui_font()),
         ]
         .spacing(10)
         .align_y(iced::Alignment::Center);
         if github_connected {
-            github_btn_content = github_btn_content.push(
-                text("\u{f00c}")
-                    .size(sz(13))
-                    .font(fonts::glyph_font())
-                    .color(github_icon_color),
-            );
+            github_btn_content = github_btn_content.push(connected_mark(
+                text("\u{f00c}").size(sz(13)).font(fonts::glyph_font()),
+            ));
         }
 
-        let show_menu = self.show_github_menu;
         let github_btn = button(github_btn_content)
             .on_press(Message::ToggleGitHubMenu)
             .padding([10, 14])
             .width(Fill)
-            .style(move |_theme, _status| button::Style {
-                background: Some(
-                    if show_menu {
-                        Palette::BG_SELECTED()
-                    } else {
-                        iced::Color::TRANSPARENT
-                    }
-                    .into(),
-                ),
-                text_color: Palette::TEXT_PRIMARY(),
-                border: iced::Border::default().rounded(6),
-                ..Default::default()
-            });
+            .style(widgets::selection_style(show_menu));
 
         let rescan_label: Element<'_, Message> = if self.is_scanning {
             glyph_label("\u{f110}", crate::i18n::t("scanning"), 13, ui_font()).into()
@@ -97,7 +79,18 @@ impl App {
                 .font(ui_font())
                 .into()
         };
-        let rescan_btn_base = button(rescan_label).padding([8, 16]).width(Fill);
+        let rescan_btn_base =
+            button(rescan_label)
+                .padding([8, 16])
+                .width(Fill)
+                .style(|_theme, status| {
+                    crate::ui::theme::action_button_style(
+                        status,
+                        Palette::BTN_DEFAULT(),
+                        Palette::BTN_HOVER(),
+                        Palette::BTN_PRESSED(),
+                    )
+                });
         let rescan_btn = if self.is_scanning {
             rescan_btn_base
         } else {

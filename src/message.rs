@@ -39,7 +39,7 @@ pub enum Message {
     CancelDownload,
     LaunchColonyApp(PathBuf),
     UninstallColonyApp(String), // repo_name
-    ConfirmUninstall(String),   // repo_name — show confirmation
+    ConfirmUninstall(String),   // repo_name - show confirmation
     CancelUninstall,
     CopyToClipboard(String),
     DismissNotification(u64),
