@@ -1,6 +1,6 @@
 [package]
 name = "colony"
-version = "0.11.0"
+version = "0.11.1"
 description = "Launcher and app store for Project Colony programs"
 repository = "https://github.com/Project-Colony/Colony"
 edition = "2021"
