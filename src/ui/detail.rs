@@ -42,8 +42,38 @@ impl<'a> markdown::Viewer<'a, Message> for ColonyMdViewer {
         )
         .width(Length::Fill)
         .padding(settings.code_size / 4)
-        .class(<iced::Theme as markdown::Catalog>::code_block())
+        .style(|_theme| container::Style {
+            background: Some(Palette::BG_CARD().into()),
+            text_color: Some(Palette::TEXT_PRIMARY()),
+            border: iced::Border {
+                color: Palette::BORDER_SUBTLE(),
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..Default::default()
+        })
         .into()
+    }
+}
+
+/// Markdown styling from the Colony palette and fonts. iced's
+/// `Style::from_palette` sets white inline code on near-black and the system
+/// monospace font whatever the theme, and its body font is the default font
+/// captured at startup, so READMEs ignored the dyslexia font until a restart.
+/// JetBrains Mono is already monospace, so code needs no fourth font.
+fn md_style() -> markdown::Style {
+    let font = ui_font();
+    markdown::Style {
+        font,
+        inline_code_highlight: markdown::Highlight {
+            background: Palette::BG_CARD().into(),
+            border: iced::border::rounded(4),
+        },
+        inline_code_padding: iced::padding::left(1).right(1),
+        inline_code_color: Palette::TEXT_PRIMARY(),
+        inline_code_font: font,
+        code_block_font: font,
+        link_color: Palette::ACCENT(),
     }
 }
 
@@ -51,7 +81,15 @@ impl App {
     pub(crate) fn view_colony_detail<'a>(&'a self, repo: &'a ColonyRepo) -> Element<'a, Message> {
         let back_button = button(text(crate::i18n::t("back")).size(sz(13)).font(ui_font()))
             .on_press(Message::ColonyRepoBack)
-            .padding([8, 16]);
+            .padding([8, 16])
+            .style(|_theme, status| {
+                crate::ui::theme::action_button_style(
+                    status,
+                    Palette::BTN_DEFAULT(),
+                    Palette::BTN_HOVER(),
+                    Palette::BTN_PRESSED(),
+                )
+            });
 
         let title = text(repo.display_name())
             .size(sz(24))
@@ -102,10 +140,7 @@ impl App {
 
         // Parsed Markdown comes from self.detail_blocks, kept up-to-date by the
         // update-side helper. Placeholder text falls back to plain muted text.
-        let md_settings = markdown::Settings::with_text_size(
-            sz(14),
-            markdown::Style::from_palette(iced::Theme::Dark.palette()),
-        );
+        let md_settings = markdown::Settings::with_text_size(sz(14), md_style());
         let description: Element<'_, Message> = if is_placeholder {
             text(crate::i18n::t("tab_not_available"))
                 .size(sz(14))
@@ -124,7 +159,7 @@ impl App {
         .font(ui_font())
         .color(Palette::TEXT_MUTED());
 
-        // Favorite button — FontAwesome 6 Free, solid/regular variant for filled/empty.
+        // Favorite button - FontAwesome 6 Free, solid/regular variant for filled/empty.
         // Same codepoint \u{f005} in both variants; the weight picks the glyph.
         let is_fav = self.is_favorite(&repo.name);
         let fav_color = if is_fav {
@@ -254,7 +289,7 @@ impl App {
         let current_platform = github::current_platform_key();
 
         let action_row = if let Some(app_path) = installed_path {
-            // App is installed — show Launch + Update buttons, and uninstall trash button
+            // App is installed - show Launch + Update buttons, and uninstall trash button
             let launch_label = crate::i18n::t_fmt("launch", &[("name", &repo.manifest.name)]);
             let launch_btn = button(glyph_label("\u{f04b}", launch_label, 14, ui_font_medium()))
                 .on_press_maybe(if self.is_downloading {
@@ -334,7 +369,7 @@ impl App {
                 .spacing(12)
                 .align_y(iced::Alignment::Center)
         } else {
-            // Not installed — single download button for current platform
+            // Not installed - single download button for current platform
             let spacer: Element<'_, Message> = container(text("")).width(Fill).into();
             if repo.manifest.release_files.contains_key(current_platform) {
                 let repo_name = repo.name.clone();
@@ -423,7 +458,7 @@ impl App {
         .align_y(iced::Alignment::Center);
 
         // Wrap markdown in a Shrink-sized container so the outer scrollable
-        // sees the true content height (iced #2630 — markdown rich_text can
+        // sees the true content height (iced #2630 - markdown rich_text can
         // otherwise hide overflow from the parent).
         let desc_container = container(description)
             .width(Length::Shrink)
@@ -454,10 +489,7 @@ impl App {
             {
                 match self.release_notes.get(&repo.name) {
                     Some((tag, blocks)) if tag == new_tag => {
-                        let md_settings = markdown::Settings::with_text_size(
-                            sz(13),
-                            markdown::Style::from_palette(iced::Theme::Dark.palette()),
-                        );
+                        let md_settings = markdown::Settings::with_text_size(sz(13), md_style());
                         let notes_title =
                             text(crate::i18n::t_fmt("whats_new", &[("version", new_tag)]))
                                 .size(sz(14))

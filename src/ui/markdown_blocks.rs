@@ -4,9 +4,9 @@
 //! two constructs can be rendered with native Colony widgets instead of the
 //! default iced markdown output:
 //!
-//! - **shields.io badges** — `[![alt](img.shields.io/badge/..)](link)` lines
+//! - **shields.io badges**: `[![alt](img.shields.io/badge/..)](link)` lines
 //!   become colored pills matching our palette (no network round-trip).
-//! - **GFM pipe tables** — parsed line-based and rendered via iced's `table`
+//! - **GFM pipe tables**: parsed line-based and rendered via iced's `table`
 //!   widget directly, skipping iced markdown's internal horizontal
 //!   `scrollable` that captures vertical wheel events.
 //!
@@ -151,7 +151,7 @@ fn try_parse_badges(lines: &[&str]) -> Option<(Vec<Badge>, usize)> {
     }
 }
 
-/// Accept either `[![alt](img)](link)` or `![alt](img)` — returns a Badge
+/// Accept either `[![alt](img)](link)` or `![alt](img)` - returns a Badge
 /// when the image URL is a shields.io `/badge/{label}-{value}-{color}`.
 fn parse_badge_line(line: &str) -> Option<Badge> {
     // Find the `![` of the image.

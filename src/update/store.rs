@@ -380,7 +380,7 @@ impl App {
             .collect();
 
         if repos.is_empty() {
-            // Nothing to check — reset the guard (otherwise it stays true
+            // Nothing to check - reset the guard (otherwise it stays true
             // forever, blocking all later checks) and still run the
             // chained launcher self-update check.
             self.is_checking_updates = false;

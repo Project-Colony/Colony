@@ -45,7 +45,7 @@ impl AppCategory {
         }
     }
 
-    /// FontAwesome (solid) glyph representing this category — one shared icon
+    /// FontAwesome (solid) glyph representing this category - one shared icon
     /// language for app tiles and, later, the sidebar.
     pub fn glyph(&self) -> &'static str {
         match self {

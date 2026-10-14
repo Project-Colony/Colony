@@ -11,7 +11,7 @@ use crate::state::App;
 use crate::ui::glyph_label;
 use crate::ui::theme::{self, Palette};
 
-/// Filled Material-Design hexagon glyph from the embedded Nerd Font — the
+/// Filled Material-Design hexagon glyph from the embedded Nerd Font - the
 /// Colony "cell" that is the app tile, the brand mark, and the status badge.
 const HEX_FILLED: &str = "\u{f02d8}";
 
@@ -101,13 +101,13 @@ impl App {
     /// The 54px hexagon "cell": a filled hexagon in the app's stable tint, with
     /// the category glyph centered on top. Both glyphs are centered via the text
     /// widget's own alignment (width/height Fill + centered) so they co-register
-    /// in the same box. Zero assets — both are embedded font glyphs.
+    /// in the same box. Zero assets - both are embedded font glyphs.
     fn hex_tile<'a>(&self, tint: Color, glyph: &'static str) -> Element<'a, Message> {
         use iced::alignment::{Horizontal, Vertical};
         let fg = theme::contrast_on(tint);
         let hexagon = text(HEX_FILLED)
             .size(sz(50))
-            .font(ui_font())
+            .font(fonts::glyph_font())
             .color(tint)
             .width(Fill)
             .height(Fill)
@@ -115,10 +115,12 @@ impl App {
             .align_y(Vertical::Center);
         // Render the category glyph in the SAME font as the hexagon (the Nerd
         // Font carries the FontAwesome glyphs too), so the two share identical
-        // metrics and centre on the exact same point — no manual nudging.
+        // metrics and centre on the exact same point - no manual nudging. Both
+        // use the glyph font, never ui_font(): with the dyslexia font on, that
+        // is OpenDyslexic, which has none of these glyphs.
         let cat = text(glyph)
             .size(sz(15))
-            .font(ui_font())
+            .font(fonts::glyph_font())
             .color(fg)
             .width(Fill)
             .height(Fill)
@@ -135,7 +137,7 @@ impl App {
 
     /// The 54x54 card tile: the app's real decoded icon when we have one,
     /// otherwise the tinted category hexagon. Clones a cheap (Arc-backed) handle
-    /// out of state — never decodes in `view()`.
+    /// out of state - never decodes in `view()`.
     fn icon_tile<'a>(
         &self,
         repo_name: &str,
@@ -211,7 +213,7 @@ impl App {
             let head = row![
                 text(HEX_FILLED)
                     .size(sz(11))
-                    .font(ui_font())
+                    .font(fonts::glyph_font())
                     .color(Palette::WARNING()),
                 text(crate::i18n::t("status_update"))
                     .size(sz(12))
@@ -236,7 +238,7 @@ impl App {
             let head = row![
                 text(HEX_FILLED)
                     .size(sz(11))
-                    .font(ui_font())
+                    .font(fonts::glyph_font())
                     .color(Palette::SUCCESS()),
                 text(crate::i18n::t("status_installed"))
                     .size(sz(12))
@@ -327,7 +329,26 @@ impl App {
             .on_input(Message::SearchChanged)
             .padding(12)
             .size(sz(16))
-            .width(Fill);
+            .font(ui_font())
+            .width(Fill)
+            .style(|_theme, status| {
+                let border = match status {
+                    text_input::Status::Focused { .. } => Palette::ACCENT(),
+                    _ => Palette::BORDER_SUBTLE(),
+                };
+                text_input::Style {
+                    background: Palette::BG_INPUT().into(),
+                    border: iced::Border {
+                        color: border,
+                        width: 1.0,
+                        radius: 8.0.into(),
+                    },
+                    icon: Palette::TEXT_DIMMER(),
+                    placeholder: Palette::TEXT_PLACEHOLDER(),
+                    value: Palette::TEXT_PRIMARY(),
+                    selection: Palette::BG_SELECTED(),
+                }
+            });
         let search = container(search_input)
             .id(crate::ui::tutorial::ID_SEARCH)
             .width(Fill);
@@ -574,7 +595,8 @@ impl App {
         };
 
         // Chip row: category, language, present platforms.
-        let mut chips = row![self.chip(repo.manifest.category.clone())].spacing(7);
+        let mut chips =
+            row![self.chip(crate::i18n::section_display_name(&repo.manifest.category))].spacing(7);
         if !repo.language.is_empty() && repo.language != "Unknown" {
             chips = chips.push(self.chip(repo.language.clone()));
         }
@@ -585,7 +607,7 @@ impl App {
         let mid = column![name, desc, chips].spacing(6).width(Fill);
 
         let status = container(self.repo_status(repo))
-            .width(Length::Fixed(136.0))
+            .width(Length::Fixed(136.0 * colony_ui::font_scale()))
             .align_x(iced::alignment::Horizontal::Right);
 
         let content = row![tile, mid, status]
@@ -667,7 +689,8 @@ impl App {
             .font(ui_font_medium())
             .color(Palette::TEXT_PRIMARY());
 
-        let chips = row![self.chip(format!("{:?}", app.category))].spacing(7);
+        let category = crate::i18n::section_display_name(&format!("{:?}", app.category));
+        let chips = row![self.chip(category)].spacing(7);
         let mid = column![name, chips].spacing(6).width(Fill);
 
         // Favorites were a dead feature for local apps: the section filtered
@@ -727,7 +750,7 @@ impl App {
                 .spacing(6)
                 .align_y(iced::Alignment::Center),
         )
-        .width(Length::Fixed(170.0))
+        .width(Length::Fixed(170.0 * colony_ui::font_scale()))
         .align_x(iced::alignment::Horizontal::Right);
 
         let content = row![tile, mid, status]

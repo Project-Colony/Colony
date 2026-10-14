@@ -36,9 +36,9 @@ body:
     attributes:
       label: Scope estimate (your best guess)
       options:
-        - Small — isolated UI tweak, setting, or doc change
-        - Medium — new panel, new config surface, extra API call
-        - Large — architectural change, new auth mode, new platform
+        - Small: isolated UI tweak, setting, or doc change
+        - Medium: new panel, new config surface, extra API call
+        - Large: architectural change, new auth mode, new platform
     validations:
       required: true
 

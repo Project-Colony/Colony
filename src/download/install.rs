@@ -58,7 +58,7 @@ pub async fn download_release_asset(
         record_asset,
         require_signature,
     } = install;
-    // The manifest-supplied filename becomes a local path — guard it against
+    // The manifest-supplied filename becomes a local path - guard it against
     // traversal (`../`, absolute paths) before joining, mirroring the archive
     // `binary` guard.
     ensure_safe_component(&filename)?;
@@ -194,7 +194,7 @@ pub async fn download_release_asset(
     }
 
     // Integrity check, archive extraction and the atomic promotion are
-    // CPU/IO-bound — run them on a blocking thread. Any failure removes the
+    // CPU/IO-bound - run them on a blocking thread. Any failure removes the
     // temp file and leaves the previous install untouched.
     let final_path = {
         let temp_path = temp_path.clone();

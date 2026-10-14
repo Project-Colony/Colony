@@ -1,13 +1,13 @@
 # Bump the colony-bin AUR package to a given release tag. Uses a dedicated SSH
 # key (AUR_SSH_PRIVATE_KEY secret) registered as a secondary key on the
-# MotherSphere AUR account — scope is limited to AUR push access, revocable by
+# MotherSphere AUR account - scope is limited to AUR push access, revocable by
 # removing that key from the AUR profile if ever compromised.
 #
 # Invoked as a reusable workflow from release.yml after the release
 # assets are built, uploaded and signed. It deliberately does NOT trigger on
 # `release: published`: our releases are created by release-please with the
 # default GITHUB_TOKEN, and GitHub suppresses workflow triggers for events
-# created by that token — the old trigger never fired once (colony-bin sat at
+# created by that token - the old trigger never fired once (colony-bin sat at
 # 0.1.4 for nine releases). workflow_dispatch remains as a manual fallback.
 
 name: Publish colony-bin to AUR
@@ -55,7 +55,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
-        # gh fails hard when the asset is missing — unlike the old bare curl,
+        # gh fails hard when the asset is missing - unlike the old bare curl,
         # which would happily save GitHub's 404 page and push its sha256 to
         # AUR, breaking installs for every colony-bin user.
         run: |
@@ -110,7 +110,7 @@ jobs:
           echo "AUR currently at pkgver=${CURRENT}, target=${PKGVER}"
           if [ "${CURRENT}" = "${PKGVER}" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "pkgver already at ${PKGVER} — nothing to do."
+            echo "pkgver already at ${PKGVER}, nothing to do."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
             # Carried to the next step so it can rewrite every occurrence of
@@ -126,7 +126,7 @@ jobs:
           OLDVER: ${{ steps.check.outputs.oldver }}
         run: |
           cd aur-repo
-          # Reset pkgrel to 1 because pkgver changed — standard AUR convention.
+          # Reset pkgrel to 1 because pkgver changed - standard AUR convention.
           sed -i "s/^pkgver=.*/pkgver=${PKGVER}/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
           # The binary hash lives in its own _binsha variable (the icon's
@@ -170,7 +170,7 @@ jobs:
           cd aur-repo
           git add PKGBUILD .SRCINFO
           if git diff --cached --quiet; then
-            echo "No changes — colony-bin already at ${PKGVER}. Skipping push."
+            echo "No changes: colony-bin already at ${PKGVER}. Skipping push."
             exit 0
           fi
           git commit -m "colony-bin: auto-bump to ${PKGVER}"

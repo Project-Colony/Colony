@@ -1,4 +1,4 @@
-//! Colony's theme — now shared with the rest of the ecosystem.
+//! Colony's theme - now shared with the rest of the ecosystem.
 //!
 //! The 38-field palette, every theme palette, the `(family, variant)`
 //! resolver, the picker catalog, the accent overrides and the high-contrast
@@ -79,7 +79,7 @@ mod doc_parity_tests {
     /// altogether. Adding a palette should fail here, not go unnoticed.
     ///
     /// This used to parse this file's own source for `=> ThemePalette::` arms.
-    /// The palettes now come from colony-ui, so it counts the catalog itself —
+    /// The palettes now come from colony-ui, so it counts the catalog itself -
     /// which is what the picker renders, and therefore what the docs describe.
     #[test]
     fn the_documented_theme_counts_match_the_code() {

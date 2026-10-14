@@ -534,12 +534,21 @@ impl App {
         }
     }
 
+    /// The iced theme built from the active Colony palette, so the widgets that
+    /// keep iced's default styling (scrollbars, Markdown code blocks, text
+    /// selection) follow the chosen theme, accent and high contrast instead of
+    /// iced's stock Light or Dark.
     pub(crate) fn theme(&self) -> Theme {
-        use colony_ui::ColorExt;
-        if ui::theme::active_palette().bg_primary.is_light() {
-            Theme::Light
-        } else {
-            Theme::Dark
-        }
+        Theme::custom(
+            "Colony",
+            iced::theme::Palette {
+                background: Palette::BG_PRIMARY(),
+                text: Palette::TEXT_PRIMARY(),
+                primary: Palette::ACCENT(),
+                success: Palette::SUCCESS(),
+                warning: Palette::WARNING(),
+                danger: Palette::ERROR(),
+            },
+        )
     }
 }

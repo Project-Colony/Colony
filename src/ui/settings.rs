@@ -217,8 +217,8 @@ impl App {
         let caches = self.section(
             typo,
             "caches",
-            "clear_caches",
-            "clear_caches_desc",
+            "settings_section_caches",
+            "settings_caches_desc",
             vec![action_button(
                 typo,
                 "\u{f1f8}",

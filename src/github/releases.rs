@@ -304,7 +304,7 @@ pub fn parse_version_tag(tag: &str) -> Option<semver::Version> {
 /// `Ok(Some(tag))` = an update to `tag` is available. `Ok(None)` = the check
 /// RAN and there is nothing to install (either the app is not installed at all,
 /// or it is current). `Err` = the check could NOT run, and the caller must not
-/// turn that into "up to date" — the same fail-loud contract
+/// turn that into "up to date" - the same fail-loud contract
 /// [`check_launcher_update`] already keeps for the launcher's own check.
 ///
 /// `pinned_tag` is compared directly unless it is "latest", in which case the

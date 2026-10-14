@@ -29,7 +29,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert(
         "github_copy_hint".into(),
-        "Click to copy — Waiting for authorization...".into(),
+        "Click to copy. Waiting for authorization...".into(),
     );
     strings.insert("github_connecting".into(), "Connecting...".into());
     strings.insert("github_connected".into(), "Connected".into());
@@ -97,7 +97,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert(
         "oauth_device_failed".into(),
-        "GitHub sign-in failed: {error} — {desc}".into(),
+        "GitHub sign-in failed: {error} ({desc})".into(),
     );
     strings.insert("github_api_error".into(), "GitHub error: {error}".into());
     strings.insert("scan_error".into(), "Error: {error}".into());
@@ -120,7 +120,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     );
     strings.insert(
         "update_check_failed".into(),
-        "Could not check {count} app(s) for updates — they may not be up to date".into(),
+        "Could not check {count} app(s) for updates, so they may not be up to date".into(),
     );
 
     // Sidebar section names (localized)
@@ -159,11 +159,11 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     // Favorites
     strings.insert("add_favorite".into(), "Add to favorites".into());
 
-    // First launch — carousel (3 steps)
+    // First launch: carousel (3 steps)
     strings.insert("welcome_title".into(), "Welcome to Colony".into());
     strings.insert("welcome_desc".into(), "The centralized launcher for the Project-Colony ecosystem. Discover, install and launch apps in one click.".into());
-    // Step 1 — interface tour
-    // Step 2 — GitHub + ready
+    // Step 1: interface tour
+    // Step 2: GitHub + ready
     // Navigation
     strings.insert("welcome_start".into(), "Let's go!".into());
     strings.insert("welcome_next".into(), "Next".into());
@@ -174,7 +174,7 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
 
     // Guided tutorial (spotlight over real UI)
     strings.insert("tut_sidebar_title".into(), "Categories".into());
-    strings.insert("tut_sidebar_desc".into(), "Filter your apps by type — games, tools, favorites — or by origin (Colony ecosystem vs. system). The sidebar stays visible at all times.".into());
+    strings.insert("tut_sidebar_desc".into(), "Filter your apps by type (games, tools, favorites) or by origin (the Colony ecosystem or your system). The sidebar stays visible at all times.".into());
     strings.insert("tut_search_title".into(), "Search".into());
     strings.insert(
         "tut_search_desc".into(),
@@ -367,7 +367,8 @@ pub(super) fn insert_all(strings: &mut HashMap<String, String>) {
     strings.insert("section_security".into(), "Security".into());
     strings.insert("language_changed".into(), "Language changed".into());
     strings.insert("clear_caches".into(), "Clear store caches".into());
-    strings.insert("clear_caches_desc".into(), "Removes cached descriptions and icons (they re-download on the next refresh). Installed applications are not touched.".into());
+    strings.insert("settings_section_caches".into(), "Caches".into());
+    strings.insert("settings_caches_desc".into(), "Removes cached descriptions and icons (they re-download on the next refresh). Installed applications are not touched.".into());
     strings.insert("caches_cleared".into(), "{count} cache(s) removed".into());
     strings.insert("launcher_update_system_managed".into(), "Update {version} is available - this install is managed by the package manager, update via 'pacman -Syu' (colony-bin)".into());
     // Detail tabs

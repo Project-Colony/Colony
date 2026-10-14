@@ -261,7 +261,7 @@ fn token_path() -> PathBuf {
             auth_dir.join("github_token.json")
         }
         // Only the creation failed; ask for the same path without creating it
-        // rather than rebuilding the layout by hand — spelling it out here with
+        // rather than rebuilding the layout by hand - spelling it out here with
         // dirs::config_dir() put the token in Roaming on Windows, which is the
         // one place the shared layout says it must not be.
         Err(_) => colony_ui::paths::locate::config_dir("Colony")

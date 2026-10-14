@@ -128,7 +128,7 @@ impl App {
                     match target {
                         Some(key) if key.starts_with("repo:") => {
                             self.active_colony_repo = Some(key["repo:".len()..].to_string());
-                            // Refresh the (repo, tab) markdown cache —
+                            // Refresh the (repo, tab) markdown cache -
                             // the detail view reads cached blocks only.
                             self.refresh_detail_markdown();
                         }
