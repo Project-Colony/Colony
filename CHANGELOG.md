@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.11.0](https://github.com/Project-Colony/Colony/compare/v0.10.4...v0.11.0) (2026-10-12)
+
+
+### Features
+
+* rebuild Preferences, typography and sidebar navigation on the shared colony-ui kit ([#95](https://github.com/Project-Colony/Colony/issues/95)) ([e4876e6](https://github.com/Project-Colony/Colony/commit/e4876e6d8316ee207998e86bb8ac5305a608e70a))
+
+
+### Fixes
+
+* **paths:** recover the profile a skipped or failed migration left behind and prune update staging from the cache ([#88](https://github.com/Project-Colony/Colony/issues/88)) ([6fa151d](https://github.com/Project-Colony/Colony/commit/6fa151d2e7b1e61cb12705d93d192daf06b3532b))
+
+
+### Internals
+
+* store the GitHub token through keyring 4's native stores and sort the docs by reader ([#96](https://github.com/Project-Colony/Colony/issues/96)) ([60652fb](https://github.com/Project-Colony/Colony/commit/60652fbd1ba15960ea98c9ae634f1bcb6f0630bf))
+
+
+### Documentation
+
+* point app authors at the release template that signs outside the build ([#89](https://github.com/Project-Colony/Colony/issues/89)) ([13b39c2](https://github.com/Project-Colony/Colony/commit/13b39c2566528cadd413eb0149a8406096ec802e))
+
 ## [0.10.4](https://github.com/Project-Colony/Colony/compare/v0.10.3...v0.10.4) (2026-10-08)
 
 
