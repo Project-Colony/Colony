@@ -147,8 +147,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Pinned, not ubuntu-latest: the binary needs the glibc of the
+          # runner that built it. ubuntu-latest moved to 26.04 (glibc 2.43)
+          # and 0.11.2 stopped starting on Ubuntu 24.04, Debian 13 and
+          # Fedora 43, and in the Eidos release check that runs it.
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04
             asset: colony-linux
           - target: x86_64-pc-windows-msvc
             os: windows-latest
