@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.3](https://github.com/Project-Colony/Colony/compare/v0.11.2...v0.11.3) (2026-11-09)
+
+
+### Fixes
+
+* **release:** build the Linux binary on Ubuntu 24.04 so it runs on glibc 2.39 ([#108](https://github.com/Project-Colony/Colony/issues/108)) ([57a8db7](https://github.com/Project-Colony/Colony/commit/57a8db727f60fb6e6a9bdc1bc3ed3b10e666b60d))
+
 ## [0.11.2](https://github.com/Project-Colony/Colony/compare/v0.11.1...v0.11.2) (2026-11-09)
 
 
