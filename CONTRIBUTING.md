@@ -94,7 +94,7 @@ cargo test               # run the unit tests (manifest parsing, scanning, i18n,
 cargo build --release    # optimized build
 ```
 
-You need Rust 1.88 or newer (the `rust-version` floor, checked by CI) and a C compiler. No system libraries are needed: on Linux, the D-Bus client used for the Secret Service is compiled from source.
+You need Rust 1.99 or newer (the `rust-version` floor, checked by CI) and a C compiler. No system libraries are needed: on Linux, the D-Bus client used for the Secret Service is compiled from source.
 
 ### Code organization
 

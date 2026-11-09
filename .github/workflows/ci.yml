@@ -31,12 +31,12 @@ jobs:
       # Pinned to master with `toolchain: stable` rather than to the `stable`
       # branch: that branch is rebased onto every master commit, so a SHA
       # pinned on it stops being reachable from any branch. Bumped by hand.
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
         with:
           toolchain: stable
           components: clippy
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Format
         run: cargo fmt --all -- --check
@@ -84,11 +84,11 @@ jobs:
           [ -n "$version" ] || { echo "::error::could not read rust-version from Cargo.toml"; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: msrv-${{ steps.msrv.outputs.version }}
 
@@ -103,15 +103,9 @@ jobs:
   # gating, it is red on every single PR forever - and a check that is always
   # red is a check nobody reads. So the advisories that genuinely cannot be
   # acted on from this repository are ignored BY ID, with the reason written
-  # down, and everything else fails the build.
-  #
-  # RUSTSEC-2026-0194 / RUSTSEC-2026-0195 (quick-xml): held at 0.38 by
-  # wayland-scanner, via winit and iced 0.14 - a semver-incompatible bump we
-  # cannot make from here. Both advisories concern parsing untrusted XML;
-  # wayland-scanner is a build-time proc-macro that parses the system's own
-  # Wayland protocol descriptions, so neither is reachable at runtime.
-  # Remove these two the day iced ships a winit new enough to carry
-  # quick-xml >= 0.41.
+  # down, and everything else fails the build. None is ignored today: the
+  # quick-xml pair (RUSTSEC-2026-0194 / RUSTSEC-2026-0195) was dropped once
+  # wayland-scanner moved to quick-xml 0.41.
   audit:
     name: Advisories
     runs-on: ubuntu-latest
@@ -124,4 +118,3 @@ jobs:
       - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          ignore: RUSTSEC-2026-0194,RUSTSEC-2026-0195
