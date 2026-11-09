@@ -27,7 +27,7 @@ to the applications already on your system.
 > applies only a release whose ed25519 signature and signed `.meta` check out,
 > and never an older version than the one running. CI builds and tests every
 > change on Linux, Windows and macOS, and checks that it still builds with Rust
-> 1.88. The Windows and macOS builds work but are best-effort (see
+> 1.99. The Windows and macOS builds work but are best-effort (see
 > [Platforms](#platforms)). v0.11.0 is the first release built, signed and
 > published by the organisation's shared sign-and-publish workflow, and the
 > same run bumped the `colony-bin` AUR package. Authenticode signing of the
@@ -148,7 +148,7 @@ cargo build --release
 ./target/release/colony
 ```
 
-Requires Rust 1.88 or newer and a C compiler. No system libraries are needed:
+Requires Rust 1.99 or newer and a C compiler. No system libraries are needed:
 on Linux, the D-Bus client Colony uses for the Secret Service is compiled from
 source.
 
