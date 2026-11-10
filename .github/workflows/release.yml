@@ -265,7 +265,7 @@ jobs:
     permissions:
       actions: read
       contents: write
-    uses: Project-Colony/Project-Colony-Resources/.github/workflows/sign-and-publish.yml@619460ff4dc0049f129955f0988d368427b9eedb # organisation pin
+    uses: Project-Colony/Project-Colony-Resources/.github/workflows/sign-and-publish.yml@1973616f4deb2182855decf446d8e2d78ad7aa29 # organisation pin
     with:
       tag: ${{ needs.target.outputs.tag }}
       # The four names self-update asks for (launcher_asset_name), each
