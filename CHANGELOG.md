@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.4](https://github.com/Project-Colony/Colony/compare/v0.11.3...v0.11.4) (2026-11-24)
+
+
+### Fixes
+
+* **deps:** update dependencies and Rust to 1.100 and fix the open security advisories ([#113](https://github.com/Project-Colony/Colony/issues/113)) ([5cf5616](https://github.com/Project-Colony/Colony/commit/5cf5616f53c48aa44fd70e1ec715f5f324138aa8))
+
 ## [0.11.3](https://github.com/Project-Colony/Colony/compare/v0.11.2...v0.11.3) (2026-11-09)
 
 
