@@ -10,14 +10,14 @@ license = "GPL-3.0-or-later"
 # dependencies require more, including iced, zip, image and wgpu at 1.88, so
 # cargo refuses to build at all on it. Nothing checked, because CI only ever
 # ran on stable.
-rust-version = "1.99"
+rust-version = "1.100"
 # MSRV-aware resolution: `cargo update` picks the newest release of each crate
 # that still builds on `rust-version`, so a transitive dependency cannot raise
 # the floor by accident.
 resolver = "3"
 
 [dependencies]
-anyhow = "1.0.104"
+anyhow = "1.0.105"
 # The shared theme, palettes, accents, labels and widgets, generated from the
 # design tokens in Project-Colony-Resources.
 colony-ui = "0.1.6"
@@ -25,7 +25,7 @@ iced = { version = "0.14.0", features = ["tokio", "markdown", "advanced", "image
 shell-words = "1.1.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-toml = "1.2.1"
+toml = "1.2.2"
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "form", "stream", "rustls", "http2", "charset", "system-proxy"] }
 tokio = { version = "1.54.1", features = ["sync", "time", "rt"] }
 futures = "0.3.34"
@@ -40,12 +40,12 @@ dirs = "7.0.0"
 # no implicit store at all. Colony never sets a default store and builds every
 # entry from the per-target store in src/oauth.rs, so the mock is reachable only
 # from the tests, and the plaintext copy goes only after the token reads back.
-keyring-core = "1.0.1"
+keyring-core = "1.1.0"
 semver = "1.0.28"
 sha2 = "0.11.1"
 # Pure-Rust ed25519 verification for signed launcher self-updates (no openssl).
 ed25519-dalek = { version = "3.0.0", default-features = false }
-zip = { version = "9.5.0", default-features = false, features = ["deflate"] }
+zip = { version = "9.8.2", default-features = false, features = ["deflate"] }
 tar = "0.4.46"
 flate2 = "1.1.11"
 # PNG-only decoder for per-app icons (no other codecs); pairs with iced's
@@ -58,7 +58,7 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 # only its own. The stores use the same service, account and Windows target name
 # as keyring 3, so a token saved before the upgrade is still read.
 [target.'cfg(target_os = "macos")'.dependencies]
-apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
+apple-native-keyring-store = { version = "1.0.3", features = ["keychain"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = "1.1.0"
