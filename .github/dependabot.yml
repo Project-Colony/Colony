@@ -1,23 +1,25 @@
-# Keep the supply chain current: GitHub Actions and Cargo dependencies.
-#
 # Copy to .github/dependabot.yml.
-#
-# Dependabot opening a PR is not the rule being followed; merging it is. See
-# design/dependencies.md: everything is on its latest release, always.
+# Rules: design/dependencies.md "Automatic merges". Add only
+# repository-specific ignores, directories or a cargo-dev group.
 version: 2
 updates:
-  # A stale action is the same problem as a stale crate, with more privileges.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    # The shared signing workflow stays at the organisation pin, which moves
-    # for every program at once: design/releases.md in
-    # Project-Colony-Resources, "The pin". A Dependabot PR would move one
-    # repository alone. Dependabot names that dependency after the workflow
-    # path (Project-Colony/Project-Colony-Resources/.github/workflows/...), so
-    # the rule needs the trailing wildcard to match it.
+      day: friday
+      time: "07:00"
+      timezone: Europe/Brussels
+    # GitHub Actions supports default-days only.
+    cooldown:
+      default-days: 7
+    # chore is a hidden changelog section, so action updates never release.
+    commit-message:
+      prefix: chore
+      include: scope
     ignore:
+      # Dependabot names the shared workflows after their path, hence the wildcard.
+      # The pin moves by hand (design/releases.md "The pin").
       - dependency-name: "Project-Colony/Project-Colony-Resources*"
     groups:
       actions:
@@ -27,13 +29,29 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: friday
+      time: "07:00"
+      timezone: Europe/Brussels
+    cooldown:
+      default-days: 7
+    # fix lands under Fixes and cuts a patch release.
+    commit-message:
+      prefix: fix
+      include: scope
     open-pull-requests-limit: 5
-    # Transitive crates too, so the lockfile stays current without a manual
-    # `cargo update`.
     allow:
       - dependency-type: all
     groups:
-      # Minor and patch bumps arrive as one PR, so a routine week is one review
-      # rather than fifteen. Majors stay separate: they deserve their own read.
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      # Repository-specific: crates listed only under [dev-dependencies].
+      # weekly-merge.yml squashes this group as chore(deps), so it never
+      # releases. List the same names in cargo-minor's exclude-patterns.
+      # cargo-dev:
+      #   patterns: ["criterion", "tempfile"]
+      #   update-types: ["minor", "patch"]
       cargo-minor:
         update-types: ["minor", "patch"]
+        # exclude-patterns: ["criterion", "tempfile"]
